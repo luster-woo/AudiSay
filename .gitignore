@@ -1,0 +1,51 @@
+# ===== 비밀값 (절대 커밋 금지) =====
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.csv
+application-secret.yml
+application-secret.yaml
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+
+# ===== IDE =====
+.idea/
+*.iml
+.vscode/
+*.swp
+
+# ===== Java / Gradle (backend) =====
+.gradle/
+build/
+out/
+!gradle/wrapper/gradle-wrapper.jar
+
+# ===== Node (frontend) =====
+node_modules/
+dist/
+.vite/
+npm-debug.log*
+yarn-error.log*
+
+# ===== Python (ai) =====
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# ===== AI 모델·미디어 파일 (용량 큼) =====
+models/
+*.pt
+*.onnx
+*.mp4
+*.wav
+
+# ===== 로그 =====
+logs/
+*.log

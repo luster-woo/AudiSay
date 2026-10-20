@@ -1,6 +1,6 @@
 # AudiSay
 
-> 한 줄 소개를 작성해 주세요.
+> 시각장애인이 영상을 듣기만 하는 것이 아니라, 직접 묻고 원하는 장면으로 이동할 수 있게 하는 AI 화면해설 서비스
 
 ## 폴더 구조
 
@@ -14,10 +14,10 @@ infra/      docker-compose, 배포 설정
 ## 시작하기
 
 ```bash
-git clone https://lab.ssafy.com/<그룹>/S15P31D101.git
+git clone https://lab.ssafy.com/s15-final/S15P31D101.git
 cd S15P31D101
 cp .env.example .env      # 값은 팀 내부에서 따로 공유
-git checkout -b feat/S15P31D101-이슈번호-작업명 origin/develop
+git checkout -b feat/S15P31D101-이슈번호-작업명 origin/develop   # 예: feat/S15P31D101-58-login-page
 ```
 
 ## 브랜치 전략
@@ -37,7 +37,7 @@ main ← develop ← 작업 브랜치 (feat, fix, docs …)
 ```
 
 - 예) `feat(be): 로그인 API 구현`
-- type: feat, fix, hotfix, refactor, docs, test, chore
+- type: feat, fix, hotfix, refactor, style, docs, test, chore
 - scope: fe, be, ai, infra, docs
 
-자세한 규칙은 Notion의 Git 컨벤션 페이지를 참고하세요.
+자세한 규칙은 [convention.md](convention.md)를 참고하세요.

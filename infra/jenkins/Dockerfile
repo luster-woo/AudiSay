@@ -7,3 +7,19 @@ RUN apt-get update && apt-get install -y ca-certificates curl gnupg \
     > /etc/apt/sources.list.d/docker.list \
  && apt-get update && apt-get install -y docker-ce-cli docker-compose-plugin \
  && rm -rf /var/lib/apt/lists/*
+
+# 플러그인 사전 설치
+RUN jenkins-plugin-cli --plugins \
+    workflow-aggregator \
+    workflow-cps \
+    pipeline-groovy-lib \
+    pipeline-graph-view \
+    pipeline-stage-view \
+    git \
+    gitlab-plugin \
+    credentials-binding \
+    timestamper \
+    ws-cleanup \
+    build-timeout
+
+USER jenkins

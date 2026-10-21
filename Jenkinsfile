@@ -20,9 +20,9 @@ def changedIn(String dir) {
 
 def notifyMM(String text) {
     try {
-        writeFile file: 'mm.json', text: """{"text": "${text}"}"""
+        writeFile file: 'mm.json', text: """{"text": "${text}"}""", encoding: 'UTF-8'
         withCredentials([string(credentialsId: 'mattermost-webhook', variable: 'MM_URL')]) {
-            sh 'curl -s -X POST -H "Content-Type: application/json" -d @mm.json "$MM_URL"'
+            sh 'curl -s -X POST -H "Content-Type: application/json; charset=utf-8" -d @mm.json "$MM_URL"'
         }
     } catch (e) {
         echo "MatterMost 알림 실패: ${e.message}"

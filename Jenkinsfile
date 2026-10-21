@@ -41,7 +41,9 @@ pipeline {
 
     environment {
         COMPOSE    = 'docker compose -f infra/docker-compose.prod.yml --env-file infra/.env'
-        HEALTH_URL = 'https://xxx.p.ssafy.io/api/actuator/health'   // 백엔드 헬스 체크 경로에 맞게 수정
+        // Docker 내부망 주소로 직접 확인 (Nginx·HTTPS와 무관)
+        // 백엔드가 context-path=/api를 쓰지 않으면 /actuator/health로 수정
+        HEALTH_URL = 'http://backend:8080/api/actuator/health'
     }
 
     stages {
@@ -100,8 +102,11 @@ pipeline {
             }
             steps {
                 sh '''
+                  docker pull -q curlimages/curl:8.10.1 > /dev/null
                   for i in $(seq 1 24); do
-                    if curl -fs "$HEALTH_URL" > /dev/null; then echo "헬스 체크 OK"; exit 0; fi
+                    if docker run --rm --network audisay_default curlimages/curl:8.10.1 -fs "$HEALTH_URL" > /dev/null; then
+                      echo "헬스 체크 OK"; exit 0
+                    fi
                     echo "기다리는 중... ($i/24)"; sleep 5
                   done
                   echo "헬스 체크 실패"; exit 1

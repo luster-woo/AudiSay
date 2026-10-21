@@ -16,7 +16,8 @@ infra/      docker-compose, 배포 설정
 ```bash
 git clone https://lab.ssafy.com/s15-final/S15P31D101.git
 cd S15P31D101
-cp .env.example .env      # 값은 팀 내부에서 따로 공유
+cp .env.example .env      # 비밀 키 값은 팀 내부에서 따로 공유
+docker compose -f infra/docker-compose.local.yml --env-file .env up -d   # 로컬 DB·Redis·RabbitMQ 실행
 git checkout -b feat/S15P31D101-이슈번호-작업명 origin/develop   # 예: feat/S15P31D101-58-login-page
 ```
 

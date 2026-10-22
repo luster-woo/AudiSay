@@ -43,7 +43,7 @@ pipeline {
         COMPOSE    = 'docker compose -f infra/docker-compose.prod.yml --env-file infra/.env'
         // Docker 내부망 주소로 직접 확인 (Nginx·HTTPS와 무관)
         // 백엔드가 context-path=/api를 쓰지 않으면 /actuator/health로 수정
-        HEALTH_URL = 'http://backend:8080/api/actuator/health'
+        HEALTH_URL = 'http://backend:8080/actuator/health'
     }
 
     stages {

@@ -44,6 +44,10 @@ services:
     build: ../backend
     image: audisay-backend:latest
     env_file: .env
+    environment:                      # 컨테이너 안에서는 localhost가 아니라 서비스 이름으로 접속
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      RABBITMQ_HOST: rabbitmq
     depends_on:
       postgres:
         condition: service_healthy

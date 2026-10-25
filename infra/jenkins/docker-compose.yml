@@ -1,0 +1,21 @@
+name: jenkins
+services:
+  jenkins:
+    build: .
+    image: audisay-jenkins
+    container_name: jenkins
+    user: root
+    environment:
+      JENKINS_OPTS: "--prefix=/jenkins"
+      JAVA_OPTS: "-Xmx1g -Duser.timezone=Asia/Seoul"
+      TZ: Asia/Seoul
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "127.0.0.1:8080:8080"
+    mem_limit: 1536m
+    restart: unless-stopped
+
+volumes:
+  jenkins_home:

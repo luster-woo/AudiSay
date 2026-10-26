@@ -49,3 +49,9 @@ models/
 # ===== 로그 =====
 logs/
 *.log
+
+# ===== Python (ai) =====
+.venv/
+__pycache__/
+.pytest_cache/
+ai/.storage/

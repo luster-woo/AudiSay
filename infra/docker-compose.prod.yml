@@ -60,6 +60,24 @@ services:
     mem_limit: 1g
     restart: unless-stopped
 
+  ai:
+    build: ../ai
+    image: audisay-ai:latest
+    env_file: .env
+    environment:                      # 내부망 주소. 외부 포트는 열지 않는다(Spring만 http://ai:8000으로 부름)
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      RABBITMQ_HOST: rabbitmq
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+    mem_limit: 512m
+    restart: unless-stopped
+
   frontend:
     build: ../frontend
     image: audisay-frontend:latest

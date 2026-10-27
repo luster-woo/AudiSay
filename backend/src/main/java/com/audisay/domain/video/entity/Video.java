@@ -76,4 +76,17 @@ public class Video {
     @UpdateTimestamp
     @Column(nullable = false)
     private Instant updatedAt;
+
+    /** 업로드한 회원인지. 유튜브 영상은 올린 회원이 없어 항상 false다 */
+    public boolean isUploadedBy(Long userId) {
+        return uploader != null && uploader.getId().equals(userId);
+    }
+
+    public boolean isAvailable() {
+        return status != VideoStatus.UNAVAILABLE;
+    }
+
+    public void changeVisibility(Visibility visibility) {
+        this.visibility = visibility;
+    }
 }

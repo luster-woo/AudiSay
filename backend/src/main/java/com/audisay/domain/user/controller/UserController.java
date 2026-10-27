@@ -10,7 +10,11 @@ import com.audisay.domain.user.dto.response.VerificationResponse;
 import com.audisay.domain.user.service.UsageQuotaService;
 import com.audisay.domain.user.service.UserService;
 import com.audisay.domain.user.service.UserSettingsService;
+import com.audisay.domain.video.dto.response.MyVideoResponse;
+import com.audisay.domain.video.service.VideoService;
+import com.audisay.global.request.PageParams;
 import com.audisay.global.response.ApiResponse;
+import com.audisay.global.response.PageResponse;
 import com.audisay.global.security.AuthUser;
 import com.audisay.global.security.RefreshTokenCookieProvider;
 import io.swagger.v3.oas.annotations.Operation;
@@ -24,6 +28,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -41,6 +46,7 @@ public class UserController {
     private final UserService userService;
     private final UserSettingsService userSettingsService;
     private final UsageQuotaService usageQuotaService;
+    private final VideoService videoService;
     private final RefreshTokenCookieProvider refreshTokenCookieProvider;
 
     @Operation(summary = "내 정보 조회")
@@ -71,6 +77,14 @@ public class UserController {
     @GetMapping("/quota")
     public ApiResponse<QuotaResponse> getQuota(@AuthenticationPrincipal AuthUser authUser) {
         return ApiResponse.success("이용 횟수 조회 성공", usageQuotaService.getQuota(authUser.userId()));
+    }
+
+    @Operation(summary = "내 영상 목록", description = "내가 해설을 요청하거나 올린 영상. 마지막 요청 시각 최신순")
+    @GetMapping("/videos")
+    public ApiResponse<PageResponse<MyVideoResponse>> getMyVideos(@AuthenticationPrincipal AuthUser authUser,
+                                                                  @Valid @ModelAttribute PageParams pageParams) {
+        return ApiResponse.success("내 영상 목록 조회 성공",
+                videoService.getMyVideos(authUser.userId(), pageParams.toPageable()));
     }
 
     @Operation(summary = "재생 설정 조회")

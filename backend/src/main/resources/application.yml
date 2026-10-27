@@ -30,6 +30,10 @@ spring:
   jackson:
     time-zone: UTC
 
+  flyway:
+    locations: ${FLYWAY_LOCATIONS:classpath:db/migration}
+    ignore-migration-patterns: "*:future,repeatable:missing"
+
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -67,6 +71,13 @@ audisay:
         max-duration-sec: 3600
         daily-count: 3
         max-size: 2GB
+
+  # YouTube Data API v3. 키는 사람마다 Google Cloud에서 발급해 .env에 둔다 (하루 10,000 유닛, 검색 1번 100 유닛)
+  youtube:
+    api-key: ${YOUTUBE_API_KEY:}
+    base-url: https://www.googleapis.com/youtube/v3
+    connect-timeout: 3s
+    read-timeout: 5s
 
 jwt:
   # 기본값 없음: 로컬은 .env의 공용 값, 서버는 Jenkins audisay-env의 별도 값 (32바이트 이상)

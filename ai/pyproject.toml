@@ -1,0 +1,29 @@
+[project]
+name = "audisay-ai"
+version = "0.1.0"
+description = "AudiSay AI 워커: RabbitMQ로 해설 생성 단계를 처리하고, 챗봇용 내부 API를 연다"
+requires-python = ">=3.12"
+dependencies = [
+    "aio-pika>=9.4",
+    "redis>=5.0",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "google-genai>=1.20",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "asyncpg>=0.29",
+    "boto3>=1.34",
+    "prometheus-client>=0.20",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "httpx>=0.27",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]

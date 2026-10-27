@@ -42,6 +42,32 @@ spring:
     username: ${RABBITMQ_DEFAULT_USER:audisay}
     password: ${RABBITMQ_DEFAULT_PASS:audisay}
 
+  # 서버를 거치는 파일은 작은 것만(시각장애인 인증 서류 10MB 등). 영상은 S3 presigned URL로 직접 올린다
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 11MB
+
+audisay:
+  # 역할별 이용 제한 (기획서 2.3 초기값, GMS 크레딧 확인 후 조정). 관리자는 제한 없음
+  usage-limits:
+    general:
+      youtube:
+        max-duration-sec: 300
+        daily-count: 2
+      upload:
+        max-duration-sec: 300
+        daily-count: 1
+        max-size: 500MB
+    visually-impaired:
+      youtube:
+        max-duration-sec: 3600
+        daily-count: 5
+      upload:
+        max-duration-sec: 3600
+        daily-count: 3
+        max-size: 2GB
+
 jwt:
   # 기본값 없음: 로컬은 .env의 공용 값, 서버는 Jenkins audisay-env의 별도 값 (32바이트 이상)
   secret: ${JWT_SECRET}

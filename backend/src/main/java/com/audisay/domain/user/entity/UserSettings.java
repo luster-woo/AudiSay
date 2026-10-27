@@ -53,9 +53,6 @@ public class UserSettings {
     @Column(nullable = false)
     private Short originalVolume = 100;
 
-    @Column(length = 50)
-    private String voiceCode;
-
     @Column(nullable = false)
     private Short seekStepSec = 10;
 
@@ -83,5 +80,60 @@ public class UserSettings {
 
     public boolean isTutorialCompleted() {
         return tutorialCompletedAt != null;
+    }
+
+    /**
+     * null인 필드는 바꾸지 않는다(부분 수정). 값 범위는 요청 DTO와 DB CHECK가 막는다.
+     */
+    public void update(Patch patch, Instant now) {
+        if (patch.detailLevel() != null) {
+            detailLevel = patch.detailLevel();
+        }
+        if (patch.narrationMode() != null) {
+            narrationMode = patch.narrationMode();
+        }
+        if (patch.speechRate() != null) {
+            speechRate = patch.speechRate();
+        }
+        if (patch.soundMix() != null) {
+            soundMix = patch.soundMix();
+        }
+        if (patch.subtitleReading() != null) {
+            subtitleReading = patch.subtitleReading();
+        }
+        if (patch.originalVolume() != null) {
+            originalVolume = patch.originalVolume();
+        }
+        if (patch.seekStepSec() != null) {
+            seekStepSec = patch.seekStepSec();
+        }
+        if (patch.summaryMode() != null) {
+            summaryMode = patch.summaryMode();
+        }
+        if (patch.highContrast() != null) {
+            highContrast = patch.highContrast();
+        }
+        if (patch.fontSizeLevel() != null) {
+            fontSizeLevel = patch.fontSizeLevel();
+        }
+        if (patch.tutorialCompleted() != null) {
+            // false는 튜토리얼 다시 보기
+            tutorialCompletedAt = patch.tutorialCompleted() ? now : null;
+        }
+    }
+
+    public record Patch(
+            Short detailLevel,
+            NarrationMode narrationMode,
+            BigDecimal speechRate,
+            SoundMix soundMix,
+            SubtitleReading subtitleReading,
+            Short originalVolume,
+            Short seekStepSec,
+            SummaryMode summaryMode,
+            Boolean highContrast,
+            Short fontSizeLevel,
+            Boolean tutorialCompleted
+    ) {
     }
 }

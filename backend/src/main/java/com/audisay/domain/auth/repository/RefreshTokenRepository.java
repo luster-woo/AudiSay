@@ -1,6 +1,8 @@
 package com.audisay.domain.auth.repository;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.redis.core.Cursor;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -8,7 +10,9 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
+import java.util.HashSet;
 import java.util.HexFormat;
+import java.util.Set;
 
 /**
  * 기기(sid)별 RefreshToken. 키는 refresh:{userId}:{sid}, 값은 토큰 원문이 아니라 SHA-256 해시다.
@@ -33,6 +37,19 @@ public class RefreshTokenRepository {
 
     public void delete(Long userId, String sid) {
         redisTemplate.delete(key(userId, sid));
+    }
+
+    /**
+     * 이 회원이 로그인해 있는 기기(sid) 목록. KEYS 대신 SCAN으로 찾는다.
+     */
+    public Set<String> findSids(Long userId) {
+        String prefix = KEY_PREFIX + userId + ":";
+        ScanOptions options = ScanOptions.scanOptions().match(prefix + "*").count(100).build();
+        Set<String> sids = new HashSet<>();
+        try (Cursor<String> cursor = redisTemplate.scan(options)) {
+            cursor.forEachRemaining(key -> sids.add(key.substring(prefix.length())));
+        }
+        return sids;
     }
 
     private String key(Long userId, String sid) {

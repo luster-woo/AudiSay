@@ -25,8 +25,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -104,6 +106,42 @@ public class AuthService {
                 .filter(found -> !found.isWithdrawn())
                 .orElseThrow(() -> new BusinessException(ErrorCode.REFRESH_TOKEN_INVALID));
         return issueTokens(user, claims.sid());
+    }
+
+    /**
+     * 같은 기기(sid)로 AccessToken만 새로 발급한다. 역할이 바뀌었을 때(시각장애인 인증) 쓴다.
+     * RefreshToken은 그대로 두며, 재발급할 때 DB의 최신 역할이 담긴다.
+     */
+    public AccessTokenResponse issueAccessToken(User user, String sid) {
+        String accessToken = jwtProvider.createAccessToken(user.getId(), user.getRole(), sid);
+        return AccessTokenResponse.of(accessToken, jwtProvider.getAccessTokenExpiration().toSeconds());
+    }
+
+    /**
+     * 탈퇴: 지금 기기를 포함한 모든 기기를 바로 로그아웃시킨다.
+     */
+    public void revokeAllSessions(Long userId, String currentSid) {
+        Set<String> sids = new HashSet<>(refreshTokenRepository.findSids(userId));
+        sids.add(currentSid);
+        sids.forEach(sid -> revokeSession(userId, sid));
+    }
+
+    /**
+     * 비밀번호 변경: 지금 기기만 남기고 다른 기기를 바로 로그아웃시킨다.
+     */
+    public void revokeOtherSessions(Long userId, String keepSid) {
+        refreshTokenRepository.findSids(userId).stream()
+                .filter(sid -> !sid.equals(keepSid))
+                .forEach(sid -> revokeSession(userId, sid));
+    }
+
+    /**
+     * RefreshToken을 지워 재발급을 막고, 그 기기가 들고 있는 AccessToken도 블랙리스트로 바로 막는다.
+     * AccessToken의 남은 시간을 알 수 없으므로 최대 유효 시간만큼 막는다.
+     */
+    private void revokeSession(Long userId, String sid) {
+        refreshTokenRepository.delete(userId, sid);
+        accessTokenBlacklist.add(sid, jwtProvider.getAccessTokenExpiration());
     }
 
     private AuthTokens<AccessTokenResponse> issueTokens(User user, String sid) {

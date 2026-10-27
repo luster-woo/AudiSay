@@ -62,4 +62,23 @@ public class User {
     public boolean isWithdrawn() {
         return withdrawnAt != null;
     }
+
+    public boolean isVerified() {
+        return verifiedAt != null;
+    }
+
+    public void changePassword(String passwordHash) {
+        this.passwordHash = passwordHash;
+    }
+
+    /** 소프트 삭제. 행은 남기고 탈퇴 시각만 기록한다 */
+    public void withdraw(Instant now) {
+        this.withdrawnAt = now;
+    }
+
+    /** 시각장애인 인증(형식상 자동 승인). DB의 ck_users_verified 때문에 인증 시각과 역할을 함께 바꾼다 */
+    public void verifyVisuallyImpaired(Instant now) {
+        this.verifiedAt = now;
+        this.role = Role.VISUALLY_IMPAIRED;
+    }
 }

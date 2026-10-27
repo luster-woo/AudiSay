@@ -6,7 +6,6 @@ import com.audisay.global.security.JwtAuthenticationEntryPoint;
 import com.audisay.global.security.JwtAuthenticationFilter;
 import com.audisay.global.security.JwtProvider;
 import lombok.RequiredArgsConstructor;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -25,7 +24,6 @@ import java.util.List;
 
 @Configuration
 @EnableWebSecurity
-@EnableConfigurationProperties(JwtProperties.class)
 @RequiredArgsConstructor
 public class SecurityConfig {
     private static final String[] PUBLIC_URLS = {

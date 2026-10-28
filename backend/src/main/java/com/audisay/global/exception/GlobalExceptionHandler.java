@@ -16,6 +16,8 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @Slf4j
@@ -45,11 +47,18 @@ public class GlobalExceptionHandler {
             MissingServletRequestParameterException.class,
             MethodArgumentTypeMismatchException.class,
             HandlerMethodValidationException.class,
-            HttpMediaTypeNotSupportedException.class
+            HttpMediaTypeNotSupportedException.class,
+            MissingServletRequestPartException.class
     })
     public ResponseEntity<ApiResponse<Void>> handleBadRequest(Exception e, HttpServletRequest request) {
         log.warn("[BadRequest] {} {} - {}", request.getMethod(), request.getRequestURI(), e.getMessage());
         return fail(ErrorCode.INVALID_INPUT, ErrorCode.INVALID_INPUT.getMessage(), request);
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMaxUploadSize(MaxUploadSizeExceededException e, HttpServletRequest request) {
+        log.warn("[MaxUploadSize] {} {} - {}", request.getMethod(), request.getRequestURI(), e.getMessage());
+        return fail(ErrorCode.INVALID_INPUT, "파일 용량이 제한을 넘습니다.", request);
     }
 
     @ExceptionHandler(NoResourceFoundException.class)

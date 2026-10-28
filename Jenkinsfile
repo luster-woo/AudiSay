@@ -1,5 +1,5 @@
-// 서비스 이름 : 폴더 (워커가 준비되면 worker: 'ai' 추가)
-SERVICES = [backend: 'backend', frontend: 'frontend']
+// 서비스 이름 : 폴더
+SERVICES = [backend: 'backend', frontend: 'frontend', ai: 'ai']
 INFRA_SERVICES = 'postgres redis rabbitmq'
 
 def isMain() {

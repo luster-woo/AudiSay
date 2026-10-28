@@ -1,0 +1,89 @@
+# 관제 스택. 앱(audisay)과 분리해서 서버에서 직접 실행한다. (Jenkins 배포 대상 아님)
+# 실행 (서버 ~/infra/monitoring 에서): docker compose --env-file ../.env up -d
+# 앱 네트워크(audisay_default)에 붙어서 postgres, redis, rabbitmq, backend, ai를 서비스 이름으로 수집한다.
+name: monitoring
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-lifecycle            # 설정 변경 후 재시작 없이 reload 가능
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"             # SSH 터널로만 접속
+    mem_limit: 512m
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    environment:
+      GF_SERVER_ROOT_URL: https://k15d101.p.ssafy.io/grafana/
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      TZ: Asia/Seoul
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafanadata:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"             # Nginx /grafana/ 로만 노출
+    depends_on: [prometheus]
+    mem_limit: 256m
+    restart: unless-stopped
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    command: ['--path.rootfs=/host']
+    volumes:
+      - /:/host:ro,rslave
+    pid: host
+    mem_limit: 64m
+    restart: unless-stopped
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    command: ['--docker_only=true', '--housekeeping_interval=30s']
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    devices:
+      - /dev/kmsg
+    privileged: true
+    mem_limit: 256m
+    restart: unless-stopped
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.16.0
+    environment:
+      DATA_SOURCE_URI: postgres:5432/${POSTGRES_DB}?sslmode=disable
+      DATA_SOURCE_USER: ${POSTGRES_USER}
+      DATA_SOURCE_PASS: ${POSTGRES_PASSWORD}
+    mem_limit: 64m
+    restart: unless-stopped
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.66.0
+    environment:
+      REDIS_ADDR: redis://redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    mem_limit: 64m
+    restart: unless-stopped
+
+networks:
+  default:
+    name: audisay_default
+    external: true
+
+volumes:
+  promdata:
+  grafanadata:

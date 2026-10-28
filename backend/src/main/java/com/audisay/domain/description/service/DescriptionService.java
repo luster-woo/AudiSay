@@ -5,6 +5,7 @@ import com.audisay.domain.description.dto.response.DialogueResponse;
 import com.audisay.domain.description.dto.response.LineResponse;
 import com.audisay.domain.description.dto.response.SceneResponse;
 import com.audisay.domain.description.dto.response.ScreenTextResponse;
+import com.audisay.domain.description.dto.response.SummaryResponse;
 import com.audisay.domain.description.entity.Description;
 import com.audisay.domain.description.entity.DescriptionStatus;
 import com.audisay.domain.description.repository.DescriptionLineRepository;
@@ -57,6 +58,12 @@ public class DescriptionService {
                 lines, scenes, dialogues, screenTexts);
     }
 
+    public SummaryResponse getSummary(AuthUser authUser, Long videoId) {
+        videoAccessValidator.getAccessibleVideo(authUser, videoId);
+        Description description = getPublishedDescription(videoId);
+        return SummaryResponse.of(description, audioUrlResolver.resolve(description.getSummaryAudioKey()));
+    }
+
     private Description getPublishedDescription(Long videoId) {
         return descriptionRepository.findByVideo_IdAndStatus(videoId, DescriptionStatus.PUBLISHED)
                 .orElseThrow(() -> new BusinessException(ErrorCode.DESCRIPTION_NOT_FOUND, "아직 해설이 없습니다."));
@@ -71,4 +78,5 @@ public class DescriptionService {
         }
         return descriptionRepository.findCoveredUntilMs(description.getJob().getId()).orElse(0);
     }
+
 }

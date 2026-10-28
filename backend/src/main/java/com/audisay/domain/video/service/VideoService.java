@@ -1,7 +1,6 @@
 package com.audisay.domain.video.service;
 
 import com.audisay.domain.favorite.repository.FavoriteRepository;
-import com.audisay.domain.user.entity.Role;
 import com.audisay.domain.video.dto.request.VisibilityUpdateRequest;
 import com.audisay.domain.video.dto.response.MyVideoResponse;
 import com.audisay.domain.video.dto.response.PlaybackResponse;
@@ -11,7 +10,6 @@ import com.audisay.domain.video.dto.response.VisibilityResponse;
 import com.audisay.domain.video.entity.Category;
 import com.audisay.domain.video.entity.SourceType;
 import com.audisay.domain.video.entity.Video;
-import com.audisay.domain.video.entity.Visibility;
 import com.audisay.domain.video.repository.GenerationRequestRepository;
 import com.audisay.domain.video.repository.MyVideoRow;
 import com.audisay.domain.video.repository.VideoRepository;
@@ -108,12 +106,11 @@ public class VideoService {
     /**
      * 비공개 영상은 올린 회원과 관리자만 볼 수 있다.
      */
-    private Video getAccessibleVideo(AuthUser authUser, Long videoId) {
+    @Transactional(readOnly = true)
+    public Video getAccessibleVideo(AuthUser authUser, Long videoId) {
         Video video = videoRepository.findById(videoId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.VIDEO_NOT_FOUND));
-        if (video.getVisibility() == Visibility.PRIVATE
-                && !video.isUploadedBy(authUser.userId())
-                && authUser.role() != Role.ADMIN) {
+        if (!video.isViewableBy(authUser.userId(), authUser.role())) {
             throw new BusinessException(ErrorCode.VIDEO_PRIVATE);
         }
         return video;

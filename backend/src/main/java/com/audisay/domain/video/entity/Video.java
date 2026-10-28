@@ -1,5 +1,6 @@
 package com.audisay.domain.video.entity;
 
+import com.audisay.domain.user.entity.Role;
 import com.audisay.domain.user.entity.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -80,6 +81,11 @@ public class Video {
     /** 업로드한 회원인지. 유튜브 영상은 올린 회원이 없어 항상 false다 */
     public boolean isUploadedBy(Long userId) {
         return uploader != null && uploader.getId().equals(userId);
+    }
+
+    /** 볼 수 있는 회원인지. 비공개 영상은 올린 회원과 관리자만 볼 수 있다 */
+    public boolean isViewableBy(Long userId, Role role) {
+        return visibility != Visibility.PRIVATE || isUploadedBy(userId) || role == Role.ADMIN;
     }
 
     public boolean isAvailable() {

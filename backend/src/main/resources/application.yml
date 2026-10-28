@@ -98,4 +98,11 @@ management:
   endpoints:
     web:
       exposure:
-        include: health
+        include: health,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}   # Grafana JVM 대시보드에서 앱 구분용
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true              # API p95 응답 시간 계산용
+          

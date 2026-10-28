@@ -29,6 +29,7 @@ public class SecurityConfig {
     private static final String[] PUBLIC_URLS = {
             "/error",
             "/actuator/health",
+            "/actuator/prometheus",
             "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**",
             // 로그아웃은 만료된 토큰으로 불러도 200이어야 해서 인증 없이 열고 서비스에서 토큰을 직접 처리한다
             "/v1/auth/**"
@@ -53,8 +54,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(PUBLIC_URLS).permitAll()
                         .requestMatchers("/v1/admin/**").hasRole("ADMIN")
-                        .anyRequest().authenticated()
-                )
+                        .anyRequest().authenticated())
                 .addFilterBefore(new JwtAuthenticationFilter(jwtProvider, accessTokenBlacklist),
                         UsernamePasswordAuthenticationFilter.class);
         return http.build();

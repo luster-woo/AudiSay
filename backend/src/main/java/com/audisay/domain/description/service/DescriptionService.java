@@ -1,6 +1,7 @@
 package com.audisay.domain.description.service;
 
 import com.audisay.domain.description.dto.response.ChapterResponse;
+import com.audisay.domain.description.dto.response.CurrentSceneResponse;
 import com.audisay.domain.description.dto.response.DescriptionResponse;
 import com.audisay.domain.description.dto.response.DialogueResponse;
 import com.audisay.domain.description.dto.response.LineResponse;
@@ -74,6 +75,14 @@ public class DescriptionService {
                 description.getId(),
                 chapterRepository.findByDescription_IdOrderByChapterIndexAsc(description.getId())
         );
+    }
+
+    public CurrentSceneResponse getCurrentScene(AuthUser authUser, Long videoId, Integer ms) {
+        videoAccessValidator.getAccessibleVideo(authUser, videoId);
+        Description description = getPublishedDescription(videoId);
+        return sceneRepository.findAtTime(description.getId(), ms)
+                .map(CurrentSceneResponse::from)
+                .orElseThrow(() -> new BusinessException(ErrorCode.DESCRIPTION_NOT_IN_RANGE));
     }
 
     private Description getPublishedDescription(Long videoId) {

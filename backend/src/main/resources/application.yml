@@ -79,6 +79,14 @@ audisay:
     connect-timeout: 3s
     read-timeout: 5s
 
+  # S3. 버킷이 비어 있으면 음성 주소(audioUrl)를 만들지 않는다 → FE가 브라우저 음성으로 읽음
+  s3:
+    region: ${AWS_REGION:ap-northeast-2}
+    bucket: ${AWS_S3_BUCKET:}
+    access-key-id: ${AWS_ACCESS_KEY_ID:}
+    secret-access-key: ${AWS_SECRET_ACCESS_KEY:}
+    audio-url-expiration: 6h
+
 jwt:
   # 기본값 없음: 로컬은 .env의 공용 값, 서버는 Jenkins audisay-env의 별도 값 (32바이트 이상)
   secret: ${JWT_SECRET}

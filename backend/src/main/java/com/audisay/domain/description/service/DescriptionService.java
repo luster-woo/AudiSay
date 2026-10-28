@@ -1,5 +1,7 @@
 package com.audisay.domain.description.service;
 
+import com.audisay.domain.description.dto.response.ChapterResponse;
+import com.audisay.domain.description.dto.response.CurrentSceneResponse;
 import com.audisay.domain.description.dto.response.DescriptionResponse;
 import com.audisay.domain.description.dto.response.DialogueResponse;
 import com.audisay.domain.description.dto.response.LineResponse;
@@ -8,6 +10,7 @@ import com.audisay.domain.description.dto.response.ScreenTextResponse;
 import com.audisay.domain.description.dto.response.SummaryResponse;
 import com.audisay.domain.description.entity.Description;
 import com.audisay.domain.description.entity.DescriptionStatus;
+import com.audisay.domain.description.repository.ChapterRepository;
 import com.audisay.domain.description.repository.DescriptionLineRepository;
 import com.audisay.domain.description.repository.DescriptionRepository;
 import com.audisay.domain.description.repository.SceneRepository;
@@ -34,6 +37,7 @@ public class DescriptionService {
     private final SceneRepository sceneRepository;
     private final TranscriptSegmentRepository transcriptSegmentRepository;
     private final ScreenTextRepository screenTextRepository;
+    private final ChapterRepository chapterRepository;
     private final AudioUrlResolver audioUrlResolver;
 
     public DescriptionResponse getDescription(AuthUser authUser, Long videoId) {
@@ -62,6 +66,23 @@ public class DescriptionService {
         videoAccessValidator.getAccessibleVideo(authUser, videoId);
         Description description = getPublishedDescription(videoId);
         return SummaryResponse.of(description, audioUrlResolver.resolve(description.getSummaryAudioKey()));
+    }
+
+    public ChapterResponse getChapters(AuthUser authUser, Long videoId) {
+        videoAccessValidator.getAccessibleVideo(authUser, videoId);
+        Description description = getPublishedDescription(videoId);
+        return ChapterResponse.of(
+                description.getId(),
+                chapterRepository.findByDescription_IdOrderByChapterIndexAsc(description.getId())
+        );
+    }
+
+    public CurrentSceneResponse getCurrentScene(AuthUser authUser, Long videoId, Integer ms) {
+        videoAccessValidator.getAccessibleVideo(authUser, videoId);
+        Description description = getPublishedDescription(videoId);
+        return sceneRepository.findAtTime(description.getId(), ms)
+                .map(CurrentSceneResponse::from)
+                .orElseThrow(() -> new BusinessException(ErrorCode.DESCRIPTION_NOT_IN_RANGE));
     }
 
     private Description getPublishedDescription(Long videoId) {

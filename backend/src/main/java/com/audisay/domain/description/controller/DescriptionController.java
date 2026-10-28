@@ -1,5 +1,6 @@
 package com.audisay.domain.description.controller;
 
+import com.audisay.domain.description.dto.response.ChapterResponse;
 import com.audisay.domain.description.dto.response.DescriptionResponse;
 import com.audisay.domain.description.dto.response.SummaryResponse;
 import com.audisay.domain.description.service.DescriptionService;
@@ -33,5 +34,12 @@ public class DescriptionController {
     public ApiResponse<SummaryResponse> getSummary(@AuthenticationPrincipal AuthUser authUser,
                                                    @PathVariable("videoId") Long videoId) {
         return ApiResponse.success("요약 조회 성공", descriptionService.getSummary(authUser, videoId));
+    }
+
+    @Operation(summary = "장면 목차 조회", description = "큰 구간 목록. chapterIndex 순서")
+    @GetMapping("/{videoId}/chapters")
+    public ApiResponse<ChapterResponse> getChapters(@AuthenticationPrincipal AuthUser authUser,
+                                                    @PathVariable("videoId") Long videoId) {
+        return ApiResponse.success("장면 목차 조회 성공", descriptionService.getChapters(authUser, videoId));
     }
 }

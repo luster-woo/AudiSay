@@ -1,6 +1,7 @@
 package com.audisay.domain.description.controller;
 
 import com.audisay.domain.description.dto.response.ChapterResponse;
+import com.audisay.domain.description.dto.response.CurrentSceneResponse;
 import com.audisay.domain.description.dto.response.DescriptionResponse;
 import com.audisay.domain.description.dto.response.SummaryResponse;
 import com.audisay.domain.description.service.DescriptionService;
@@ -8,11 +9,13 @@ import com.audisay.global.response.ApiResponse;
 import com.audisay.global.security.AuthUser;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @Tag(name = "해설 재생")
@@ -41,5 +44,13 @@ public class DescriptionController {
     public ApiResponse<ChapterResponse> getChapters(@AuthenticationPrincipal AuthUser authUser,
                                                     @PathVariable("videoId") Long videoId) {
         return ApiResponse.success("장면 목차 조회 성공", descriptionService.getChapters(authUser, videoId));
+    }
+
+    @Operation(summary = "지금 장면 설명", description = "ms 시각의 장면과 자세한 설명. 저장된 설명만 쓰고 AI는 부르지 않는다")
+    @GetMapping("/{videoId}/scenes/at")
+    public ApiResponse<CurrentSceneResponse> getCurrentScene(@AuthenticationPrincipal AuthUser authUser,
+                                                             @PathVariable("videoId") Long videoId,
+                                                             @RequestParam("ms") @Min(0) Integer ms) {
+        return ApiResponse.success("지금 장면 조회 성공", descriptionService.getCurrentScene(authUser, videoId, ms));
     }
 }

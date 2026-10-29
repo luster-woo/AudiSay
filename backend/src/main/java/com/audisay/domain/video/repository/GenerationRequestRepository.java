@@ -41,4 +41,6 @@ public interface GenerationRequestRepository extends JpaRepository<GenerationReq
               and g.result <> com.audisay.domain.video.entity.GenerationResult.REJECTED
             """)
     Page<MyVideoRow> findMyVideos(@Param("userId") Long userId, Pageable pageable);
+
+    boolean existsByUser_IdAndJobId(Long userId, Long jobId);
 }

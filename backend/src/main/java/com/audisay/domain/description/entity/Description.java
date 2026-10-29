@@ -60,4 +60,12 @@ public class Description {
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
+
+    public void publish() {
+        status = DescriptionStatus.PUBLISHED;
+    }
+
+    public void archive() {
+        status = DescriptionStatus.ARCHIVED;
+    }
 }

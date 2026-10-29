@@ -95,4 +95,8 @@ public class Video {
     public void changeVisibility(Visibility visibility) {
         this.visibility = visibility;
     }
+
+    public void changeCategory(Category category) {
+        this.category = category;
+    }
 }

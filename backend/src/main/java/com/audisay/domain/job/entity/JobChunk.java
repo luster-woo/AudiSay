@@ -95,6 +95,17 @@ public class JobChunk {
         finishedAt = Instant.now();
     }
 
+    /** 워커가 3번 시도해도 실패해 DLQ로 간 조각 */
+    public void markDead(int attempt, String errorCode, String errorDetail) {
+        if (status.isFinished()) {
+            return;
+        }
+        status = JobChunkStatus.DEAD;
+        recordAttempt(attempt);
+        lastError = truncate(errorCode + ": " + errorDetail);
+        finishedAt = Instant.now();
+    }
+
     /** last_error는 "코드: 내용" 형식으로 저장한다 */
     public String getErrorCode() {
         if (lastError == null) {

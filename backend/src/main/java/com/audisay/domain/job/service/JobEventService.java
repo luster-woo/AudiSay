@@ -71,6 +71,38 @@ public class JobEventService {
         }
     }
 
+    /** 워커가 3번 시도해도 실패한 메시지(job.dlq) */
+    @Transactional
+    public void handleDeadLetter(JobMessage envelope) {
+        deduplicator.markProcessedAfterCommit(envelope.messageId());
+        String errorCode = lastError(envelope, "errorCode", UNKNOWN_ERROR);
+        String errorDetail = lastError(envelope, "errorDetail", null);
+        log.warn("DLQ 메시지 type={} jobId={} attempt={} code={} detail={}",
+                envelope.type(), envelope.jobId(), envelope.attempt(), errorCode, errorDetail);
+        if (envelope.jobId() == null) {
+            return;
+        }
+        Job job = jobRepository.findByIdForUpdate(envelope.jobId()).orElse(null);
+        if (job == null || job.isFinished()) {
+            return;
+        }
+        switch (envelope.type()) {
+            case JOB_DESCRIBE -> {
+                DescribePayload payload = objectMapper.convertValue(envelope.payload(), DescribePayload.class);
+                JobChunk chunk = findChunk(job, payload.chunkIndex());
+                if (chunk == null || chunk.getStatus().isFinished()) {
+                    return;
+                }
+                chunk.markDead(envelope.attempt(), errorCode, errorDetail);
+                afterChunkFinished(job);
+            }
+            case JOB_TTS -> onTtsCompleted(job, objectMapper.convertValue(envelope.payload(), TtsResult.class));
+            case JOB_PREPARE, JOB_TRANSCRIBE, JOB_SCENE, JOB_MERGE -> failJob(job, errorCode);
+            case LINE_TTS, JOB_EVENT -> {
+            }
+        }
+    }
+
     private void onStageStarted(Job job, JobEvent event) {
         job.startStage(event.stage());
         notifier.progress(job);
@@ -209,6 +241,11 @@ public class JobEventService {
             log.warn("없는 조각의 이벤트 jobId={} chunk={}", job.getId(), chunkIndex);
         }
         return chunk;
+    }
+
+    private static String lastError(JobMessage envelope, String key, String defaultValue) {
+        Object value = envelope.lastError() == null ? null : envelope.lastError().get(key);
+        return value == null ? defaultValue : value.toString();
     }
 
     private static Category toCategory(String value) {

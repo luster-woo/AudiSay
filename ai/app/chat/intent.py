@@ -3,8 +3,8 @@
 규칙으로 확실히 알 수 있는 말(시각 이동, 설정, 재생·멈춤, 의문사가 있는 질문)은 AI를 부르지 않는다(빠르고 크레딧 0).
 애매한 말만 gemini-3.1-flash-lite에 JSON 스키마로 묻는다(ai_pipeline_spec 3.2).
 
-데모 backend/app/chat/intent.py를 옮겼다. by_rules는 순수 함수(시험 있음), by_ai만 팀 GmsClient(비동기)로 바꿨다.
-H200(Qwen3-VL) 경로(by_remote)는 3차(GPU 서버 위치가 정해진 뒤)로 미뤘다.
+데모 backend/app/chat/intent.py를 옮겼다. by_rules는 순수 함수(시험 있음), by_remote(H200 Qwen3-VL, 크레딧 0)와
+by_ai(GMS)는 비동기. 순서: 규칙 → H200 → GMS (데모와 같음).
 """
 import re
 from dataclasses import asdict, dataclass, field
@@ -24,7 +24,7 @@ class Parsed:
     sceneQuery: str | None = None
     setting: dict = field(default_factory=dict)  # {"detailLevel": 3}, {"speechRate": 1.5}, {"subtitleReading": "OFF"}
     action: str | None = None  # PLAY / PAUSE / WHERE / SUMMARY
-    by: str = "RULE"  # RULE / AI
+    by: str = "RULE"  # RULE / H200 / AI
     relativeMs: int | None = None  # "5초 뒤로"처럼 지금 위치 기준 이동이면 ±ms(FE가 "5초 앞으로"라고 말해 주게)
 
     def dict(self) -> dict:
@@ -133,25 +133,53 @@ INTENT_PROMPT = """시각장애인이 영상을 보다가 한 말을 분류하�
 말: """
 
 
-async def by_ai(gms, utterance: str, chat_log_id: int | None = None) -> Parsed:
-    """gemini-3.1-flash-lite에 묻는다. 시각 없는 SEEK_TIME은 장면 이동으로 바꾼다(0초로 가 버리지 않게)."""
-    from app.gms.client import CallContext
+def action_of(utterance: str) -> str:
+    """H200·GMS가 ACTION만 주면 세부 동작은 말에서 고른다(없으면 지금 위치)."""
+    return "PAUSE" if re.search(r"(멈|정지|스톱)", utterance) else "PLAY" if re.search(r"(재생|틀어|계속)", utterance) else "WHERE"
+
+
+def from_model(intent: str | None, target_time: str | None, scene_query: str | None, utterance: str, by: str) -> Parsed:
+    """모델 응답 → Parsed. 시각 없는 SEEK_TIME은 장면 이동으로(0초로 가 버리지 않게)."""
     from app.pipeline.narration_schema import to_ms
 
-    cfg = types.GenerateContentConfig(response_mime_type="application/json", response_schema=IntentSchema, temperature=0,
-                                      thinking_config=types.ThinkingConfig(thinking_budget=0))
-    r = await gms.generate(INTENT_MODEL, INTENT_PROMPT + utterance, cfg, CallContext("INTENT", chat_log_id=chat_log_id))
-    j = IntentSchema.model_validate_json(r.text)
-    p = Parsed(j.intent, by="AI")
-    if j.intent == "ACTION":  # 세부 동작은 말에서 고른다(없으면 지금 위치)
-        p.action = "PAUSE" if re.search(r"(멈|정지|스톱)", utterance) else "PLAY" if re.search(r"(재생|틀어|계속)", utterance) else "WHERE"
-    if j.intent == "SEEK_TIME":
+    intent = intent if intent in Intent.__args__ else "UNKNOWN"
+    p = Parsed(intent, by=by)
+    if intent == "ACTION":
+        p.action = action_of(utterance)
+    if intent == "SEEK_TIME":
         try:
-            p.targetMs = to_ms(j.target_time) if j.target_time else None
+            p.targetMs = to_ms(str(target_time)) if target_time else None
         except (ValueError, TypeError):
             p.targetMs = None
         if p.targetMs is None:
             p.intent = "SEEK_SCENE"
     if p.intent == "SEEK_SCENE":
-        p.sceneQuery = j.scene_query or utterance
+        p.sceneQuery = scene_query or utterance
     return p
+
+
+async def by_remote(inf, utterance: str, db=None, chat_log_id: int | None = None) -> Parsed | None:
+    """H200(Qwen3-VL)의 /chat/intent로 분류한다(크레딧 0). 실패하면 None → GMS로."""
+    import time
+
+    from app.inference import InferenceError, log_remote
+
+    t0 = time.monotonic()
+    try:
+        j = await inf.intent(utterance)
+    except InferenceError as e:
+        await log_remote(db, "INTENT", "unknown", t0, chat_log_id=chat_log_id, error=e.code)
+        return None
+    await log_remote(db, "INTENT", str(j.get("model", "")), t0, chat_log_id=chat_log_id)
+    return from_model(j.get("intent"), j.get("target_time"), j.get("scene_query"), utterance, "H200")
+
+
+async def by_ai(gms, utterance: str, chat_log_id: int | None = None) -> Parsed:
+    """gemini-3.1-flash-lite에 묻는다. 시각 없는 SEEK_TIME은 장면 이동으로 바꾼다(0초로 가 버리지 않게)."""
+    from app.gms.client import CallContext
+
+    cfg = types.GenerateContentConfig(response_mime_type="application/json", response_schema=IntentSchema, temperature=0,
+                                      thinking_config=types.ThinkingConfig(thinking_budget=0))
+    r = await gms.generate(INTENT_MODEL, INTENT_PROMPT + utterance, cfg, CallContext("INTENT", chat_log_id=chat_log_id))
+    j = IntentSchema.model_validate_json(r.text)
+    return from_model(j.intent, j.target_time, j.scene_query, utterance, "AI")

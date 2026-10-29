@@ -69,6 +69,8 @@ services:
       POSTGRES_HOST: postgres
       REDIS_HOST: redis
       RABBITMQ_HOST: rabbitmq
+    extra_hosts:                      # 호스트의 H200 SSH 터널(172.17.0.1:8100)로 가는 이름. ai/gpu_server/README.md
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
@@ -76,7 +78,7 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
-    mem_limit: 512m
+    mem_limit: 2g                     # 업로드 영상 분석(ffmpeg 변환·장면 나누기). 60분 영상 실측 전 가정
     restart: unless-stopped
 
   frontend:

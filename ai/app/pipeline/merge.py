@@ -62,8 +62,9 @@ class Plan:
     category: str
     summary: str | None
     model: str | None
+    dialogue_language: str | None = None  # 외국어 대사면 원래 언어. DB 칼럼이 없어 아직 저장하지 않는다(BE에 V5 요청)
     characters: list[dict] = field(default_factory=list)  # {name, appearance, nameSource}
-    dialogues: list[dict] = field(default_factory=list)  # {startMs, endMs, text, speaker}
+    dialogues: list[dict] = field(default_factory=list)  # {startMs, endMs, text, speaker, original}
     lines: list[dict] = field(default_factory=list)  # {lineIndex, detailLevel, startMs, gapEndMs, importance, text, flags}
     scenes: list[dict] = field(default_factory=list)  # {sceneIndex, startMs, endMs, title, sceneDescription}
     chapters: list[dict] = field(default_factory=list)  # {chapterIndex, startMs, endMs, title, summary, keywords}
@@ -77,7 +78,8 @@ def assemble(full: dict, chunks: list[dict], covered_until_ms: int | None = None
     duration = int(full["durationMs"])
     if covered_until_ms is not None:
         duration = min(duration, int(covered_until_ms))
-    plan = Plan(category=full.get("category") or "ETC", summary=full.get("summary30s"), model=model or full.get("model"))
+    plan = Plan(category=full.get("category") or "ETC", summary=full.get("summary30s"), model=model or full.get("model"),
+                dialogue_language=full.get("dialogueLanguage"))
 
     # 인물: 근거 있는 이름만. 누가 누구인지는 Gemini 판단 그대로
     names: dict[str, dict] = {}
@@ -93,7 +95,8 @@ def assemble(full: dict, chunks: list[dict], covered_until_ms: int | None = None
     plan.dropped_names = sorted(dropped - set(names))
 
     plan.dialogues = sorted(({"startMs": min(int(d["startMs"]), duration), "endMs": min(int(d["endMs"]), duration),
-                              "speaker": (d.get("speaker") or "").split(" (")[0].strip() or None, "text": d["text"]}
+                              "speaker": (d.get("speaker") or "").split(" (")[0].strip() or None, "text": d["text"],
+                              "original": d.get("original")}
                              for d in full["dialogues"] if int(d["startMs"]) < duration), key=lambda d: d["startMs"])
     for d in plan.dialogues:
         d["endMs"] = max(d["endMs"], d["startMs"])
@@ -228,6 +231,7 @@ class Merge:
             await con.executemany(
                 "INSERT INTO transcript_segments (description_id, start_ms, end_ms, text, character_id) VALUES ($1, $2, $3, $4, $5)",
                 [(desc_id, d["startMs"], d["endMs"], d["text"], char_ids.get(d["speaker"] or "")) for d in plan.dialogues])
+            # 외국어 대사 원문(d["original"])은 jobs/{jobId}/full.json에만 있다. V5(original_text) 생기면 여기서 같이 넣는다
             await con.executemany(
                 "INSERT INTO description_lines (description_id, line_index, detail_level, start_ms, gap_end_ms, importance, text)"
                 " VALUES ($1, $2, $3, $4, $5, $6, $7)",

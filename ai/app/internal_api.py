@@ -18,12 +18,15 @@ FE는 부르지 않고, nginx에도 연결하지 않는다. X-Internal-Token 헤
    - 키 TTL 10분(ANSWER_KEY_TTL_SEC). BLPOP으로 읽으면 리스트가 비므로 다시 열 수 없다 → 다시 열기가 필요하면 LRANGE로 바꾼다.
    - 답변 음성(audioUrl)은 지금 null(FE 브라우저 음성). 데모는 Supertonic(로컬 TTS)을 썼는데 팀 결정 전(README '못 정한 것').
    - chat_logs.answer_text·answer_source·first_audio_ms·total_latency_ms는 AI가 쓴다(데모와 같음). BE가 쓰기로 하면 _finish_log를 뺀다.
-4. /internal/stt: multipart `audio`(webm/ogg/wav, 10MB 이하) → ffmpeg 16kHz wav → GMS whisper-1. 응답 {text, engine:"GMS", latencyMs}.
-   오류: 400 STT_001(빈 녹음)·STT_002(10MB 초과)·STT_005(디코딩 실패), 422 STT_004(알아듣지 못함), 503 STT_006(GMS 실패).
-   - 데모의 H200 faster-whisper 경로는 3차(GPU 서버 위치가 정해진 뒤).
+4. /internal/stt: multipart `audio`(webm/ogg/wav, 10MB 이하) → ffmpeg 16kHz wav → H200 faster-whisper(크레딧 0) → 실패하면 GMS whisper-1.
+   응답 {text, engine:"H200"|"GMS", latencyMs}.
+   오류: 400 STT_001(빈 녹음)·STT_002(10MB 초과)·STT_005(디코딩 실패), 422 STT_004(알아듣지 못함), 503 STT_003(둘 다 꺼짐)·STT_006(둘 다 실패).
 5. 오류 응답 형식: HTTPException detail={code, message} (팀 require_token과 같은 모양).
 
-필요한 것: app.state.db(Db), app.state.gms(GmsClient), app.state.redis — main.py에서 넣는다(transplant main.py 참고).
+AI 순서(데모와 같음, 크레딧 0을 먼저): 규칙·저장된 자료 → H200 오픈소스(INFERENCE_MODE=remote, H200_CHAT에 든 기능만) → GMS.
+answer의 source는 STORED|H200|GEMINI, chat_logs.answer_source는 H200·GEMINI 둘 다 GEMINI_REQUERY(팀 ERD 값).
+
+필요한 것: app.state.db(Db), app.state.gms(GmsClient), app.state.redis — main.py에서 넣는다.
 의존성 추가: python-multipart(파일 업로드), httpx(whisper 호출). Dockerfile에 ffmpeg.
 """
 import asyncio
@@ -37,6 +40,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 
+from app import inference
 from app.chat import answer as ans
 from app.chat import intent as it
 from app.chat import seek as sk
@@ -115,6 +119,9 @@ async def intent(req: IntentRequest, request: Request) -> dict:
         if row:
             duration_ms = int(row["duration_sec"]) * 1000
     p = it.by_rules(req.utterance, duration_ms, req.videoTimeMs or 0)
+    inf = inference.for_chat(settings(), "intent")
+    if p is None and inf:
+        p = await it.by_remote(inf, req.utterance, getattr(request.app.state, "db", None))  # H200(크레딧 0). 실패하면 None
     if p is None:
         gms = _gms(request)
         p = await it.by_ai(gms, req.utterance) if gms else it.Parsed("QUESTION", by="RULE")
@@ -149,13 +156,14 @@ async def answer(req: AnswerRequest, request: Request) -> dict:
         raise _err(400, "CHAT_002", "답변할 질문이 아닙니다")
     pool = _pool(request)
     redis = request.app.state.redis
-    task = asyncio.create_task(_run_answer(pool, redis, _gms(request), req))
+    task = asyncio.create_task(_run_answer(pool, redis, _gms(request), req, inference.for_chat(settings(), "answer"),
+                                           getattr(request.app.state, "db", None)))
     _background.add(task)
     task.add_done_callback(_background.discard)
     return {"chatLogId": req.chatLogId, "redisKey": answer_key(req.chatLogId), "status": "STARTED"}
 
 
-async def _run_answer(pool, redis, gms, req: AnswerRequest) -> None:
+async def _run_answer(pool, redis, gms, req: AnswerRequest, inf=None, db=None) -> None:
     key, t0 = answer_key(req.chatLogId), time.monotonic()
 
     async def push(obj: dict[str, Any]) -> None:
@@ -167,14 +175,15 @@ async def _run_answer(pool, redis, gms, req: AnswerRequest) -> None:
     try:
         ctx = await ans.context(pool, req.descriptionId, req.videoTimeMs)
         chapters = await sk.chapters_of(pool, req.descriptionId)
-        sentences, source = _pick_answer(gms, req, ctx)
+        sentences, source = await _pick_answer(gms, req, ctx, inf, db)
         async for s in _with_hint(sentences, texts, req, chapters):
             texts.append(s)
             if first_ms is None:
                 first_ms = int((time.monotonic() - t0) * 1000)
             await push({"event": "sentence", "index": len(texts) - 1, "text": s, "audioUrl": None, "source": source})
         answer_text = " ".join(texts)
-        db_source = "UNANSWERABLE" if ans.UNANSWERABLE in answer_text else ("GEMINI_REQUERY" if source == "GEMINI" else "STORED")
+        db_source = "UNANSWERABLE" if ans.UNANSWERABLE in answer_text else (
+            "GEMINI_REQUERY" if source in ("GEMINI", "H200") else "STORED")
         await _finish_log(pool, req.chatLogId, answer_text, db_source, first_ms, t0)
         await push({"event": "done", "answerText": answer_text, "answerSource": db_source})
     except Exception as e:  # noqa: BLE001
@@ -183,13 +192,17 @@ async def _run_answer(pool, redis, gms, req: AnswerRequest) -> None:
                     "message": "답변을 만들지 못했어요. 잠시 뒤 다시 물어봐 주세요."})
 
 
-def _pick_answer(gms, req: AnswerRequest, ctx: dict):
-    """(문장 비동기 반복자, 어디서 답했나). 저장된 자료 → GMS → AI 없음 순서."""
+async def _pick_answer(gms, req: AnswerRequest, ctx: dict, inf=None, db=None):
+    """(문장 비동기 반복자, 어디서 답했나). 저장된 자료 → H200 → GMS → AI 없음 순서."""
     if req.intent == "SCENE_NOW":
         return _aiter(ans.scene_now(ctx)), "STORED"
     direct = ans.character_answer(req.utterance, ctx)
     if direct:
         return _aiter(direct), "STORED"
+    if inf:
+        remote = await ans.remote_answer(inf, req.utterance, ctx, db, req.chatLogId)
+        if remote:
+            return remote, "H200"
     if gms:
         return ans.answer_sentences(gms, req.utterance, ctx, req.chatLogId), "GEMINI"
     return _aiter(ans.no_ai_answer(req.utterance, ctx)), "STORED"
@@ -231,7 +244,9 @@ async def stt(request: Request, audio: UploadFile = File(...)) -> dict:
     if len(raw) > STT_MAX_BYTES:
         raise _err(400, "STT_002", "녹음이 너무 길어요. 30초 안으로 말해 주세요.")
     cfg = settings()
-    if not cfg.gms_api_key or not cfg.gms_gemini_base_url:
+    has_gms = bool(cfg.gms_api_key and cfg.gms_gemini_base_url)
+    inf = inference.for_chat(cfg, "stt")
+    if not has_gms and not inf:
         raise _err(503, "STT_003", "음성 인식이 꺼져 있어요. 글자로 입력해 주세요.")
     try:
         wav = await _to_wav16k(raw)
@@ -239,19 +254,31 @@ async def stt(request: Request, audio: UploadFile = File(...)) -> dict:
         raise _err(400, "STT_005", "녹음 파일을 읽지 못했어요. 다시 말해 주세요.") from None
     t0 = time.monotonic()
     db = getattr(request.app.state, "db", None)
-    try:
-        text = await _whisper(cfg, wav)
-    except Exception as e:  # noqa: BLE001
-        if db:
-            await db.log_call(CallLog(purpose="STT", model="whisper-1", latency_ms=int((time.monotonic() - t0) * 1000),
-                                      error_code="AI_UNAVAILABLE"))
-        log.warning("whisper 실패: %s", str(e)[:200])
-        raise _err(503, "STT_006", "음성 인식 서버에 연결하지 못했어요. 글자로 입력해 주세요.") from None
-    if db:
-        await db.log_call(CallLog(purpose="STT", model="whisper-1", latency_ms=int((time.monotonic() - t0) * 1000)))
+    text, engine = None, None
+    if inf:  # H200 faster-whisper(크레딧 0)
+        try:
+            r = await inf.transcribe_bytes(wav)
+            text, engine = " ".join(s["text"] for s in r.get("segments", []) if s.get("text")).strip(), "H200"
+            await inference.log_remote(db, "STT", str(r.get("model", "")), t0)
+        except inference.InferenceError as e:
+            await inference.log_remote(db, "STT", "unknown", t0, error=e.code)
+            text = None
+    if text is None and has_gms:
+        try:
+            text, engine = await _whisper(cfg, wav), "GMS"
+        except Exception as e:  # noqa: BLE001
+            if db:
+                await db.log_call(CallLog(purpose="STT", model="whisper-1", latency_ms=int((time.monotonic() - t0) * 1000),
+                                          error_code="AI_UNAVAILABLE"))
+            log.warning("whisper 실패: %s", str(e)[:200])
+        else:
+            if db:
+                await db.log_call(CallLog(purpose="STT", model="whisper-1", latency_ms=int((time.monotonic() - t0) * 1000)))
+    if text is None:
+        raise _err(503, "STT_006", "음성 인식 서버에 연결하지 못했어요. 글자로 입력해 주세요.")
     if not text:
         raise _err(422, "STT_004", "말을 알아듣지 못했어요. 다시 말해 주세요.")
-    return {"text": text, "engine": "GMS", "latencyMs": int((time.monotonic() - t0) * 1000)}
+    return {"text": text, "engine": engine, "latencyMs": int((time.monotonic() - t0) * 1000)}
 
 
 async def _to_wav16k(raw: bytes) -> bytes:

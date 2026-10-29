@@ -5,6 +5,7 @@ boto3는 동기라 스레드에서 돌린다.
 """
 import asyncio
 import json
+import shutil
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -16,6 +17,9 @@ class Storage(Protocol):
     async def get_json(self, key: str) -> Any: ...
     async def put_json(self, key: str, obj: Any) -> None: ...
     async def put_bytes(self, key: str, data: bytes, content_type: str) -> None: ...
+    # 업로드 영상(LOCAL): 원본을 임시 폴더로 받고, 재생용 MP4를 올린다(큰 파일이라 메모리에 다 올리지 않음)
+    async def download_file(self, key: str, path: Path) -> None: ...
+    async def upload_file(self, key: str, path: Path, content_type: str) -> None: ...
 
 
 def _dumps(obj: Any) -> bytes:
@@ -42,6 +46,15 @@ class LocalStorage:
         p = self._p(key)
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_bytes(data)
+
+    async def download_file(self, key: str, path: Path) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(shutil.copyfile, self._p(key), path)
+
+    async def upload_file(self, key: str, path: Path, content_type: str) -> None:
+        p = self._p(key)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(shutil.copyfile, path, p)
 
 
 class S3Storage:
@@ -75,6 +88,13 @@ class S3Storage:
 
     async def put_bytes(self, key: str, data: bytes, content_type: str) -> None:
         await asyncio.to_thread(self.s3.put_object, Bucket=self.bucket, Key=key, Body=data, ContentType=content_type)
+
+    async def download_file(self, key: str, path: Path) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(self.s3.download_file, self.bucket, key, str(path))
+
+    async def upload_file(self, key: str, path: Path, content_type: str) -> None:
+        await asyncio.to_thread(self.s3.upload_file, str(path), self.bucket, key, ExtraArgs={"ContentType": content_type})
 
 
 def make_storage(cfg: Settings) -> Storage:

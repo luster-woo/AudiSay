@@ -1,8 +1,6 @@
 package com.audisay.domain.description.service;
 
-import com.audisay.domain.user.entity.Role;
 import com.audisay.domain.video.entity.Video;
-import com.audisay.domain.video.entity.Visibility;
 import com.audisay.domain.video.repository.VideoRepository;
 import com.audisay.global.exception.BusinessException;
 import com.audisay.global.exception.ErrorCode;
@@ -21,9 +19,7 @@ public class VideoAccessValidator {
     public Video getAccessibleVideo(AuthUser authUser, Long videoId) {
         Video video = videoRepository.findById(videoId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.VIDEO_NOT_FOUND));
-        if (video.getVisibility() == Visibility.PRIVATE
-                && !video.isUploadedBy(authUser.userId())
-                && authUser.role() != Role.ADMIN) {
+        if (!video.isViewableBy(authUser.userId(), authUser.role())) {
             throw new BusinessException(ErrorCode.VIDEO_PRIVATE);
         }
         return video;

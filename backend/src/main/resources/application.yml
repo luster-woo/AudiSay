@@ -50,6 +50,9 @@ spring:
     publisher-returns: true
     template:
       mandatory: true
+    listener:
+      simple:
+        default-requeue-rejected: false
 
   # 서버를 거치는 파일은 작은 것만(시각장애인 인증 서류 10MB 등). 영상은 S3 presigned URL로 직접 올린다
   servlet:
@@ -58,6 +61,9 @@ spring:
       max-request-size: 11MB
 
 audisay:
+  job:
+    partial-on-chunk-failure: true    # 조각 하나 실패 시 작업 전체 FAILED 대신 나머지로 PARTIAL
+
   # 역할별 이용 제한 (기획서 2.3 초기값, GMS 크레딧 확인 후 조정). 관리자는 제한 없음
   usage-limits:
     general:

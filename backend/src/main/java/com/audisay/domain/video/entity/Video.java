@@ -108,6 +108,10 @@ public class Video {
         this.visibility = visibility;
     }
 
+    public void changeCategory(Category category) {
+        this.category = category;
+    }
+
     /** 파일을 다 올렸다. 해설이 완성되면 READY가 된다 */
     public void finishUpload() {
         this.status = VideoStatus.REGISTERED;

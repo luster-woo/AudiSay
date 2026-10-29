@@ -71,4 +71,13 @@ public class Job {
     private Instant startedAt;
 
     private Instant finishedAt;
+
+    public static Job create(Video video, User requestedBy, JobType jobType, Pipeline pipeline) {
+        Job job = new Job();
+        job.video = video;
+        job.requestedBy = requestedBy;
+        job.jobType = jobType;
+        job.pipeline = pipeline;
+        return job;
+    }
 }

@@ -78,6 +78,18 @@ public class Video {
     @Column(nullable = false)
     private Instant updatedAt;
 
+    /** 업로드 시작 시점의 영상. 파일을 다 올릴 때까지 UPLOADING이다 */
+    public static Video createUpload(User uploader, String title, int durationSec, Visibility visibility) {
+        Video video = new Video();
+        video.sourceType = SourceType.UPLOAD;
+        video.uploader = uploader;
+        video.title = title;
+        video.durationSec = durationSec;
+        video.visibility = visibility;
+        video.status = VideoStatus.UPLOADING;
+        return video;
+    }
+
     /** 업로드한 회원인지. 유튜브 영상은 올린 회원이 없어 항상 false다 */
     public boolean isUploadedBy(Long userId) {
         return uploader != null && uploader.getId().equals(userId);
@@ -94,5 +106,10 @@ public class Video {
 
     public void changeVisibility(Visibility visibility) {
         this.visibility = visibility;
+    }
+
+    /** 파일을 다 올렸다. 해설이 완성되면 READY가 된다 */
+    public void finishUpload() {
+        this.status = VideoStatus.REGISTERED;
     }
 }

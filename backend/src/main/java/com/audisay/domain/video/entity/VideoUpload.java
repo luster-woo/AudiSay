@@ -98,6 +98,13 @@ public class VideoUpload {
         completedAt = now;
     }
 
+    /** 워커가 재생용 파일을 만들었다. HLS 목록(.m3u8)이 아니면 MP4로 본다 */
+    public void finishTranscode(String playbackKey) {
+        this.playbackKey = playbackKey;
+        this.playbackFormat = playbackKey.endsWith(".m3u8") ? PlaybackFormat.HLS : PlaybackFormat.MP4;
+        this.transcodeStatus = TranscodeStatus.DONE;
+    }
+
     /** 변환이 끝나 재생용 파일이 있는지 */
     public boolean isPlayable() {
         return transcodeStatus == TranscodeStatus.DONE && playbackKey != null;

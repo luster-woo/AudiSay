@@ -7,7 +7,11 @@ RabbitMQ로 해설 생성 단계를 처리하는 워커와, Spring이 부르는 
 | --- | --- | --- |
 | job.prepare | 유튜브: Gemini 1회로 영상 전체 해설 → `jobs/{jobId}/full.json`, 조각 구간·앞 내용 요약 → `prepare.json` | 구현 |
 | job.describe | `full.json`에서 조각 구간을 읽어 누적형 문장 배치·검증 → `chunks/{n}.json` (Gemini 재호출 없음) | 구현 |
-| job.merge / job.tts / line.tts | 합치기·DB 저장 / 음성 생성 | 다음 작업 |
+| job.merge | `full.json` + `chunks/*.json`(성공한 조각만) → 해설 표 저장(인물 이름은 근거 있을 때만, 목차 키워드) | 구현 |
+| job.tts | 상세도 1·2 문장 + 요약 → Gemini TTS → mp3 → S3 `audio/lines/{descriptionId}/{lineId}.mp3` | 구현 |
+| line.tts | 상세도 3 문장 음성(사용자가 처음 고를 때) | 구현 |
+
+내부 API(`/internal/stt`, `/internal/chat/intent·seek·answer`)는 제안 구현. 답변은 Redis 리스트 `chat:answer:{chatLogId}`에 문장마다 넣는다. BE와 맞출 것은 `app/internal_api.py` 맨 위 주석 참고.
 
 ## 로컬 실행
 
@@ -22,6 +26,7 @@ uv run uvicorn app.main:app --port 8000
 - 교환기·큐는 백엔드가 선언한다. 백엔드 없이 워커만 띄울 때는 `MQ_DECLARE=true`로 두면 워커가 직접 만든다.
 - `AWS_S3_BUCKET`이 비어 있으면 결과 파일을 `ai/.storage/`에 저장한다.
 - `WORKER_QUEUES`를 비우면 컨슈머 없이 HTTP만 연다.
+- `ffmpeg`가 PATH에 있어야 한다(TTS·받아쓰기). Dockerfile에는 들어 있다.
 - 확인: `GET /health`(Redis·RabbitMQ 연결), `GET /metrics`(Prometheus)
 
 ## 테스트

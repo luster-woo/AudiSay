@@ -1,5 +1,9 @@
 """AI 서버 진입점. RabbitMQ 컨슈머와 HTTP(/health, /metrics, /internal/*)를 한 프로세스에서 연다.
 
+팀 ai/app/main.py에 세 줄만 더한 것(그대로 덮어써도 되고, 표시한 줄만 옮겨도 된다):
+- handlers에 job.merge(Merge), job.tts(Tts), line.tts(LineTts)
+- app.state.db, app.state.gms, app.state.storage — 내부 API가 쓴다
+
 실행: uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
 """
 import logging
@@ -16,7 +20,9 @@ from app.gms.rate_limiter import RateLimiter
 from app.internal_api import router as internal_router
 from app.mq.worker import Worker
 from app.pipeline.describe import Describe
+from app.pipeline.merge import Merge  # 추가
 from app.pipeline.prepare import Prepare
+from app.pipeline.tts import LineTts, Tts  # 추가
 from app.storage import make_storage
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -31,11 +37,18 @@ async def lifespan(app: FastAPI):
     await db.start()
     storage = make_storage(cfg)
     gms = GmsClient(cfg, RateLimiter(redis, cfg.gms_rpm), db)
-    handlers = {"job.prepare": Prepare(storage, gms), "job.describe": Describe(storage)}
+    handlers = {
+        "job.prepare": Prepare(storage, gms),
+        "job.describe": Describe(storage),
+        "job.merge": Merge(storage, db),  # 추가
+        "job.tts": Tts(storage, gms, db),  # 추가
+        "line.tts": LineTts(storage, gms, db),  # 추가
+    }
     worker = Worker(cfg, redis, handlers)
     if cfg.worker_queues.strip():
         await worker.start()
     app.state.redis, app.state.worker = redis, worker
+    app.state.db, app.state.gms, app.state.storage = db, gms, storage  # 추가: 내부 API가 쓴다
     try:
         yield
     finally:

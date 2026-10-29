@@ -76,6 +76,15 @@ public class Job {
 
     private Instant finishedAt;
 
+    public static Job create(Video video, User requestedBy, JobType jobType, Pipeline pipeline) {
+        Job job = new Job();
+        job.video = video;
+        job.requestedBy = requestedBy;
+        job.jobType = jobType;
+        job.pipeline = pipeline;
+        return job;
+    }
+
     /** 실패한 작업만 값이 있다 */
     public Boolean isRetryable() {
         if (status != JobStatus.FAILED) {

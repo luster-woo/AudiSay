@@ -57,4 +57,16 @@ public class GenerationRequest {
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private Instant requestedAt;
+
+    /** 새 작업을 만든 요청. 하루 이용 횟수를 차감한다 */
+    public static GenerationRequest newJob(User user, Video video, Long jobId, LocalDate requestDate) {
+        GenerationRequest request = new GenerationRequest();
+        request.user = user;
+        request.video = video;
+        request.jobId = jobId;
+        request.result = GenerationResult.NEW_JOB;
+        request.counted = true;
+        request.requestDate = requestDate;
+        return request;
+    }
 }

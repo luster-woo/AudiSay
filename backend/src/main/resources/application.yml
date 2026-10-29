@@ -97,6 +97,9 @@ audisay:
     access-key-id: ${AWS_ACCESS_KEY_ID:}
     secret-access-key: ${AWS_SECRET_ACCESS_KEY:}
     audio-url-expiration: 6h
+    upload-part-size: 10MB
+    upload-part-url-expiration: 30m
+    playback-url-expiration: 1h
 
 jwt:
   # 기본값 없음: 로컬은 .env의 공용 값, 서버는 Jenkins audisay-env의 별도 값 (32바이트 이상)

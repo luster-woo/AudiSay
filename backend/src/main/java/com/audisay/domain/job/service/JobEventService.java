@@ -18,6 +18,7 @@ import com.audisay.domain.job.repository.JobChunkRepository;
 import com.audisay.domain.job.repository.JobRepository;
 import com.audisay.domain.video.entity.Category;
 import com.audisay.domain.video.entity.Video;
+import com.audisay.domain.video.repository.VideoUploadRepository;
 import com.audisay.global.config.JobProperties;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
@@ -44,6 +45,7 @@ public class JobEventService {
     private final JobProgressNotifier notifier;
     private final JobEventDeduplicator deduplicator;
     private final DescriptionService descriptionService;
+    private final VideoUploadRepository videoUploadRepository;
     private final JobProperties jobProperties;
     private final ObjectMapper objectMapper;
     private final MeterRegistry meterRegistry;
@@ -123,13 +125,15 @@ public class JobEventService {
         if (jobChunkRepository.existsByJob_Id(job.getId())) {
             return;
         }
+        Video video = job.getVideo();
+        video.changeCategory(toCategory(result.category()));
         if (job.getPipeline() == Pipeline.LOCAL) {
+            // 해설 생성이 실패해도 변환된 재생용 파일은 쓸 수 있게 먼저 남긴다
+            finishTranscode(job, result.playbackKey());
             log.error("LOCAL 파이프라인은 아직 지원하지 않음 jobId={}", job.getId());
             failJob(job, UNKNOWN_ERROR);
             return;
         }
-        Video video = job.getVideo();
-        video.changeCategory(toCategory(result.category()));
 
         List<JobChunk> chunks = jobChunkRepository.saveAll(result.chunks().stream()
                 .map(c -> JobChunk.create(job, c.chunkIndex(), c.startMs(), c.endMs(), c.contextSummary()))
@@ -141,6 +145,15 @@ public class JobEventService {
         }
         job.updateProgress(PREPARE_END);
         notifier.progress(job);
+    }
+
+    private void finishTranscode(Job job, String playbackKey) {
+        if (playbackKey == null) {
+            log.warn("LOCAL prepare 결과에 playbackKey 없음 jobId={}", job.getId());
+            return;
+        }
+        videoUploadRepository.findById(job.getVideo().getId())
+                .ifPresent(upload -> upload.finishTranscode(playbackKey));
     }
 
     private void afterChunkFinished(Job job) {

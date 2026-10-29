@@ -19,6 +19,7 @@ import java.time.Instant;
 @RequiredArgsConstructor
 public class JobProgressNotifier {
     private static final String CHANNEL_PREFIX = "job:events:";
+    public static final String CHANNEL_PATTERN = CHANNEL_PREFIX + "*";
 
     private final JobProgressStore progressStore;
     private final StringRedisTemplate redisTemplate;

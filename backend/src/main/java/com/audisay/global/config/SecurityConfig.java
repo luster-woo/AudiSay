@@ -6,6 +6,7 @@ import com.audisay.global.security.JwtAuthenticationEntryPoint;
 import com.audisay.global.security.JwtAuthenticationFilter;
 import com.audisay.global.security.JwtProvider;
 import lombok.RequiredArgsConstructor;
+import jakarta.servlet.DispatcherType;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -52,6 +53,8 @@ public class SecurityConfig {
                         .authenticationEntryPoint(authenticationEntryPoint)
                         .accessDeniedHandler(accessDeniedHandler))
                 .authorizeHttpRequests(auth -> auth
+                        // SSE 응답을 마무리하는 비동기 디스패치엔 JWT 필터가 다시 돌지 않는다. 인증은 첫 요청에서 끝남
+                        .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
                         .requestMatchers(PUBLIC_URLS).permitAll()
                         .requestMatchers("/v1/admin/**").hasRole("ADMIN")
                         .anyRequest().authenticated())

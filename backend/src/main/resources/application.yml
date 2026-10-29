@@ -45,6 +45,11 @@ spring:
     port: ${RABBITMQ_PORT:5672}
     username: ${RABBITMQ_DEFAULT_USER:audisay}
     password: ${RABBITMQ_DEFAULT_PASS:audisay}
+    # 발행 확인: 브로커 수신(ack/nack)과 라우팅 실패(return)를 CorrelationData로 받는다 (OutboxRelay)
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
 
   # 서버를 거치는 파일은 작은 것만(시각장애인 인증 서류 10MB 등). 영상은 S3 presigned URL로 직접 올린다
   servlet:

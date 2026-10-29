@@ -82,5 +82,10 @@ def test_internal_api_requires_token(monkeypatch):
 
     c = TestClient(app)  # with 없이 만들어 lifespan(RabbitMQ 연결)을 돌리지 않는다
     assert c.post("/internal/chat/intent", json={"utterance": "안녕"}).status_code == 401
+    # 규칙으로 분류되는 말은 DB·GMS 없이도 답한다(크레딧 0)
+    r = c.post("/internal/chat/intent", json={"utterance": "3분 20초로 가줘"}, headers={"X-Internal-Token": "secret"})
+    assert r.status_code == 200
+    assert (r.json()["intent"], r.json()["targetMs"], r.json()["needsAnswer"]) == ("SEEK_TIME", 200_000, False)
+    # GMS 키가 없으면 애매한 말은 질문으로 본다
     r = c.post("/internal/chat/intent", json={"utterance": "안녕"}, headers={"X-Internal-Token": "secret"})
-    assert r.status_code == 501
+    assert r.status_code == 200 and r.json()["intent"] == "QUESTION"

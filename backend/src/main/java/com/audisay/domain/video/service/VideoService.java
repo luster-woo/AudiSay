@@ -10,13 +10,19 @@ import com.audisay.domain.video.dto.response.VisibilityResponse;
 import com.audisay.domain.video.entity.Category;
 import com.audisay.domain.video.entity.SourceType;
 import com.audisay.domain.video.entity.Video;
+import com.audisay.domain.video.entity.VideoUpload;
 import com.audisay.domain.video.repository.GenerationRequestRepository;
 import com.audisay.domain.video.repository.MyVideoRow;
 import com.audisay.domain.video.repository.VideoRepository;
+import com.audisay.domain.video.repository.VideoUploadRepository;
 import com.audisay.global.exception.BusinessException;
 import com.audisay.global.exception.ErrorCode;
+import com.audisay.global.external.s3.S3Properties;
+import com.audisay.global.external.s3.S3StorageClient;
+import com.audisay.global.external.s3.S3StorageClient.PresignedUrl;
 import com.audisay.global.response.PageResponse;
 import com.audisay.global.security.AuthUser;
+import com.audisay.global.util.LikePattern;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -36,13 +42,18 @@ public class VideoService {
     private final GenerationRequestRepository generationRequestRepository;
     private final FavoriteRepository favoriteRepository;
     private final DescriptionStateReader descriptionStateReader;
+    private final VideoUploadRepository videoUploadRepository;
+    private final S3StorageClient s3StorageClient;
+    private final S3Properties s3Properties;
 
     /**
      * 공개 해설이 있는 공개 영상 목록. category가 null이면 전체 카테고리.
+     * q는 제목·채널명 일부이고 대소문자를 가리지 않는다. 비어 있으면 거르지 않는다.
      */
     @Transactional(readOnly = true)
-    public PageResponse<VideoSummaryResponse> getPublishedVideos(Long userId, Category category, Pageable pageable) {
-        Page<Video> videos = videoRepository.findPublished(category, pageable);
+    public PageResponse<VideoSummaryResponse> getPublishedVideos(Long userId, Category category, String q,
+                                                                 Pageable pageable) {
+        Page<Video> videos = videoRepository.findPublished(category, LikePattern.contains(q), pageable);
         List<Long> videoIds = videos.map(Video::getId).getContent();
         Set<Long> favoriteIds = videoIds.isEmpty() ? Set.of() : favoriteRepository.findVideoIds(userId, videoIds);
         return PageResponse.from(videos.map(video -> VideoSummaryResponse.of(video, favoriteIds.contains(video.getId()))));
@@ -61,6 +72,7 @@ public class VideoService {
 
     /**
      * 유튜브 영상은 IFrame 플레이어용 영상 ID만 준다.
+     * 업로드 영상은 재생용 파일의 presigned GET 주소를 주고, 변환이 끝나지 않았으면 UPLOAD_006.
      */
     @Transactional(readOnly = true)
     public PlaybackResponse getPlayback(AuthUser authUser, Long videoId) {
@@ -68,8 +80,11 @@ public class VideoService {
         if (video.getSourceType() == SourceType.YOUTUBE) {
             return PlaybackResponse.youtube(video.getYoutubeVideoId());
         }
-        // TODO 업로드 영상: 재생용 파일(video_uploads.playback_key)의 S3 presigned GET 주소 (업로드 작업 때 추가)
-        throw new BusinessException(ErrorCode.PLAYBACK_NOT_READY);
+        VideoUpload upload = videoUploadRepository.findById(videoId)
+                .filter(VideoUpload::isPlayable)
+                .orElseThrow(() -> new BusinessException(ErrorCode.PLAYBACK_NOT_READY));
+        PresignedUrl url = s3StorageClient.presignGet(upload.getPlaybackKey(), s3Properties.playbackUrlExpiration());
+        return PlaybackResponse.upload(url.url(), upload.getPlaybackFormat(), url.expiresAt());
     }
 
     /**

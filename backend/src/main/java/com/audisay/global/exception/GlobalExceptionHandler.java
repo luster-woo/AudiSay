@@ -3,6 +3,7 @@ package com.audisay.global.exception;
 import com.audisay.global.response.ApiResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
@@ -90,6 +91,8 @@ public class GlobalExceptionHandler {
     private ResponseEntity<ApiResponse<Void>> fail(ErrorCode errorCode, String message, HttpServletRequest request) {
         return ResponseEntity
                 .status(errorCode.getStatus())
+                // Accept가 text/event-stream(SSE)이어도 에러는 JSON으로 내보낸다
+                .contentType(MediaType.APPLICATION_JSON)
                 .body(ApiResponse.fail(errorCode, message, request.getRequestURI()));
     }
 }

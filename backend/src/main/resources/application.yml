@@ -45,6 +45,14 @@ spring:
     port: ${RABBITMQ_PORT:5672}
     username: ${RABBITMQ_DEFAULT_USER:audisay}
     password: ${RABBITMQ_DEFAULT_PASS:audisay}
+    # 발행 확인: 브로커 수신(ack/nack)과 라우팅 실패(return)를 CorrelationData로 받는다 (OutboxRelay)
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+    listener:
+      simple:
+        default-requeue-rejected: false
 
   # 서버를 거치는 파일은 작은 것만(시각장애인 인증 서류 10MB 등). 영상은 S3 presigned URL로 직접 올린다
   servlet:
@@ -53,6 +61,9 @@ spring:
       max-request-size: 11MB
 
 audisay:
+  job:
+    partial-on-chunk-failure: true    # 조각 하나 실패 시 작업 전체 FAILED 대신 나머지로 PARTIAL
+
   # 역할별 이용 제한 (기획서 2.3 초기값, GMS 크레딧 확인 후 조정). 관리자는 제한 없음
   usage-limits:
     general:
@@ -86,6 +97,9 @@ audisay:
     access-key-id: ${AWS_ACCESS_KEY_ID:}
     secret-access-key: ${AWS_SECRET_ACCESS_KEY:}
     audio-url-expiration: 6h
+    upload-part-size: 10MB
+    upload-part-url-expiration: 30m
+    playback-url-expiration: 1h
 
 jwt:
   # 기본값 없음: 로컬은 .env의 공용 값, 서버는 Jenkins audisay-env의 별도 값 (32바이트 이상)

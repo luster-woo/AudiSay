@@ -57,7 +57,8 @@ public enum ErrorCode {
     CHAT_LOG_NOT_FOUND(HttpStatus.NOT_FOUND, "CHAT_004", "존재하지 않는 챗봇 기록입니다."),
 
     ALREADY_REPORTED(HttpStatus.CONFLICT, "REPORT_001", "이미 신고한 문장입니다."),
-    REPORT_NOT_FOUND(HttpStatus.NOT_FOUND, "REPORT_002", "존재하지 않는 신고입니다.");
+    REPORT_NOT_FOUND(HttpStatus.NOT_FOUND, "REPORT_002", "존재하지 않는 신고입니다."),
+    REPORT_ALREADY_HANDLED(HttpStatus.CONFLICT, "REPORT_003", "이미 처리된 신고입니다.");
 
     private final HttpStatus status;
     private final String code;

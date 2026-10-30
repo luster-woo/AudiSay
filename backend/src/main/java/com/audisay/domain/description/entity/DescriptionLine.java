@@ -62,4 +62,22 @@ public class DescriptionLine {
     @UpdateTimestamp
     @Column(nullable = false)
     private Instant updatedAt;
+
+    /**
+     * 관리자가 문장을 고친다. 옛 문장의 음성은 비우고 line.tts로 다시 만든다. importance가 null이면 그대로 둔다.
+     * 상세도는 (해설, 문장 순서, 상세도) 유니크 키라 바꾸지 않는다.
+     */
+    public void edit(String text, Short importance) {
+        this.text = text;
+        if (importance != null) {
+            this.importance = importance;
+        }
+        clearAudio();
+    }
+
+    /** 음성을 비운다. 새 음성이 나올 때까지 플레이어는 브라우저 음성으로 읽는다 */
+    public void clearAudio() {
+        this.audioKey = null;
+        this.audioDurationMs = null;
+    }
 }

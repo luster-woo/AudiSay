@@ -38,4 +38,9 @@ public class GenerationRequestService {
         }
         return usage;
     }
+
+    @Transactional(readOnly = true)
+    public boolean hasRequested(Long userId, Long jobId) {
+        return generationRequestRepository.existsByUser_IdAndJobId(userId, jobId);
+    }
 }

@@ -26,6 +26,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -100,4 +101,23 @@ public class DescriptionService {
         return descriptionRepository.findCoveredUntilMs(description.getJob().getId()).orElse(0);
     }
 
+    public Optional<Long> findIdByJobId(Long jobId) {
+        return descriptionRepository.findByJob_Id(jobId).map(Description::getId);
+    }
+
+    /** 영상당 PUBLISHED는 하나뿐이라(uq_descriptions_published) 이전 해설을 먼저 ARCHIVED로 flush한다 */
+    @Transactional
+    public void publish(Long descriptionId) {
+        Description description = descriptionRepository.findById(descriptionId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.DESCRIPTION_NOT_FOUND));
+        if (description.getStatus() == DescriptionStatus.PUBLISHED) {
+            return;
+        }
+        descriptionRepository.findByVideo_IdAndStatus(description.getVideo().getId(), DescriptionStatus.PUBLISHED)
+                .ifPresent(previous -> {
+                    previous.archive();
+                    descriptionRepository.flush();
+                });
+        description.publish();
+    }
 }

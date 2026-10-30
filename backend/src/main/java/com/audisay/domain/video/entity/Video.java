@@ -78,6 +78,33 @@ public class Video {
     @Column(nullable = false)
     private Instant updatedAt;
 
+    /** 업로드 시작 시점의 영상. 파일을 다 올릴 때까지 UPLOADING이다 */
+    public static Video createUpload(User uploader, String title, int durationSec, Visibility visibility) {
+        Video video = new Video();
+        video.sourceType = SourceType.UPLOAD;
+        video.uploader = uploader;
+        video.title = title;
+        video.durationSec = durationSec;
+        video.visibility = visibility;
+        video.status = VideoStatus.UPLOADING;
+        return video;
+    }
+
+    /** 해설을 처음 요청받은 유튜브 영상. 유튜브 영상은 모두에게 공개한다 */
+    public static Video createYoutube(String youtubeVideoId, String title, String channelTitle, String thumbnailUrl,
+                                      int durationSec) {
+        Video video = new Video();
+        video.sourceType = SourceType.YOUTUBE;
+        video.youtubeVideoId = youtubeVideoId;
+        video.title = title;
+        video.channelTitle = channelTitle;
+        video.thumbnailUrl = thumbnailUrl;
+        video.durationSec = durationSec;
+        video.visibility = Visibility.PUBLIC;
+        video.status = VideoStatus.REGISTERED;
+        return video;
+    }
+
     /** 업로드한 회원인지. 유튜브 영상은 올린 회원이 없어 항상 false다 */
     public boolean isUploadedBy(Long userId) {
         return uploader != null && uploader.getId().equals(userId);
@@ -94,5 +121,14 @@ public class Video {
 
     public void changeVisibility(Visibility visibility) {
         this.visibility = visibility;
+    }
+
+    public void changeCategory(Category category) {
+        this.category = category;
+    }
+
+    /** 파일을 다 올렸다. 해설이 완성되면 READY가 된다 */
+    public void finishUpload() {
+        this.status = VideoStatus.REGISTERED;
     }
 }

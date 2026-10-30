@@ -1,0 +1,10 @@
+# AudiSay H200 추론 서버. torch는 README 순서대로 CUDA 12.8용을 먼저 설치한 뒤 이 목록을 설치한다.
+fastapi>=0.115
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9
+pillow>=10
+transformers>=4.57      # Qwen3-VL 지원 버전부터
+accelerate>=1.0
+faster-whisper>=1.1
+av<15                  # PyAV 15부터 faster-whisper가 쓰는 metadata_errors 옵션이 빠져 받아쓰기가 실패함
+paddleocr>=3.0          # paddlepaddle(-gpu)는 README 3단계에서 따로 설치

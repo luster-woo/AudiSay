@@ -1,6 +1,7 @@
 """job.describe — 조각별 배치·검증 (워커 메시지 명세 5장, AI 화면해설 파이프라인 명세서 2.2).
 
-GEMINI_URL: Gemini를 다시 부르지 않는다(크레딧 0). job.prepare가 저장한 full.json에서 이 조각 구간을 읽어
+GEMINI_URL·LOCAL 모두: AI를 다시 부르지 않는다(크레딧 0). job.prepare가 저장한 full.json에서 이 조각 구간을 읽어
+(LOCAL은 prepare가 H200으로 영상을 분석해 유튜브와 같은 full.json을 만든다 — pipeline/local.py)
 - 누적형 해설 문장마다 startMs·gapEndMs를 정하고 (대사 중간이면 대사가 끝난 직후로 옮김)
 - 대사 반복·긴 문장·앞 문장을 가리키는 말을 표시해 로그로 남기고 (다시 쓰게 하지 않음)
 - 해설 문장에 이미 들어간 화면 글자를 뺀 뒤
@@ -29,16 +30,28 @@ def _norm(s: str) -> str:
     return re.sub(r"[\s\W_]+", "", s)
 
 
+MAX_SHIFT_MS = 6_000  # 대사를 피해 뒤로 미는 최대 거리. 내레이션이 쉬지 않는 영상(요리 강좌 등)에서 해설이 끝으로 몰리지 않게
+
+
 def place(at_ms: int, dialogues: list[dict], duration_ms: int) -> tuple[int, int | None]:
-    """읽기 시작 시각과 그 뒤 처음 시작하는 대사의 시작(gapEndMs)."""
+    """대사 중간이면 대사가 끝난 직후로 옮긴다. 대사가 이어져 MAX_SHIFT_MS 넘게 밀려야 하면, 처음 만난 대사 끝(말이
+    끊기는 자리)에 두고 gapEndMs는 null(빈틈 없음 → 재생 엔진이 영상을 잠깐 멈추고 읽는다).
+    데모 검증(2026-10-29): 영어 내레이션 요리 영상에서 115문장이 모두 영상 끝(124초)으로 밀린 문제."""
     t = at_ms
+    first_end = None
     moved = True
-    while moved:  # 대사 중간이면 끝난 직후로. 옮긴 곳이 또 다른 대사 중간이면 한 번 더
+    while moved:
         moved = False
         for d in dialogues:
             if d["startMs"] <= t < d["endMs"]:
+                first_end = first_end if first_end is not None else d["endMs"]
                 t, moved = d["endMs"], True
+        if t - at_ms > MAX_SHIFT_MS:
+            t = first_end
+            break
     t = min(t, duration_ms)
+    if any(d["startMs"] <= t < d["endMs"] for d in dialogues):  # 바로 다음 대사가 이어짐 → 빈틈 없음
+        return t, None
     nxt = min((d["startMs"] for d in dialogues if d["startMs"] > t), default=duration_ms)
     return t, (nxt if nxt - t >= MIN_GAP_MS else None)
 
@@ -127,7 +140,7 @@ class Describe:
         if await self.storage.exists(key):  # 중복 메시지
             await events.chunk_succeeded(idx, {"resultKey": key})
             return
-        if p.get("pipeline") != "GEMINI_URL":
+        if p.get("pipeline") not in ("GEMINI_URL", "LOCAL"):
             raise WorkerError("UNKNOWN", f"아직 지원하지 않는 pipeline: {p.get('pipeline')}", retryable=False)
 
         full_key = f"jobs/{job_id}/full.json"

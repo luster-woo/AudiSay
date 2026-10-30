@@ -1,5 +1,6 @@
 package com.audisay.domain.video.controller;
 
+import com.audisay.domain.video.dto.request.VideoListRequest;
 import com.audisay.domain.video.dto.request.VisibilityUpdateRequest;
 import com.audisay.domain.video.dto.request.YoutubeCheckRequest;
 import com.audisay.domain.video.dto.request.YoutubeSearchRequest;
@@ -46,14 +47,16 @@ public class VideoController {
     private final YoutubeRequestService youtubeRequestService;
     private final VideoRetryService videoRetryService;
 
-    @Operation(summary = "해설 영상 목록", description = "공개 해설이 있는 공개 영상. 해설을 만든 시각 최신순")
+    @Operation(summary = "해설 영상 목록", description = "공개 해설이 있는 공개 영상. 해설을 만든 시각 최신순. "
+            + "q로 제목·채널명 일부를 찾는다")
     @GetMapping
     public ApiResponse<PageResponse<VideoSummaryResponse>> getVideos(
             @AuthenticationPrincipal AuthUser authUser,
             @Parameter(description = "비우면 전체 카테고리") @RequestParam(value = "category", required = false) Category category,
+            @Valid @ModelAttribute VideoListRequest request,
             @Valid @ModelAttribute PageParams pageParams) {
         return ApiResponse.success("해설 영상 목록 조회 성공",
-                videoService.getPublishedVideos(authUser.userId(), category, pageParams.toPageable()));
+                videoService.getPublishedVideos(authUser.userId(), category, request.q(), pageParams.toPageable()));
     }
 
     @Operation(summary = "유튜브 사전 확인", description = "해설을 만들 수 있는지 확인만 한다. 조건이 안 맞아도 200으로 이유를 준다. 횟수 차감 없음")

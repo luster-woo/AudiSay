@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     inference_mode: str = "mock"
     h200_base_url: str = ""
     h200_token: str = ""  # gpu_server의 ~/gpu_server/.secret 값 또는 주피터 토큰. "Authorization: token <값>"으로 보낸다
-    h200_chat: str = "stt,intent,answer"  # 재생 중 기능 가운데 H200에 먼저 맡길 것. 실패하면 GMS로
+    h200_chat: str = "stt,intent,answer,tts"  # 재생 중 기능 가운데 H200에 먼저 맡길 것. 실패하면 GMS로(tts는 실패하면 503 → 브라우저 음성)
     h200_answer_stream: bool = True  # 질문 답변을 H200 /chat/answer/stream으로(문장마다). 옛 서버면 false
     # 업로드 영상 해설 엔진: opensource(H200, 기본) | gemini(영상 파일을 Gemini에 넣음, 크레딧). 실패하면 서로 대체
     upload_engine: str = "opensource"

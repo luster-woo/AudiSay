@@ -14,6 +14,7 @@
 - POST /chat/answer JSON {question, context} → {"sentences": [...], "model"}
 - POST /chat/answer/stream 같은 요청 → 한 줄에 JSON 하나 {"sentence"} ... {"done": true, "model"}
 - POST /chat/intent JSON {utterance} → {"intent", "target_time", "scene_query", "model"}
+- POST /tts      JSON {text, voice, format:"mp3"} → audio/mpeg 바이트, 헤더 X-Duration-Ms (서버 버전 12, Supertonic 3)
 
 H200 호출도 ai_call_logs에 남긴다(크레딧 0, 모델 이름 앞에 h200:). 걸린 시간 비교용.
 """
@@ -29,7 +30,8 @@ from app.config import Settings
 
 CHAT_TIMEOUT = 90  # 재생 중 기능은 오래 기다리지 않고 GMS로 넘어간다
 JOB_TIMEOUT = 600
-CHAT_FEATURES = ("stt", "intent", "answer")
+TTS_TIMEOUT = 5  # 안내 목소리 한 문장(H200 실측 0.04초). 이보다 늦으면 브라우저 음성으로 읽는 편이 빠르다
+CHAT_FEATURES = ("stt", "intent", "answer", "tts")
 
 
 class InferenceError(Exception):
@@ -71,6 +73,9 @@ class MockInference:
 
     async def intent(self, utterance: str) -> dict:
         return {"intent": "QUESTION", "model": "mock"}
+
+    async def tts(self, text: str, voice: str) -> tuple[bytes, int]:
+        return b"ID3mock", 1000
 
 
 class RemoteInference:
@@ -148,6 +153,17 @@ class RemoteInference:
     async def intent(self, utterance: str) -> dict:
         return await self._post("/chat/intent", timeout=CHAT_TIMEOUT, json={"utterance": utterance})
 
+    async def tts(self, text: str, voice: str) -> tuple[bytes, int]:
+        """안내 목소리 한 문장(서버 버전 12) → (mp3 바이트, 길이 ms). 늦으면 브라우저 음성이 낫기 때문에 오래 기다리지 않는다."""
+        try:
+            async with httpx.AsyncClient(timeout=TTS_TIMEOUT) as c:
+                r = await c.post(f"{self.base}/tts", headers=self.headers, json={"text": text, "voice": voice, "format": "mp3"})
+        except httpx.HTTPError as e:
+            raise InferenceError("INFER_UNREACHABLE", f"추론 서버에 연결하지 못했어요: {type(e).__name__}") from None
+        if r.status_code != 200 or not r.headers.get("content-type", "").startswith("audio/"):
+            raise InferenceError("INFER_FAILED", f"추론 서버 음성 오류 {r.status_code}")
+        return r.content, int(r.headers.get("x-duration-ms", "0"))
+
 
 Inference = MockInference | RemoteInference
 
@@ -162,7 +178,7 @@ def make(cfg: Settings) -> Inference:
 
 
 def for_chat(cfg: Settings, feature: str) -> RemoteInference | None:
-    """재생 중 기능용. remote 모드이고 주소가 있고 그 기능(stt·intent·answer)이 H200_CHAT에 들어 있을 때만. 아니면 None(GMS로)."""
+    """재생 중 기능용. remote 모드이고 주소가 있고 그 기능(stt·intent·answer·tts)이 H200_CHAT에 들어 있을 때만. 아니면 None(GMS로)."""
     if cfg.inference_mode != "remote" or not cfg.h200_base_url:
         return None
     if feature not in [x.strip() for x in cfg.h200_chat.split(",") if x.strip()]:

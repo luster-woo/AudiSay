@@ -1,0 +1,180 @@
+"""H200 오픈소스 추론 서버(ai/gpu_server) 클라이언트. 데모 backend/app/pipeline/inference.py를 비동기(httpx.AsyncClient)로 옮겼다.
+
+- remote: H200_BASE_URL로 부른다. SSH 터널이면 http://127.0.0.1:8100, 주피터 프록시면 https://<허브>/user/<이름>/proxy/8100
+- mock: 연결 전·자동 시험용 가짜 응답(크레딧·GPU 0). 결과에 "시험용"이라고 표시한다
+설정: INFERENCE_MODE=remote|mock (기본 mock), H200_BASE_URL, H200_TOKEN, H200_CHAT
+
+약속(gpu_server/server.py와 같아야 함)
+- POST /stt      wav 파일(+language) → {"segments": [{"startMs", "endMs", "text"}], "language", "model"}
+- POST /ocr      jpg 여러 장 → {"texts": [[글자, ...], ...]}  (이미지 순서대로)
+- POST /describe JSON {title, guide, scenes:[{startMs, endMs, transcript, ocr, frames:[base64 jpg]}]}
+                 → {"scenes": [{"title", "people": [{name, basis, appearance}], "lines": [{"atMs", "level", "text"}]}], "model"}
+- POST /summarize JSON {title, transcript, sceneTitles, lines} → {"summary", "category"(한국어 9종), "model"}
+- POST /translate JSON {texts, source, title} → {"texts": [...], "model"}
+- POST /chat/answer JSON {question, context} → {"sentences": [...], "model"}
+- POST /chat/answer/stream 같은 요청 → 한 줄에 JSON 하나 {"sentence"} ... {"done": true, "model"}
+- POST /chat/intent JSON {utterance} → {"intent", "target_time", "scene_query", "model"}
+
+H200 호출도 ai_call_logs에 남긴다(크레딧 0, 모델 이름 앞에 h200:). 걸린 시간 비교용.
+"""
+import base64
+import json
+import time
+from collections.abc import AsyncIterator
+from pathlib import Path
+
+import httpx
+
+from app.config import Settings
+
+CHAT_TIMEOUT = 90  # 재생 중 기능은 오래 기다리지 않고 GMS로 넘어간다
+JOB_TIMEOUT = 600
+CHAT_FEATURES = ("stt", "intent", "answer")
+
+
+class InferenceError(Exception):
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+
+
+class MockInference:
+    name = "mock"
+    last_model = "mock"
+
+    async def transcribe(self, wav: Path | None) -> dict:
+        return {"segments": [], "model": "mock"}
+
+    async def transcribe_bytes(self, wav: bytes) -> dict:
+        return {"segments": [{"startMs": 0, "endMs": 1000, "text": "시험용 받아쓰기"}], "model": "mock"}
+
+    async def ocr(self, images: list[Path]) -> dict:
+        return {"texts": [[] for _ in images]}
+
+    async def describe(self, payload: dict) -> dict:
+        out = []
+        for i, s in enumerate(payload["scenes"]):
+            out.append({"title": f"{i + 1}번째 장면(시험용)", "people": [],
+                        "lines": [{"atMs": s["startMs"] + 300, "level": 1, "text": f"시험용 해설입니다. {i + 1}번째 장면이 시작됩니다."},
+                                  {"atMs": s["startMs"] + 2500, "level": 2, "text": "추론 서버를 연결하면 실제 해설로 바뀝니다."}]})
+        return {"scenes": out, "model": "mock"}
+
+    async def summarize(self, payload: dict) -> dict:
+        return {"summary": f"{payload['title']} 영상의 시험용 요약입니다. 추론 서버를 연결하면 실제 요약이 나옵니다.",
+                "category": "기타", "model": "mock"}
+
+    async def translate(self, texts: list[str], source: str | None = None, title: str | None = None) -> dict:
+        return {"texts": [f"(번역) {t}" for t in texts], "model": "mock"}
+
+    async def answer(self, question: str, context: dict) -> dict:
+        return {"sentences": ["시험용 답변입니다."], "model": "mock"}
+
+    async def intent(self, utterance: str) -> dict:
+        return {"intent": "QUESTION", "model": "mock"}
+
+
+class RemoteInference:
+    name = "remote"
+
+    def __init__(self, base_url: str, token: str, stream_answer: bool = True):
+        self.base = base_url.rstrip("/")
+        self.headers = {"Authorization": f"token {token}"} if token else {}  # 토큰은 로그·응답에 남기지 않는다
+        self.stream_answer = stream_answer
+        self.last_model = ""
+
+    async def _post(self, path: str, timeout: float = JOB_TIMEOUT, **kw) -> dict:
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as c:
+                r = await c.post(f"{self.base}{path}", headers=self.headers, **kw)
+        except httpx.HTTPError as e:
+            raise InferenceError("INFER_UNREACHABLE", f"추론 서버에 연결하지 못했어요: {type(e).__name__}") from None
+        if r.status_code != 200:
+            raise InferenceError("INFER_FAILED", f"추론 서버 오류 {r.status_code}")
+        try:
+            return r.json()
+        except ValueError:
+            raise InferenceError("INFER_FAILED", "추론 서버 응답을 읽지 못했어요(로그인 화면으로 넘어갔을 수 있음)") from None
+
+    async def transcribe(self, wav: Path | None) -> dict:
+        if not wav:
+            return {"segments": [], "model": "none"}
+        # 업로드 영상은 외국어일 수 있어 언어 자동 감지
+        return await self._post("/stt", files={"audio": (wav.name, wav.read_bytes(), "audio/wav")}, data={"language": "auto"})
+
+    async def transcribe_bytes(self, wav: bytes) -> dict:
+        """녹음 한 토막(16kHz mono wav). 질문 녹음은 짧으니 오래 기다리지 않는다."""
+        return await self._post("/stt", timeout=CHAT_TIMEOUT, files={"audio": ("q.wav", wav, "audio/wav")})
+
+    async def ocr(self, images: list[Path]) -> dict:
+        files = [("images", (p.name, p.read_bytes(), "image/jpeg")) for p in images]
+        return await self._post("/ocr", files=files)
+
+    async def describe(self, payload: dict) -> dict:
+        body = {**payload, "scenes": [{**s, "frames": [base64.b64encode(Path(p).read_bytes()).decode() for p in s["frames"]]}
+                                      for s in payload["scenes"]]}
+        return await self._post("/describe", json=body)
+
+    async def summarize(self, payload: dict) -> dict:
+        return await self._post("/summarize", json=payload)
+
+    async def translate(self, texts: list[str], source: str | None = None, title: str | None = None) -> dict:
+        """외국어 대사 → 한국어. 제목은 고유명사·주제 맥락."""
+        return await self._post("/translate", json={"texts": texts, "source": source, "title": title})
+
+    async def answer(self, question: str, context: dict) -> dict:
+        return await self._post("/chat/answer", timeout=CHAT_TIMEOUT, json={"question": question, "context": context})
+
+    async def answer_stream(self, question: str, context: dict) -> AsyncIterator[str]:
+        """문장이 완성되는 대로 하나씩 낸다. 옛 서버(404)나 연결 실패는 InferenceError."""
+        try:
+            async with httpx.AsyncClient(timeout=CHAT_TIMEOUT) as c, c.stream(
+                    "POST", f"{self.base}/chat/answer/stream", headers=self.headers,
+                    json={"question": question, "context": context}) as r:
+                if r.status_code != 200:
+                    raise InferenceError("INFER_NO_STREAM", f"추론 서버 스트리밍 없음 {r.status_code}")
+                async for line in r.aiter_lines():
+                    if not line.strip():
+                        continue
+                    j = json.loads(line)
+                    if j.get("sentence"):
+                        yield j["sentence"]
+                    if j.get("done"):
+                        self.last_model = j.get("model", "")
+        except httpx.HTTPError as e:
+            raise InferenceError("INFER_UNREACHABLE", f"추론 서버에 연결하지 못했어요: {type(e).__name__}") from None
+        except ValueError:
+            raise InferenceError("INFER_FAILED", "추론 서버 스트리밍 응답을 읽지 못했어요") from None
+
+    async def intent(self, utterance: str) -> dict:
+        return await self._post("/chat/intent", timeout=CHAT_TIMEOUT, json={"utterance": utterance})
+
+
+Inference = MockInference | RemoteInference
+
+
+def make(cfg: Settings) -> Inference:
+    """업로드 영상 분석용. remote인데 주소가 없으면 설정 오류."""
+    if cfg.inference_mode == "remote":
+        if not cfg.h200_base_url:
+            raise InferenceError("INFER_CONFIG", "H200_BASE_URL이 없습니다. .env에 넣어 주세요.")
+        return RemoteInference(cfg.h200_base_url, cfg.h200_token, cfg.h200_answer_stream)
+    return MockInference()
+
+
+def for_chat(cfg: Settings, feature: str) -> RemoteInference | None:
+    """재생 중 기능용. remote 모드이고 주소가 있고 그 기능(stt·intent·answer)이 H200_CHAT에 들어 있을 때만. 아니면 None(GMS로)."""
+    if cfg.inference_mode != "remote" or not cfg.h200_base_url:
+        return None
+    if feature not in [x.strip() for x in cfg.h200_chat.split(",") if x.strip()]:
+        return None
+    return RemoteInference(cfg.h200_base_url, cfg.h200_token, cfg.h200_answer_stream)
+
+
+async def log_remote(db, purpose: str, model: str, t0: float, chat_log_id: int | None = None, job_id: int | None = None,
+                     error: str | None = None) -> None:
+    """H200 호출을 ai_call_logs에 남긴다(크레딧 0). db가 없으면 건너뛴다."""
+    if db is None:
+        return
+    from app.db import CallLog
+    await db.log_call(CallLog(purpose=purpose, model=f"h200:{model}"[:50], latency_ms=int((time.monotonic() - t0) * 1000),
+                              error_code=error, job_id=job_id, chat_log_id=chat_log_id))

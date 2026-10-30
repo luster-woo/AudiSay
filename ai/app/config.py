@@ -48,6 +48,20 @@ class Settings(BaseSettings):
     # 내부 API (Spring → AI)
     ai_internal_token: str = ""
 
+    # H200 오픈소스 추론 서버(ai/gpu_server). 업로드 영상(LOCAL) 분석과 재생 중 받아쓰기·발화 분석·답변에 쓴다
+    # remote: H200_BASE_URL로 부른다(SSH 터널이면 http://127.0.0.1:8100). mock: 시험용 가짜 응답(GPU·크레딧 0)
+    inference_mode: str = "mock"
+    h200_base_url: str = ""
+    h200_token: str = ""  # gpu_server의 ~/gpu_server/.secret 값 또는 주피터 토큰. "Authorization: token <값>"으로 보낸다
+    h200_chat: str = "stt,intent,answer"  # 재생 중 기능 가운데 H200에 먼저 맡길 것. 실패하면 GMS로
+    h200_answer_stream: bool = True  # 질문 답변을 H200 /chat/answer/stream으로(문장마다). 옛 서버면 false
+    # 업로드 영상 해설 엔진: opensource(H200, 기본) | gemini(영상 파일을 Gemini에 넣음, 크레딧). 실패하면 서로 대체
+    upload_engine: str = "opensource"
+    # H200 번역 가운데 의심스러운 것을 Gemini로 다시: failed(기본) | all | off
+    translate_fix: str = "failed"
+    # 시리즈 등장인물 사전 폴더(ai/data/characters)
+    characters_dir: str = "data/characters"
+
     # 처리 규칙 (워커 메시지 명세)
     message_timeout_sec: int = 600
     max_attempts: int = 3

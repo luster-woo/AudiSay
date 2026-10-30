@@ -5,8 +5,8 @@
 SCENE_NOW(지금 장면 설명)와 등장인물 겉모습 질문은 AI를 부르지 않고 저장된 자료로 답한다.
 
 데모 backend/app/chat/answer.py를 옮겼다. split_sentences·character_answer·scene_now는 순수 함수(시험 있음),
-context는 asyncpg, answer_sentences는 팀 GmsClient(비동기). 팀 GmsClient에 스트리밍(generate_content_stream)이 없어
-우선 한 번에 받아 문장으로 나눈다(답이 200토큰 이하라 1초 안팎). stream()을 붙이면 문장이 완성되는 대로 낼 수 있다(README).
+context는 asyncpg, answer_sentences는 팀 GmsClient(비동기), remote_answer는 H200(크레딧 0).
+순서(데모와 같음): 저장된 자료 → H200 → GMS. 팀 GmsClient에 스트리밍이 없어 GMS 답변은 한 번에 받아 문장으로 나눈다.
 """
 import json
 import re
@@ -124,3 +124,56 @@ async def answer_sentences(gms, question: str, ctx: dict, chat_log_id: int | Non
             yield s
     if buf.strip():
         yield buf.strip()
+
+
+async def remote_answer(inf, question: str, ctx: dict, db=None, chat_log_id: int | None = None) -> AsyncIterator[str] | None:
+    """H200(Qwen3-VL)로 답한다(크레딧 0). 스트리밍이 되면 문장이 완성되는 대로(첫 문장 0.4초), 옛 서버면 /chat/answer로 한 번에.
+    첫 문장 전에 실패하면 None → GMS로. 도중에 끊기면 받은 문장까지만."""
+    import time
+
+    from app.inference import InferenceError, log_remote
+
+    t0 = time.monotonic()
+    it = None
+    first: str | None = None
+    if getattr(inf, "stream_answer", False):
+        try:
+            it = inf.answer_stream(question, ctx)
+            first = await anext(it, None)
+        except InferenceError:
+            it = None  # 스트리밍이 없는 서버 → 한 번에 받기
+    if it is None:
+        try:
+            r = await inf.answer(question, ctx)
+        except InferenceError as e:
+            await log_remote(db, "QUESTION", "unknown", t0, chat_log_id=chat_log_id, error=e.code)
+            return None
+        await log_remote(db, "QUESTION", str(r.get("model", "")), t0, chat_log_id=chat_log_id)
+        out: list[str] = []
+        for s in r.get("sentences") or []:
+            done, rest = split_sentences(str(s) + " ")
+            out += done
+            if rest.strip():
+                out.append(rest.strip())
+        if not out:
+            return None
+
+        async def listed():
+            for x in out:
+                yield x
+        return listed()
+    if first is None:
+        await log_remote(db, "QUESTION", "stream", t0, chat_log_id=chat_log_id, error="INFER_EMPTY")
+        return None
+
+    async def gen():
+        try:
+            yield first
+            async for x in it:
+                yield x
+        except InferenceError as e:
+            await log_remote(db, "QUESTION", "stream", t0, chat_log_id=chat_log_id, error=e.code)
+            return
+        await log_remote(db, "QUESTION", getattr(inf, "last_model", "") or "stream", t0, chat_log_id=chat_log_id)
+
+    return gen()

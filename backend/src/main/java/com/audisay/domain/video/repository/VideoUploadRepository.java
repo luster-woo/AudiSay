@@ -3,6 +3,7 @@ package com.audisay.domain.video.repository;
 import com.audisay.domain.video.entity.UploadStatus;
 import com.audisay.domain.video.entity.VideoUpload;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -10,6 +11,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 public interface VideoUploadRepository extends JpaRepository<VideoUpload, Long> {
@@ -30,4 +32,15 @@ public interface VideoUploadRepository extends JpaRepository<VideoUpload, Long> 
             """)
     long countInProgress(@Param("userId") Long userId, @Param("statuses") Collection<UploadStatus> statuses,
                          @Param("since") Instant since);
+
+    /**
+     * before 전에 시작해 아직 끝나지 않은 업로드. 오래된 순이다. 정리 스케줄러가 쓴다.
+     */
+    @Query("""
+            select u.videoId from VideoUpload u
+            where u.uploadStatus in :statuses and u.createdAt < :before
+            order by u.createdAt
+            """)
+    List<Long> findStaleVideoIds(@Param("statuses") Collection<UploadStatus> statuses,
+                                 @Param("before") Instant before, Pageable pageable);
 }

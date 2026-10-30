@@ -55,9 +55,9 @@ import java.util.Set;
 @Service
 @RequiredArgsConstructor
 public class UploadService {
-    private static final List<UploadStatus> IN_PROGRESS = List.of(UploadStatus.INITIATED, UploadStatus.UPLOADING);
-    /** 이보다 오래 멈춘 업로드는 정리 대상이라 남은 횟수를 잡아 두지 않는다 */
-    private static final Duration IN_PROGRESS_WINDOW = Duration.ofHours(24);
+    static final List<UploadStatus> IN_PROGRESS = List.of(UploadStatus.INITIATED, UploadStatus.UPLOADING);
+    /** 이보다 오래 멈춘 업로드는 정리 대상(StaleUploadCleaner)이라 남은 횟수를 잡아 두지 않는다 */
+    static final Duration IN_PROGRESS_WINDOW = Duration.ofHours(24);
     /** S3 멀티파트 업로드의 조각 수 상한 */
     private static final int MAX_PART_COUNT = 10_000;
     /** 올린 조각이 요청과 맞지 않을 때 S3 완료 요청이 돌려주는 오류 */

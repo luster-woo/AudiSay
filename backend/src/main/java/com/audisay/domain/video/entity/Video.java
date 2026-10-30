@@ -90,6 +90,21 @@ public class Video {
         return video;
     }
 
+    /** 해설을 처음 요청받은 유튜브 영상. 유튜브 영상은 모두에게 공개한다 */
+    public static Video createYoutube(String youtubeVideoId, String title, String channelTitle, String thumbnailUrl,
+                                      int durationSec) {
+        Video video = new Video();
+        video.sourceType = SourceType.YOUTUBE;
+        video.youtubeVideoId = youtubeVideoId;
+        video.title = title;
+        video.channelTitle = channelTitle;
+        video.thumbnailUrl = thumbnailUrl;
+        video.durationSec = durationSec;
+        video.visibility = Visibility.PUBLIC;
+        video.status = VideoStatus.REGISTERED;
+        return video;
+    }
+
     /** 업로드한 회원인지. 유튜브 영상은 올린 회원이 없어 항상 false다 */
     public boolean isUploadedBy(Long userId) {
         return uploader != null && uploader.getId().equals(userId);

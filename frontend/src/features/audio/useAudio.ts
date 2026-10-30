@@ -58,7 +58,9 @@ export function useAudio() {
             await tryPlay(fresh)
             opts.onEnd?.()
             return
-          } catch { /* 아래 TTS */ }
+          } catch {
+            /* 아래 TTS */
+          }
         }
         speak(opts.text, opts.rate, opts.onEnd)
       }

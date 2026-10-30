@@ -5,7 +5,7 @@ import type { ApiResponse } from './types'
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api/v1'
 
-/** 세션 만료 시 라우터 밖(인터셉터)에서 화면 쪽에 알리기 위한 콜백. D단계 AuthProvider가 등록한다 */
+/** 세션 만료 시 로직 */
 type SessionListener = (reason: 'expired' | 'forbidden') => void
 let sessionListener: SessionListener | null = null
 export function onSessionEvent(listener: SessionListener | null) {

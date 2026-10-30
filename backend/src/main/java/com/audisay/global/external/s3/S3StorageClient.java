@@ -3,9 +3,11 @@ package com.audisay.global.external.s3;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import software.amazon.awssdk.http.HttpStatusCode;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.CompletedPart;
 import software.amazon.awssdk.services.s3.model.NoSuchUploadException;
+import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequest;
@@ -57,6 +59,19 @@ public class S3StorageClient {
             s3Client.abortMultipartUpload(builder -> builder.bucket(bucket()).key(key).uploadId(uploadId));
         } catch (NoSuchUploadException e) {
             log.info("[S3] 이미 없는 멀티파트 업로드 key={}", key);
+        }
+    }
+
+    /** 객체가 있는지. 수명 주기 규칙으로 지워졌으면 false */
+    public boolean exists(String key) {
+        try {
+            s3Client.headObject(builder -> builder.bucket(bucket()).key(key));
+            return true;
+        } catch (S3Exception e) {
+            if (e.statusCode() == HttpStatusCode.NOT_FOUND) {
+                return false;
+            }
+            throw e;
         }
     }
 

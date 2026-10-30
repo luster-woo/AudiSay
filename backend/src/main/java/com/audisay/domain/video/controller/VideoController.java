@@ -4,6 +4,7 @@ import com.audisay.domain.video.dto.request.VisibilityUpdateRequest;
 import com.audisay.domain.video.dto.request.YoutubeCheckRequest;
 import com.audisay.domain.video.dto.request.YoutubeSearchRequest;
 import com.audisay.domain.video.dto.response.PlaybackResponse;
+import com.audisay.domain.video.dto.response.RetryResponse;
 import com.audisay.domain.video.dto.response.VideoDetailResponse;
 import com.audisay.domain.video.dto.response.VideoSummaryResponse;
 import com.audisay.domain.video.dto.response.VisibilityResponse;
@@ -11,6 +12,7 @@ import com.audisay.domain.video.dto.response.YoutubeCheckResponse;
 import com.audisay.domain.video.dto.response.YoutubeRequestResponse;
 import com.audisay.domain.video.dto.response.YoutubeSearchResponse;
 import com.audisay.domain.video.entity.Category;
+import com.audisay.domain.video.service.VideoRetryService;
 import com.audisay.domain.video.service.VideoService;
 import com.audisay.domain.video.service.YoutubeRequestService;
 import com.audisay.domain.video.service.YoutubeVideoService;
@@ -42,6 +44,7 @@ public class VideoController {
     private final VideoService videoService;
     private final YoutubeVideoService youtubeVideoService;
     private final YoutubeRequestService youtubeRequestService;
+    private final VideoRetryService videoRetryService;
 
     @Operation(summary = "해설 영상 목록", description = "공개 해설이 있는 공개 영상. 해설을 만든 시각 최신순")
     @GetMapping
@@ -93,6 +96,14 @@ public class VideoController {
     public ApiResponse<PlaybackResponse> getPlayback(@AuthenticationPrincipal AuthUser authUser,
                                                      @PathVariable("videoId") Long videoId) {
         return ApiResponse.success("재생 주소 조회 성공", videoService.getPlayback(authUser, videoId));
+    }
+
+    @Operation(summary = "해설 다시 요청", description = "해설 생성에 실패한 영상을 처음부터 다시 만든다. "
+            + "요청 기록이 있거나 업로드한 회원만. 횟수 차감 없이 영상당 하루 3번")
+    @PostMapping("/{videoId}/retry")
+    public ApiResponse<RetryResponse> retry(@AuthenticationPrincipal AuthUser authUser,
+                                            @PathVariable("videoId") Long videoId) {
+        return ApiResponse.success("해설 생성을 다시 시작했습니다.", videoRetryService.retry(authUser, videoId));
     }
 
     @Operation(summary = "공개 범위 변경", description = "업로드 영상만, 올린 회원만 바꿀 수 있다")

@@ -1,6 +1,7 @@
 package com.audisay.domain.video.repository;
 
 import com.audisay.domain.video.entity.GenerationRequest;
+import com.audisay.domain.video.entity.GenerationResult;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -43,6 +44,9 @@ public interface GenerationRequestRepository extends JpaRepository<GenerationReq
     Page<MyVideoRow> findMyVideos(@Param("userId") Long userId, Pageable pageable);
 
     boolean existsByUser_IdAndJobId(Long userId, Long jobId);
+
+    /** 이 영상의 해설을 요청한 적이 있는지. 거절(REJECTED)된 요청은 요청 기록으로 보지 않는다 */
+    boolean existsByUser_IdAndVideo_IdAndResultNot(Long userId, Long videoId, GenerationResult result);
 
     /** 그날 이 영상의 작업을 다시 만든 횟수(차감 없는 NEW_JOB). 회원과 관계없이 센다 */
     @Query("""

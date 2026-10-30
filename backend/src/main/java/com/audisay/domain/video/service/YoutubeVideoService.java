@@ -118,8 +118,31 @@ public class YoutubeVideoService {
         }
     }
 
-    /** 먼저 걸리는 이유 하나. 통과하면 null. 유튜브 해설 요청도 같은 규칙을 쓴다 */
-    YoutubeRejectReason rejectReason(YoutubeVideo video, Role role) {
+    /**
+     * 사전 확인과 같은 규칙으로 다시 확인하고, 해설을 만들 수 없으면 이유에 맞는 에러를 던진다.
+     * 유튜브 해설 요청과 해설 다시 요청이 쓴다.
+     */
+    YoutubeVideo getRequestableVideo(String youtubeVideoId, Role role) {
+        YoutubeVideo video = youtubeClient.getVideo(youtubeVideoId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.YOUTUBE_VIDEO_UNAVAILABLE));
+        YoutubeRejectReason rejectReason = rejectReason(video, role);
+        if (rejectReason != null) {
+            throw new BusinessException(toErrorCode(rejectReason));
+        }
+        return video;
+    }
+
+    private static ErrorCode toErrorCode(YoutubeRejectReason reason) {
+        return switch (reason) {
+            case NOT_FOUND, PRIVATE -> ErrorCode.YOUTUBE_VIDEO_UNAVAILABLE;
+            case NOT_EMBEDDABLE -> ErrorCode.YOUTUBE_EMBED_BLOCKED;
+            case TOO_LONG -> ErrorCode.VIDEO_TOO_LONG;
+            case AGE_RESTRICTED, LIVE -> ErrorCode.VIDEO_RESTRICTED;
+        };
+    }
+
+    /** 먼저 걸리는 이유 하나. 통과하면 null */
+    private YoutubeRejectReason rejectReason(YoutubeVideo video, Role role) {
         if (video.isPrivate()) {
             return YoutubeRejectReason.PRIVATE;
         }

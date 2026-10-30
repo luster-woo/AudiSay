@@ -41,6 +41,17 @@ public interface ReportRepository extends JpaRepository<Report, Long> {
                                       @Param("videoId") Long videoId,
                                       Pageable pageable);
 
+    /** 해설 하나의 문장별 신고 수. 신고가 없는 문장은 빠진다 */
+    @Query("""
+            select new com.audisay.domain.report.repository.LineReportCount(
+                r.line.id, count(r),
+                sum(case when r.status = com.audisay.domain.report.entity.ReportStatus.PENDING then 1L else 0L end))
+            from Report r
+            where r.line.description.id = :descriptionId
+            group by r.line.id
+            """)
+    List<LineReportCount> countByLine(@Param("descriptionId") Long descriptionId);
+
     @Query("""
             select r from Report r
             where r.line.id = :lineId

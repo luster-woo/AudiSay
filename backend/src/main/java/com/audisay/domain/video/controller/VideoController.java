@@ -8,9 +8,11 @@ import com.audisay.domain.video.dto.response.VideoDetailResponse;
 import com.audisay.domain.video.dto.response.VideoSummaryResponse;
 import com.audisay.domain.video.dto.response.VisibilityResponse;
 import com.audisay.domain.video.dto.response.YoutubeCheckResponse;
+import com.audisay.domain.video.dto.response.YoutubeRequestResponse;
 import com.audisay.domain.video.dto.response.YoutubeSearchResponse;
 import com.audisay.domain.video.entity.Category;
 import com.audisay.domain.video.service.VideoService;
+import com.audisay.domain.video.service.YoutubeRequestService;
 import com.audisay.domain.video.service.YoutubeVideoService;
 import com.audisay.global.request.PageParams;
 import com.audisay.global.response.ApiResponse;
@@ -39,6 +41,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class VideoController {
     private final VideoService videoService;
     private final YoutubeVideoService youtubeVideoService;
+    private final YoutubeRequestService youtubeRequestService;
 
     @Operation(summary = "해설 영상 목록", description = "공개 해설이 있는 공개 영상. 해설을 만든 시각 최신순")
     @GetMapping
@@ -55,6 +58,21 @@ public class VideoController {
     public ApiResponse<YoutubeCheckResponse> checkYoutube(@AuthenticationPrincipal AuthUser authUser,
                                                           @Valid @RequestBody YoutubeCheckRequest request) {
         return ApiResponse.success("유튜브 영상 확인 성공", youtubeVideoService.check(authUser.userId(), request.url()));
+    }
+
+    @Operation(summary = "유튜브 해설 요청",
+            description = "완성된 해설은 재사용(REUSED), 만드는 중이면 합류(JOINED_JOB), 없으면 새 작업(NEW_JOB, 하루 횟수 차감). "
+                    + "실패한 영상은 차감 없이 다시 만든다(영상당 하루 3번)")
+    @PostMapping("/youtube")
+    public ApiResponse<YoutubeRequestResponse> requestYoutube(@AuthenticationPrincipal AuthUser authUser,
+                                                              @Valid @RequestBody YoutubeCheckRequest request) {
+        YoutubeRequestResponse response = youtubeRequestService.request(authUser.userId(), request.url());
+        String message = switch (response.result()) {
+            case REUSED -> "이미 해설이 있습니다.";
+            case JOINED_JOB -> "해설을 만드는 중입니다.";
+            case NEW_JOB, REJECTED -> "해설 생성을 시작했습니다.";
+        };
+        return ApiResponse.success(message, response);
     }
 
     @Operation(summary = "유튜브 검색", description = "해설이 있는 영상을 앞에 둔다. 10개씩, nextPageToken으로 다음 결과")

@@ -118,8 +118,8 @@ public class YoutubeVideoService {
         }
     }
 
-    /** 먼저 걸리는 이유 하나. 통과하면 null */
-    private YoutubeRejectReason rejectReason(YoutubeVideo video, Role role) {
+    /** 먼저 걸리는 이유 하나. 통과하면 null. 유튜브 해설 요청도 같은 규칙을 쓴다 */
+    YoutubeRejectReason rejectReason(YoutubeVideo video, Role role) {
         if (video.isPrivate()) {
             return YoutubeRejectReason.PRIVATE;
         }

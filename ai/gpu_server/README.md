@@ -181,3 +181,14 @@ uv run python scripts/h200_call.py POST /warmup
 | 새 질문(처음 보는 입력 길이)은 느리고(17토큰 6.4초), 같은 길이를 다시 넣으면 0.3초 | torch 2.11이 H200에서 sdpa 어텐션에 cuDNN 커널을 고르는데, 처음 보는 길이마다 약 0.35초 준비 작업(토큰마다 길이가 늘어나므로 토큰마다) | 모델 로드 때 `torch.backends.cuda.enable_cudnn_sdp(False)` → flash/efficient/math 커널만 사용. 실측: 처음 보는 길이도 0.2~0.4초 |
 
 같은 실험에서 `torch.compile`·정적 캐시·패딩은 효과가 없었다(정적 캐시는 컴파일로 30초 더 걸림).
+
+### 버전 12 (2026-10-30) — 안내 목소리(Supertonic 3)를 H200에서
+
+| 항목 | 내용 |
+|---|---|
+| 무엇 | `POST /tts {text, voice(F1~F5·M1~M5), format:"mp3"}` → mp3, 헤더 `X-Duration-Ms`. 팀에서는 AI 서버 `/internal/tts`가 부르고 S3 `audio/guide/`에 저장 |
+| 왜 | 사용자 기기(CPU)에서 만들면 기기 성능에 따라 문장당 0.6~1.5초. H200은 사용자 수와 상관없이 약 0.04초 |
+| 설치 | `pip install -r requirements.txt` (`supertonic==1.3.1`, `onnxruntime-gpu==1.23.2`, `soundfile`). **onnxruntime-gpu 1.24+는 CUDA 13을 찾아 GPU를 못 잡고 CPU로 돈다** → 1.23.x 고정 |
+| 느렸던 것 | 새 문장마다 1.6초: cuDNN이 입력 크기가 바뀔 때마다 계산 방법을 다시 찾음 → 길이를 묶음 크기로 맞추고 크기별 세션을 따로 둠(`tts_bucket.py`, 53개, 약 20GB). 켠 뒤 약 45초 동안 뒤에서 미리 만든다(`/health`의 `ttsWarmSessions`가 53이면 끝) |
+| 잠금 | Qwen·Whisper와 따로 잠근다(`_tts_lock`). 다른 사람의 해설 만들기가 GPU를 잡고 있어도 안내는 기다리지 않는다 |
+| 실측 | 서버 안 0.04초, 터널 너머 왕복 0.1~0.16초(mp3로 받아 전송량 490KB → 약 40KB) |

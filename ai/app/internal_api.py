@@ -22,6 +22,11 @@ FE는 부르지 않고, nginx에도 연결하지 않는다. X-Internal-Token 헤
    응답 {text, engine:"H200"|"GMS", latencyMs}.
    오류: 400 STT_001(빈 녹음)·STT_002(10MB 초과)·STT_005(디코딩 실패), 422 STT_004(알아듣지 못함), 503 STT_003(둘 다 꺼짐)·STT_006(둘 다 실패).
 5. 오류 응답 형식: HTTPException detail={code, message} (팀 require_token과 같은 모양).
+6. /internal/tts(3차, 2026-10-30): 안내·답변 목소리 한 문장 {text, voice(F1~F5·M1~M5, 기본 F1)}
+   → H200 Supertonic 3(크레딧 0, 문장당 약 0.04초) → S3 audio/guide/{voice}/{해시}.mp3. 같은 문장은 저장본을 돌려준다.
+   응답 {audioKey, durationMs, cached, latencyMs}. BE가 audioKey로 재생 주소를 만들어 FE에 준다.
+   오류: 400 TTS_001(빈 문장), 503 TTS_002(H200 꺼짐)·TTS_003(H200 실패) → FE는 브라우저 음성으로 읽는다(데모와 같음).
+   숫자·영어는 한국어 읽기로 바꾸고 ▶·🅰 같은 기호·이모지는 지운 뒤 만든다(app/tts_text.py).
 
 AI 순서(데모와 같음, 크레딧 0을 먼저): 규칙·저장된 자료 → H200 오픈소스(INFERENCE_MODE=remote, H200_CHAT에 든 기능만) → GMS.
 answer의 source는 STORED|H200|GEMINI, chat_logs.answer_source는 H200·GEMINI 둘 다 GEMINI_REQUERY(팀 ERD 값).
@@ -30,6 +35,7 @@ answer의 source는 STORED|H200|GEMINI, chat_logs.answer_source는 H200·GEMINI 
 의존성 추가: python-multipart(파일 업로드), httpx(whisper 호출). Dockerfile에 ffmpeg.
 """
 import asyncio
+import hashlib
 import hmac
 import json
 import logging
@@ -46,10 +52,13 @@ from app.chat import intent as it
 from app.chat import seek as sk
 from app.config import settings
 from app.db import CallLog
+from app.tts_text import normalize_ko
 
 log = logging.getLogger(__name__)
 
 ANSWER_KEY_TTL_SEC = 600
+TTS_VOICES = {f"{g}{i}" for g in "FM" for i in range(1, 6)}  # Supertonic 3 목소리(gpu_server와 같음)
+TTS_MAX_CHARS = 500
 STT_MAX_BYTES = 10 * 1024 * 1024
 _background: set[asyncio.Task] = set()  # 답변 작업이 GC로 사라지지 않게 붙들어 둔다
 
@@ -82,6 +91,11 @@ class AnswerRequest(BaseModel):
     videoTimeMs: int
     utterance: str
     intent: str  # QUESTION | SCENE_NOW
+
+
+class TtsRequest(BaseModel):
+    text: str
+    voice: str = "F1"
 
 
 def _err(status: int, code: str, message: str) -> HTTPException:
@@ -305,3 +319,38 @@ async def _whisper(cfg, wav: bytes) -> str:
                               data={"model": "whisper-1", "language": "ko"}, files={"file": ("q.wav", wav, "audio/wav")})
         r.raise_for_status()
     return (r.json().get("text") or "").strip()
+
+
+# ---------- 안내 목소리 ----------
+
+def tts_key(text: str, voice: str) -> str:
+    return f"audio/guide/{voice}/{hashlib.sha1(text.encode()).hexdigest()[:16]}.mp3"
+
+
+@router.post("/tts")
+async def tts(req: TtsRequest, request: Request) -> dict:
+    """안내·답변 목소리 한 문장 → H200 Supertonic → S3 mp3. 같은 문장·목소리는 저장본(해시 키)을 돌려준다."""
+    text = normalize_ko(req.text)[:TTS_MAX_CHARS]
+    if not text:
+        raise _err(400, "TTS_001", "읽을 문장이 없어요.")
+    voice = req.voice if req.voice in TTS_VOICES else "F1"
+    key = tts_key(text, voice)
+    meta_key = key.removesuffix(".mp3") + ".json"
+    storage = request.app.state.storage
+    t0 = time.monotonic()
+    if await storage.exists(key):
+        meta = await storage.get_json(meta_key) if await storage.exists(meta_key) else {}
+        return {"audioKey": key, "durationMs": meta.get("durationMs"), "cached": True, "latencyMs": int((time.monotonic() - t0) * 1000)}
+    inf = inference.for_chat(settings(), "tts")
+    if not inf:
+        raise _err(503, "TTS_002", "안내 목소리 서버가 꺼져 있어요.")
+    db = getattr(request.app.state, "db", None)
+    try:
+        audio, ms = await inf.tts(text, voice)
+    except inference.InferenceError as e:
+        await inference.log_remote(db, "TTS", "supertonic", t0, error=e.code)
+        raise _err(503, "TTS_003", "안내 목소리를 만들지 못했어요.") from None
+    await storage.put_bytes(key, audio, "audio/mpeg")
+    await storage.put_json(meta_key, {"durationMs": ms, "voice": voice, "text": text})
+    await inference.log_remote(db, "TTS", "supertonic", t0)
+    return {"audioKey": key, "durationMs": ms, "cached": False, "latencyMs": int((time.monotonic() - t0) * 1000)}

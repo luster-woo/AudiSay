@@ -7,7 +7,7 @@
 
 실행: uvicorn server:app --host 127.0.0.1 --port 8100   (밖으로 열지 않는다. 노트북은 SSH 터널로, 요청마다 .secret 비밀값 확인)
 약속(노트북 backend/app/pipeline/inference.py와 같아야 함):
-  /health, /warmup, /stt, /ocr, /describe, /summarize, /chat/answer, /chat/answer/stream, /chat/intent
+  /health, /warmup, /stt, /ocr, /describe, /summarize, /chat/answer, /chat/answer/stream, /chat/intent, /tts(버전 12)
 
 버전 2(2026-10-28): 해설을 완결 문장으로, 장면 여러 개를 한 번에 묶어 생성(DESCRIBE_BATCH), 질문 답변 스트리밍
 """
@@ -26,7 +26,7 @@ from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-VERSION = 11
+VERSION = 12
 VLM_REPO = os.getenv("VLM_REPO", "Qwen/Qwen3-VL-8B-Instruct")
 WHISPER_REPO = os.getenv("WHISPER_REPO", "deepdml/faster-whisper-large-v3-turbo-ct2")
 DEVICE = os.getenv("DEVICE", "cuda:0")
@@ -87,6 +87,50 @@ def ocr_engine():
                                    use_doc_unwarping=False, use_textline_orientation=False)
         _models["ocr_device"] = dev
     return _models["ocr"]
+
+
+# ---------- 버전 12: 안내 목소리(Supertonic 3, ONNX) ----------
+# 질문 답·명령 응답·안내 문장을 사용자 수와 상관없이 GPU에서 문장당 약 0.04초에 만든다(2026-10-30 H200 실측, CPU는 0.6~1.5초).
+# 그냥 돌리면 새 문장마다 1.6초(cuDNN이 크기가 바뀔 때마다 계산 방법을 다시 찾음) → 크기별 세션(tts_bucket.py)으로 해결.
+# Qwen·Whisper가 쓰는 _lock과 따로 잠근다: 다른 사람의 해설 만들기(몇 분)가 GPU 잠금을 잡고 있어도 "5초 뒤로" 안내는 기다리지 않는다.
+# onnxruntime-gpu는 CUDA 12용 1.23.x(이 서버 torch가 CUDA 12.8). 1.24부터는 CUDA 13을 찾아 GPU를 못 잡고 CPU로 돈다.
+TTS_VOICES = {f"{g}{i}" for g in "FM" for i in range(1, 6)}
+TTS_STEPS = int(os.getenv("TTS_STEPS", "5"))  # 노트북과 같은 값(기본 8 → 5, 약 30% 빠름)
+_tts_lock = threading.Lock()
+
+
+def tts_engine():
+    if "tts" not in _models:
+        import onnxruntime as ort
+        try:
+            ort.preload_dlls()  # pip로 깔린 CUDA·cuDNN 라이브러리를 먼저 불러온다
+        except Exception:  # noqa: BLE001
+            pass
+        import supertonic.config as sc
+        import supertonic.loader as sl
+        from supertonic import TTS
+        gpu = "CUDAExecutionProvider" in ort.get_available_providers()
+        prov = ["CUDAExecutionProvider", "CPUExecutionProvider"] if gpu else ["CPUExecutionProvider"]
+        sc.DEFAULT_ONNX_PROVIDERS = sl.DEFAULT_ONNX_PROVIDERS = prov  # 패키지 기본값이 CPU라 불러오기 전에 바꾼다
+        _models["tts"] = TTS(auto_download=True)
+        _models["tts_device"] = prov[0]
+        _models["tts_styles"] = {}
+        if gpu:
+            # 크기별 세션(tts_bucket.py): 새 문장도 0.04초. 메모리는 필요한 만큼만(kSameAsRequested, 26GB → 약 20GB)
+            from tts_bucket import Bucketed
+            b = Bucketed(_models["tts"].model, [("CUDAExecutionProvider", {"arena_extend_strategy": "kSameAsRequested"}),
+                                                "CPUExecutionProvider"])
+            _models["tts_bucket"] = b
+            # 모든 크기 세션을 뒤에서 미리 만든다(약 45초). 그동안 들어온 요청도 되지만 그 크기는 처음 한 번 느리다
+            threading.Thread(target=lambda: _models.__setitem__("tts_warm", b.warm(tts_style("F1"))), daemon=True).start()
+    return _models["tts"]
+
+
+def tts_style(voice: str):
+    styles = _models["tts_styles"]
+    if voice not in styles:
+        styles[voice] = _models["tts"].get_voice_style(voice_name=voice)
+    return styles[voice]
 
 
 def vlm():
@@ -209,18 +253,56 @@ def finish_sentence(text: str) -> str:
 def health():
     import torch
     return {"ok": True, "version": VERSION, "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
-            "loaded": [k for k in _models if not k.endswith("_device")], "vlm": VLM_REPO, "whisper": WHISPER_REPO,
-            "ocrDevice": _models.get("ocr_device"), "describeBatch": DESCRIBE_BATCH, "calls": _stats["calls"]}
+            "loaded": [k for k in _models if not k.endswith(("_device", "_styles", "_bucket", "_warm"))], "vlm": VLM_REPO,
+            "whisper": WHISPER_REPO, "ocrDevice": _models.get("ocr_device"), "ttsDevice": _models.get("tts_device"),
+            "ttsWarmSessions": _models.get("tts_warm"), "describeBatch": DESCRIBE_BATCH,
+            "calls": _stats["calls"]}
 
 
 @app.post("/warmup")
 def warmup():
     """모델을 미리 올려 둔다(첫 요청이 모델 내려받기·로드를 기다리지 않게)."""
     t0 = time.time()
+    with _tts_lock:
+        tts_engine()  # 크기별 세션 미리 만들기는 뒤에서 이어진다(/health의 ttsWarmSessions가 53이면 끝)
     with _lock:
         whisper(), ocr_engine(), on_gpu(vlm)
         generate("짧게 답하세요.", "안녕", max_new=4)  # 작업자 스레드의 CUDA 준비까지 미리(첫 호출 3초 예열을 여기서)
     return {"ok": True, "sec": round(time.time() - t0, 1)}
+
+
+class TtsBody(BaseModel):
+    text: str  # 노트북에서 숫자·영어를 한국어로 바꾼(ko_normalize) 뒤 보낸다
+    voice: str = "F1"
+    format: str = "wav"  # "mp3"면 여기서 바로 줄여 보낸다(490KB → 약 40KB, 터널 전송 0.25초 → 0.03초 수준)
+
+
+@app.post("/tts")
+def tts(body: TtsBody):
+    """안내 목소리 한 문장 → wav 또는 mp3(헤더 X-Duration-Ms). 캐시는 노트북이 한다. mp3는 libsndfile로(이 서버엔 ffmpeg가 없음)."""
+    from fastapi import Response
+    import soundfile as sf
+    text = body.text.strip()[:500]
+    if not text:
+        return JSONResponse({"error": "empty"}, status_code=400)
+    voice = body.voice if body.voice in TTS_VOICES else "F1"
+    t0 = time.time()
+    with _tts_lock:  # 문장당 0.04초라 줄이 거의 안 생김
+        engine = tts_engine()
+        style = tts_style(voice)
+        out = _models["tts_bucket"].synth(text, style, TTS_STEPS) if "tts_bucket" in _models else None
+        if out is None:  # GPU가 없거나 아주 긴 문장(120자 넘음): 원래 방식(덩어리로 나눠 만듦)
+            wav, dur = engine.synthesize(text, voice_style=style, lang="ko", total_steps=TTS_STEPS)
+            out = (wav.reshape(-1), float(dur[0]))
+    buf = io.BytesIO()
+    if body.format == "mp3":
+        sf.write(buf, out[0], engine.sample_rate, format="MP3", subtype="MPEG_LAYER_III")
+        media = "audio/mpeg"
+    else:
+        sf.write(buf, out[0], engine.sample_rate, format="WAV", subtype="PCM_16")
+        media = "audio/wav"
+    _count("tts", t0)
+    return Response(buf.getvalue(), media_type=media, headers={"X-Duration-Ms": str(int(out[1] * 1000))})
 
 
 def wav_16k(data: bytes):

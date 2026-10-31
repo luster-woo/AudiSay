@@ -16,7 +16,7 @@ function applyToDocument(s: Pick<UserSettings, 'highContrast' | 'fontSizeLevel'>
 }
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
-  const { status } = useAuth()
+  const { status, isAdmin } = useAuth()
   const { announce } = useAnnouncer()
   const queryClient = useQueryClient()
   const enabled = status === 'authenticated'
@@ -31,8 +31,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const { highContrast, fontSizeLevel } = settings
 
   useEffect(() => {
-    applyToDocument({ highContrast, fontSizeLevel })
-  }, [highContrast, fontSizeLevel])
+    applyToDocument(
+      isAdmin ? { highContrast: false, fontSizeLevel: 2 } : { highContrast, fontSizeLevel },
+    )
+  }, [isAdmin, highContrast, fontSizeLevel])
 
   const mutation = useMutation({
     mutationFn: usersApi.updateSettings,

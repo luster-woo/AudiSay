@@ -1,0 +1,29 @@
+import { useAnnouncer } from '@/features/announcer/context'
+import { useShortcutHelp } from '@/features/shortcuts/useShortcutHelp'
+
+/**
+ * 와이어프레임의 남색 '방금 안내' 띠
+ * 저시력 사용자가 눈으로 보는 용도
+ * 그래서 이 영역 자체에는 aria-live 를 두지 않음.
+ */
+export function AnnounceBar() {
+  const { lastMessage, repeat } = useAnnouncer()
+  const openHelp = useShortcutHelp()
+  const barButton =
+    'flex items-center gap-2 rounded-md px-2 text-sm text-cream focus-visible:bg-navy-deep focus-visible:outline-yellow'
+
+  return (
+    <section aria-label="방금 안내" className="bg-navy">
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2 px-8 py-2">
+        <span className="text-sm text-cream/80">방금 안내</span>
+        <p className="min-w-0 flex-1 font-bold text-yellow">{lastMessage}</p>
+        <button type="button" className={barButton} onClick={repeat} aria-keyshortcuts="Alt+Shift+R">
+          다시 듣기 <kbd className="kbd text-yellow">Alt+Shift+R</kbd>
+        </button>
+        <button type="button" className={barButton} onClick={openHelp} aria-keyshortcuts="Alt+Shift+/">
+          단축키 <kbd className="kbd text-yellow">Alt+Shift+/</kbd>
+        </button>
+      </div>
+    </section>
+  )
+}

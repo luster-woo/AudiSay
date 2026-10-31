@@ -6,13 +6,21 @@ import {
   type ShortcutValue,
 } from './context'
 
+function keyName(e: KeyboardEvent): string {
+  const { code } = e
+  if (code.startsWith('Key')) return code.slice(3) // 'KeyR' → 'R'
+  if (code.startsWith('Digit')) return code.slice(5) // 'Digit1' → '1'
+  if (code === 'Slash') return '/'
+  if (code === 'Space') return 'Space'
+  return e.key // 'ArrowLeft', 'Escape', 'PageUp', 'Home' 등은 e.key 그대로
+}
+
 function comboFromEvent(e: KeyboardEvent): string {
   const parts: string[] = []
   if (e.altKey) parts.push('Alt')
   if (e.shiftKey) parts.push('Shift')
   if (e.ctrlKey || e.metaKey) parts.push('Ctrl')
-  const key = e.key.length === 1 ? e.key.toUpperCase() : e.key // 'r' → 'R', 'ArrowLeft' 그대로
-  parts.push(key === '?' ? '/' : key) // Shift+/ 는 브라우저가 '?' 로 준다
+  parts.push(keyName(e))
   return parts.join('+')
 }
 
@@ -22,16 +30,15 @@ function isTypingTarget(el: EventTarget | null): boolean {
 }
 
 export function ShortcutProvider({ children }: { children: ReactNode }) {
-  // 등록된 단축키 전체. state 로 두어 list 가 렌더에서 안전하게 파생된다
   const [defs, setDefs] = useState<ShortcutDef[]>([])
   const [activeScope, setActiveScope] = useState<Exclude<ShortcutScope, 'global'> | null>(null)
+  const [helpOpen, setHelpOpen] = useState(false)
 
   const register = useCallback((def: ShortcutDef) => {
     setDefs((prev) => [...prev, def])
     return () => setDefs((prev) => prev.filter((d) => d !== def))
   }, [])
 
-  /** 활성 scope 에 해당하는 단축키만 */
   const list = useMemo(
     () => defs.filter((d) => d.scope === 'global' || d.scope === activeScope),
     [defs, activeScope],
@@ -52,7 +59,8 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [list])
 
-  const value = useMemo<ShortcutValue>(() => ({ register, setActiveScope, list }), [register, list])
+  const value = useMemo<ShortcutValue>(
+    () => ({ register, setActiveScope, list, helpOpen, setHelpOpen}), [register, list, helpOpen])
 
   return <ShortcutContext.Provider value={value}>{children}</ShortcutContext.Provider>
 }

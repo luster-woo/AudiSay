@@ -17,6 +17,8 @@ export interface ShortcutValue {
   /** 현재 레이아웃이 활성화한 scope */
   setActiveScope: (scope: Exclude<ShortcutScope, 'global'> | null) => void
   list: ShortcutDef[]
+  helpOpen: boolean
+  setHelpOpen: (open: boolean) => void
 }
 
 export const ShortcutContext = createContext<ShortcutValue | null>(null)

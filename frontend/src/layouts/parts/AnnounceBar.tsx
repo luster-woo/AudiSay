@@ -17,10 +17,10 @@ export function AnnounceBar() {
       <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2 px-8 py-2">
         <span className="text-sm text-cream/80">방금 안내</span>
         <p className="min-w-0 flex-1 font-bold text-yellow">{lastMessage}</p>
-        <button type="button" className={barButton} onClick={repeat}>
+        <button type="button" className={barButton} onClick={repeat} aria-keyshortcuts="Alt+Shift+R">
           다시 듣기 <kbd className="kbd text-yellow">Alt+Shift+R</kbd>
         </button>
-        <button type="button" className={barButton} onClick={openHelp}>
+        <button type="button" className={barButton} onClick={openHelp} aria-keyshortcuts="Alt+Shift+/">
           단축키 <kbd className="kbd text-yellow">Alt+Shift+/</kbd>
         </button>
       </div>

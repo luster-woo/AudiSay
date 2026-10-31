@@ -23,7 +23,7 @@
   --radius-md: 0.625rem;
   --radius-lg: 1rem;
 
-  --spacing-touch: 2.75rem; /* 44px 최소 터치 높이 */
+  --spacing-touch: 3.5rem;
 }
 
 @layer base {

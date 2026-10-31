@@ -42,7 +42,8 @@ test('페이지: 범위를 보여 주고 첫 페이지에서 이전은 비활성
       onChange={onChange}
     />,
   )
-  expect(screen.getByText('1–4 / 48개')).toBeInTheDocument()
+  expect(screen.getByText('1–4 / 48개')).toHaveAttribute('aria-hidden', 'true')
+  expect(screen.getByText('전체 48개 중 1번째부터 4번째까지')).toHaveClass('sr-only')
   await userEvent.click(screen.getByRole('button', { name: '이전 페이지' }))
   expect(onChange).not.toHaveBeenCalled()
   await userEvent.click(screen.getByRole('button', { name: '다음 페이지' }))

@@ -44,14 +44,13 @@ describe('TextField', () => {
 })
 
 describe('PasswordField', () => {
-  test('보기 버튼으로 글자를 보이고 숨긴다', async () => {
+  test('보기 버튼으로 글자를 보이고, 버튼 이름이 숨기기로 바뀐다', async () => {
     render(<PasswordField label="비밀번호" />)
     const input = screen.getByLabelText('비밀번호')
-    const toggle = screen.getByRole('button', { name: '비밀번호 보기' })
     expect(input).toHaveAttribute('type', 'password')
-    await userEvent.click(toggle)
+    await userEvent.click(screen.getByRole('button', { name: '비밀번호 보기' }))
     expect(input).toHaveAttribute('type', 'text')
-    expect(toggle).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: '비밀번호 숨기기' })).not.toHaveAttribute('aria-pressed')
   })
 })
 

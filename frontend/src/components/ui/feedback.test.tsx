@@ -28,7 +28,7 @@ function Speed() {
 
 test('Stepper: 소수점 오차 없이 바뀐다', async () => {
   renderWithProviders(<Speed />)
-  const up = await screen.findByRole('button', { name: '말하기 속도 늘리기' })
+  const up = await screen.findByRole('button', { name: '말하기 속도 높이기' })
   await userEvent.click(up)
   await userEvent.click(up)
   await userEvent.click(up)

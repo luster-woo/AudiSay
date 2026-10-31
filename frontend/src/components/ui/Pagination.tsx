@@ -22,8 +22,14 @@ export function Pagination({ page, onChange, unit = '개', className }: Paginati
   return (
     <nav aria-label="페이지" className={cn('flex items-center justify-between gap-4', className)}>
       <p className="text-lg text-ink-muted">
-        {start}–{end} / {page.totalElements}
-        {unit}
+        <span aria-hidden="true">
+          {start}–{end} / {page.totalElements}
+          {unit}
+        </span>
+        <span className="sr-only">
+          전체 {page.totalElements}
+          {unit} 중 {start}번째부터 {end}번째까지
+        </span>
       </p>
       <div className="flex gap-3">
         <Button

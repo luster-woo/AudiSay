@@ -1,22 +1,8 @@
 import { useCallback } from 'react'
-import { useAnnouncer } from '@/features/announcer/context'
 import { useShortcuts } from './context'
 
-/** 'Alt+Shift+R' (낭독용) */
-function speakCombo(combo: string) {
-  return combo
-    .split('+')
-    .map((k) => ({ Alt: '알트', Shift: '시프트', Ctrl: '컨트롤', '/': '슬래시' })[k] ?? k)
-    .join(' ')
-}
-
-/* 단축키 안내 */
+/** 단축키 안내 창을 연다 (Alt+Shift+/, 안내 띠의 '단축키' 버튼) */
 export function useShortcutHelp() {
-  const { list } = useShortcuts()
-  const { announce } = useAnnouncer()
-
-  return useCallback(() => {
-    const items = list.map((d) => `${d.description}, ${speakCombo(d.combo)}`)
-    announce(`단축키 ${items.length}개. ${items.join('. ')}.`)
-  }, [list, announce])
+  const { setHelpOpen } = useShortcuts()
+  return useCallback(() => setHelpOpen(true), [setHelpOpen])
 }

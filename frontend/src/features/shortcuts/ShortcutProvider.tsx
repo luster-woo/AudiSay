@@ -32,6 +32,7 @@ function isTypingTarget(el: EventTarget | null): boolean {
 export function ShortcutProvider({ children }: { children: ReactNode }) {
   const [defs, setDefs] = useState<ShortcutDef[]>([])
   const [activeScope, setActiveScope] = useState<Exclude<ShortcutScope, 'global'> | null>(null)
+  const [helpOpen, setHelpOpen] = useState(false)
 
   const register = useCallback((def: ShortcutDef) => {
     setDefs((prev) => [...prev, def])
@@ -58,7 +59,8 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [list])
 
-  const value = useMemo<ShortcutValue>(() => ({ register, setActiveScope, list }), [register, list])
+  const value = useMemo<ShortcutValue>(
+    () => ({ register, setActiveScope, list, helpOpen, setHelpOpen}), [register, list, helpOpen])
 
   return <ShortcutContext.Provider value={value}>{children}</ShortcutContext.Provider>
 }

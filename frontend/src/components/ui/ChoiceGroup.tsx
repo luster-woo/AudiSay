@@ -42,7 +42,6 @@ export function ChoiceGroup<T extends string | number>({
             className={cn(
               'flex min-h-touch cursor-pointer items-center rounded-md border-2 border-navy bg-paper px-4 font-bold text-navy',
               'has-[:checked]:bg-navy has-[:checked]:text-cream',
-              // 실제 포커스는 숨은 라디오에 있으므로 겉의 label 에 포커스 링을 그린다
               'has-[:focus-visible]:outline-[3px] has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-navy has-[:focus-visible]:outline-solid',
             )}
           >
@@ -52,8 +51,11 @@ export function ChoiceGroup<T extends string | number>({
               value={String(o.value)}
               checked={o.value === value}
               onChange={() => onChange(o.value)}
-              className="sr-only"
+              className="peer sr-only"
             />
+            <span aria-hidden="true" className="mr-1 hidden peer-checked:inline">
+              ✓
+            </span>
             {o.label}
           </label>
         ))}

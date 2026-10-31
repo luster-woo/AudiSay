@@ -12,6 +12,8 @@ export interface StepperProps {
   /** 화면 표시 (1.0배, 80%) */
   format?: (value: number) => string
   className?: string
+  decreaseLabel?: string
+  increaseLabel?: string
 }
 
 /**
@@ -27,6 +29,8 @@ export function Stepper({
   onChange,
   format = String,
   className,
+  decreaseLabel = `${label} 줄이기`,
+  increaseLabel = `${label} 높이기`,
 }: StepperProps) {
   const labelId = useId()
   const { announce } = useAnnouncer()
@@ -56,7 +60,7 @@ export function Stepper({
       <div className="flex items-center rounded-md border-2 border-navy bg-paper">
         <button
           type="button"
-          aria-label={`${label} 줄이기`}
+          aria-label={decreaseLabel}
           aria-disabled={value <= min || undefined}
           onClick={() => change(-step)}
           className={btn}
@@ -66,7 +70,7 @@ export function Stepper({
         <output className="min-w-20 text-center text-lg font-bold">{format(value)}</output>
         <button
           type="button"
-          aria-label={`${label} 늘리기`}
+          aria-label={increaseLabel}
           aria-disabled={value >= max || undefined}
           onClick={() => change(step)}
           className={btn}

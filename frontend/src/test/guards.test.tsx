@@ -61,6 +61,7 @@ test('관리자가 로그인 화면에 오면 신고 처리로 보내고 사이�
   await waitFor(() => expect(router.state.location.pathname).toBe('/admin/reports'))
   expect(await screen.findByRole('navigation', { name: '운영 관리 메뉴' })).toBeInTheDocument()
   expect(screen.getByRole('link', { name: '신고 처리' })).toHaveAttribute('aria-current', 'page')
+  expect(document.documentElement.dataset.fontScale).toBe('2')
 })
 
 test('현재 메뉴에 aria-current 가 붙는다 (/verify → 내 정보)', async () => {
@@ -71,6 +72,7 @@ test('현재 메뉴에 aria-current 가 붙는다 (/verify → 내 정보)', asy
     'page',
   )
   expect(screen.getByRole('link', { name: '홈' })).not.toHaveAttribute('aria-current')
+  expect(document.documentElement.dataset.fontScale).toBe('3')
 })
 
 test('없는 주소는 404 화면', async () => {

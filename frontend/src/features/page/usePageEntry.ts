@@ -23,5 +23,5 @@ export function usePageEntry({ title, announce: text, focusRef, ready = true }: 
     target?.focus({ preventScroll: true })
     const id = requestAnimationFrame(() => announce(text))
     return () => cancelAnimationFrame(id)
-  }, [title, text, focusRef, announce])
+  }, [ready, title, text, focusRef, announce])
 }

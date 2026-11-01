@@ -86,6 +86,8 @@ test('4단계: Alt+Shift+Q 는 질문 칸으로 옮기고, 음성 인식이 없�
   const user = userEvent.setup()
   renderRoute('/tutorial/4')
   const input = await screen.findByRole('textbox', { name: '연습 질문' })
+  // 화면 진입 안내가 먼저 끝나야 한다 (늦게 오면 단축키 안내 문구를 덮어씀)
+  await screen.findAllByText('사용법 4단계, 질문하기. 마지막 단계예요. 마치면 홈으로 가요.')
   await user.keyboard('{Alt>}{Shift>}Q{/Shift}{/Alt}')
   expect(input).toHaveFocus()
   // 안내 띠와 낭독 영역 두 곳에 같은 문장이 들어갈 수 있어 하나 이상이면 된다

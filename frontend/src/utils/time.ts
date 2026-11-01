@@ -37,3 +37,11 @@ export function formatDateKst(iso: string, withTime = false): string {
     hour12: false,
   }).format(d)
 }
+
+/** 초 → "7분 05초" / "72분 03초" (영상 카드 표시용. 시간 단위 없이 분으로 센다) */
+export function formatDurationShort(sec: number): string {
+  const total = Math.max(0, Math.round(sec))
+  const m = Math.floor(total / 60)
+  const s = total % 60
+  return m > 0 ? `${m}분 ${String(s).padStart(2, '0')}초` : `${s}초`
+}

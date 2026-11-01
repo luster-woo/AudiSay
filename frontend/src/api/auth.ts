@@ -1,6 +1,6 @@
 import { request } from './client'
 import { tokenStore } from './token'
-import type { LoginResult } from './types'
+import type { EmailAvailability, LoginResult, SignupResult } from './types'
 
 export const authApi = {
   async login(email: string, password: string) {
@@ -15,10 +15,11 @@ export const authApi = {
       tokenStore.clear()
     }
   },
-  signup(body: { email: string; password: string; name: string }) {
-    return request<null>({ method: 'POST', url: '/auth/signup', data: body })
+  /** 가입만 한다 (로그인은 하지 않음). termsAgreed 는 true 만 허용 */
+  signup(body: { email: string; password: string; name: string; termsAgreed: true }) {
+    return request<SignupResult>({ method: 'POST', url: '/auth/signup', data: body })
   },
   checkEmail(email: string) {
-    return request<{ available: boolean }>({ url: '/auth/email/availability', params: { email } })
+    return request<EmailAvailability>({ url: '/auth/email/availability', params: { email } })
   },
 }

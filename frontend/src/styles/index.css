@@ -13,6 +13,7 @@
   --color-yellow-soft: #fdf6d8;
   --color-danger: #b91c1c;
   --color-danger-soft: #fdecec;
+  --color-success: #1d6b38;
   --color-sidebar: #1c3150;
   --color-on-sidebar: #f8f6f1;
 
@@ -34,11 +35,11 @@
     font-size: 87.5%;
   } /* 14px */
   html[data-font-scale='2'] {
-    font-size: 100%;
-  } /* 16px */
+    font-size: 93.75%;
+  } /* 15px */
   html[data-font-scale='3'] {
-    font-size: 112.5%;
-  } /* 18px  ← 기본값(명세 fontSizeLevel 3) */
+    font-size: 100%;
+  } /* 16px  ← 기본값(명세 fontSizeLevel 3). Figma 화면이 이 크기 */
   html[data-font-scale='4'] {
     font-size: 125%;
   } /* 20px */
@@ -56,6 +57,7 @@
     --color-yellow: #ffd600;
     --color-yellow-soft: #ffff8d;
     --color-danger: #d50000;
+    --color-success: #00661f;
   }
   :focus-visible {
     outline: 3px solid var(--color-navy);

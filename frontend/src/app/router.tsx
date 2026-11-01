@@ -13,6 +13,9 @@ import LoginPage from '@/pages/auth/LoginPage'
 import SignupPage from '@/pages/auth/SignupPage'
 import VerifyPage from '@/pages/auth/VerifyPage'
 import TutorialPage from '@/pages/tutorial/TutorialPage'
+import HomePage from '@/pages/home/HomePage'
+import SearchPage from '@/pages/home/SearchPage'
+import YoutubeCheckPage from '@/pages/home/YoutubeCheckPage'
 import NotFoundPage from '@/pages/errors/NotFoundPage'
 import RouteError from '@/pages/errors/RouteError'
 import RootError from '@/pages/errors/RootError'
@@ -44,12 +47,9 @@ const userRoutes: RouteObject[] = [
   {
     element: <AppLayout />,
     children: [
-      {
-        index: true,
-        element: <PlaceholderPage />,
-        handle: { title: '홈', announce: '홈이에요. 검색 칸에 있어요.' } satisfies RouteHandle,
-      },
-      page('search', { title: '검색 결과' }),
+      { index: true, element: <HomePage /> },
+      { path: 'search', element: <SearchPage /> },
+      { path: 'search/youtube', element: <YoutubeCheckPage /> },
       page('register', { title: '영상 등록' }),
       page('register/upload', { title: '영상 파일 올리기' }),
       page('register/upload/title', { title: '제목 정하기' }),

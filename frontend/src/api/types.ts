@@ -129,3 +129,26 @@ export type JobEvent =
   | { event: 'progress'; data: Pick<Job, 'status' | 'currentStage' | 'progress' | 'estimatedRemainingSec'> }
   | { event: 'completed'; data: Pick<Job, 'status' | 'descriptionId' | 'coveredUntilMs'> }
   | { event: 'failed'; data: Pick<Job, 'status' | 'errorCode' | 'retryable'> & { message: string } }
+
+/** POST /auth/signup 의 data */
+export interface SignupResult {
+  userId: number
+  email: string
+  name: string
+  role: Role
+}
+
+/** GET /auth/email/availability 의 data */
+export interface EmailAvailability {
+  email: string
+  available: boolean
+}
+
+/** POST /users/me/verification 의 data — 새 역할이 담긴 AccessToken 을 함께 준다 */
+export interface VerificationResult {
+  role: Role
+  verifiedAt: string
+  accessToken: string
+  tokenType: 'Bearer'
+  expiresIn: number
+}

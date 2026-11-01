@@ -9,12 +9,12 @@ export function AuthLayout() {
     <>
       <SkipLink />
       <header className="bg-paper">
-        <div className="mx-auto max-w-7xl px-8 py-4">
+        <div className="mx-auto flex min-h-18 max-w-[90rem] items-center px-16">
           <BrandLogo to="/landing" subtitle="화면해설 플레이어" />
         </div>
       </header>
       <AnnounceBar />
-      <main id="main" tabIndex={-1} className="mx-auto max-w-7xl px-8 py-10 outline-none">
+      <main id="main" tabIndex={-1} className="mx-auto max-w-[90rem] px-16 pt-8 pb-16 outline-none">
         <Outlet />
       </main>
     </>

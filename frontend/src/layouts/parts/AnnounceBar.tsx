@@ -10,11 +10,11 @@ export function AnnounceBar() {
   const { lastMessage, repeat } = useAnnouncer()
   const openHelp = useShortcutHelp()
   const barButton =
-    'flex items-center gap-2 rounded-md px-2 text-sm text-cream focus-visible:bg-navy-deep focus-visible:outline-yellow'
+    'relative flex min-h-10 items-center gap-2 rounded-md px-2 text-sm text-cream before:absolute before:inset-x-0 before:-inset-y-2 before:content-[""] focus-visible:bg-navy-deep focus-visible:outline-yellow'
 
   return (
     <section aria-label="방금 안내" className="bg-navy">
-      <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2 px-8 py-2">
+      <div className="mx-auto flex max-w-[90rem] flex-wrap items-center gap-x-6 gap-y-1 px-16 py-1">
         <span className="text-sm text-cream/80">방금 안내</span>
         <p className="min-w-0 flex-1 font-bold text-yellow">{lastMessage}</p>
         <button type="button" className={barButton} onClick={repeat} aria-keyshortcuts="Alt+Shift+R">

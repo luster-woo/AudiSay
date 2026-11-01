@@ -37,7 +37,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   }, [isAdmin, highContrast, fontSizeLevel])
 
   const mutation = useMutation({
-    mutationFn: usersApi.updateSettings,
+    mutationFn: (patch: Partial<UserSettings>) => usersApi.updateSettings(patch),
     // 낙관적 업데이트: 서버 응답 전에 화면·html 속성을 먼저 바꾼다
     onMutate: async (patch) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.settings })

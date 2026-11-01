@@ -13,7 +13,7 @@
 nvm use            # Node 22 (.nvmrc)
 npm ci
 cp .env.example .env.local
-npm run dev        # http://localhost:5173, /api 는 localhost:8080 백엔드로 프록시
+npm run dev        # http://localhost:5173, /api 는 실서버(k15d101.p.ssafy.io)로 프록시
 ```
 
 | 명령 | 하는 일 |

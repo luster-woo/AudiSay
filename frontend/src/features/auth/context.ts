@@ -19,6 +19,8 @@ export interface AuthValue {
   isAdmin: boolean
   login: (email: string, password: string) => Promise<SessionUser>
   logout: () => Promise<void>
+  /** 인증·튜토리얼 완료처럼 세션 사용자 정보 일부가 바뀌었을 때 */
+  updateUser: (patch: Partial<SessionUser>) => void
 }
 
 export const AuthContext = createContext<AuthValue | null>(null)

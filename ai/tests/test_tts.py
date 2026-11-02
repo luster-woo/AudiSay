@@ -42,6 +42,37 @@ def test_tts_off_or_failed_gives_empty_audio_url(monkeypatch, tmp_path):
     assert bad.status_code == 200 and bad.json()["audioUrl"] is None and bad.json()["reason"] == "TTS_003"
 
 
+def test_tts_chunks_stay_under_limit_and_keep_text():
+    sentence = "다음 장면으로 넘어가려면 오른쪽 화살표를 누르세요."  # 27자
+    text = " ".join([sentence] * 18)  # 503자
+    chunks = internal_api.tts_chunks(text)
+    assert all(len(c) <= 120 for c in chunks) and " ".join(chunks) == text
+    assert all(c.endswith(".") for c in chunks)  # 문장 중간에서 끊지 않는다
+    assert internal_api.tts_chunks("짧은 문장. 또 짧은 문장.") == ["짧은 문장. 또 짧은 문장."]  # 묶어서 한 번에
+    comma = ", ".join(["왼쪽 화살표를 누르면 십 초 뒤로 가요"] * 6)  # 마침표 없이 긴 한 문장 → 쉼표에서
+    assert all(len(c) <= 120 and c.endswith(("요", "요,")) for c in internal_api.tts_chunks(comma))
+    assert [len(c) for c in internal_api.tts_chunks("가" * 250)] == [120, 120, 10]  # 띄어쓰기도 없으면 글자 수로
+
+
+def test_tts_long_text_made_in_chunks(monkeypatch, tmp_path):
+    sent: list[str] = []
+
+    class Counting(inference.MockInference):
+        async def tts(self, text, voice):
+            sent.append(text)
+            return await super().tts(text, voice)
+
+    async def join(parts):
+        return b"".join(parts)
+
+    monkeypatch.setattr(internal_api, "_join_mp3", join)  # 진짜 mp3 잇기(ffmpeg)는 H200 실측에서 확인
+    c = _client(monkeypatch, tmp_path, Counting())
+    text = " ".join(["해설 목소리 크기는 설정에서 바꿀 수 있어요."] * 12)  # 300자
+    r = c.post("/internal/tts", json={"text": text}, headers={"X-Internal-Token": "secret"}).json()
+    assert r["audioKey"] and len(sent) == 3 and all(len(s) <= 120 for s in sent)
+    assert r["durationMs"] == 3000 and (tmp_path / r["audioKey"]).read_bytes() == b"ID3mock" * 3
+
+
 def test_normalize_reads_numbers_and_drops_symbols():
     assert normalize_ko("▶ 🅰🅲🅴 라바 시즌3 😂👍🏻") == "라바 시즌삼"
     assert normalize_ko("1½컵, 58% ❤️") == "한 컵 반, 오십팔퍼센트"

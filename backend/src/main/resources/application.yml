@@ -96,7 +96,7 @@ audisay:
     internal-token: ${AI_INTERNAL_TOKEN:}
     connect-timeout: 2s
     stt-timeout: 10s
-    tts-timeout: 5s
+    tts-timeout: 7s   # 500자는 AI가 120자 조각 4~5개로 나눠 약 2초. H200이 느리면 AI가 조각마다 5초에 끊고 TTS_003을 준다
 
   # S3. 버킷이 비어 있으면 음성 주소(audioUrl)를 만들지 않는다 → FE가 브라우저 음성으로 읽음
   s3:

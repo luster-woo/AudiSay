@@ -29,6 +29,7 @@ import httpx
 from app.config import Settings
 
 CHAT_TIMEOUT = 90  # 재생 중 기능은 오래 기다리지 않고 GMS로 넘어간다
+STT_TIMEOUT = 15  # 질문 녹음(60초 이하) 받아쓰기. H200 실측 1~2초 → 이보다 늦으면 GMS whisper로(BE 요청, 2026-11-02)
 JOB_TIMEOUT = 600
 TTS_TIMEOUT = 5  # 안내 목소리 한 문장(H200 실측 0.04초). 이보다 늦으면 브라우저 음성으로 읽는 편이 빠르다
 CHAT_FEATURES = ("stt", "intent", "answer", "tts")
@@ -108,7 +109,7 @@ class RemoteInference:
 
     async def transcribe_bytes(self, wav: bytes) -> dict:
         """녹음 한 토막(16kHz mono wav). 질문 녹음은 짧으니 오래 기다리지 않는다."""
-        return await self._post("/stt", timeout=CHAT_TIMEOUT, files={"audio": ("q.wav", wav, "audio/wav")})
+        return await self._post("/stt", timeout=STT_TIMEOUT, files={"audio": ("q.wav", wav, "audio/wav")})
 
     async def ocr(self, images: list[Path]) -> dict:
         files = [("images", (p.name, p.read_bytes(), "image/jpeg")) for p in images]

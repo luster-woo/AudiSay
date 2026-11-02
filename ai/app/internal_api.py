@@ -18,8 +18,9 @@ FE는 부르지 않고, nginx에도 연결하지 않는다. X-Internal-Token 헤
    - 키 TTL 10분(ANSWER_KEY_TTL_SEC). BLPOP으로 읽으면 리스트가 비므로 다시 열 수 없다 → 다시 열기가 필요하면 LRANGE로 바꾼다.
    - 답변 음성(audioUrl)은 지금 null(FE 브라우저 음성). 데모는 Supertonic(로컬 TTS)을 썼는데 팀 결정 전(README '못 정한 것').
    - chat_logs.answer_text·answer_source·first_audio_ms·total_latency_ms는 AI가 쓴다(데모와 같음). BE가 쓰기로 하면 _finish_log를 뺀다.
-4. /internal/stt: multipart `audio`(webm/ogg/wav, 10MB 이하) → ffmpeg 16kHz wav → H200 faster-whisper(크레딧 0) → 실패하면 GMS whisper-1.
-   응답 {text, engine:"H200"|"GMS", latencyMs}.
+4. /internal/stt: multipart `audio`(webm/ogg/wav, 60초·10MB 이하) + 선택 `videoId`(보던 영상, 지금은 기록용)
+   → ffmpeg 16kHz wav → H200 faster-whisper(크레딧 0, STT_TIMEOUT 안에 못 받으면 바로) → GMS whisper-1.
+   응답 {text, engine:"H200"|"GMS", latencyMs, videoId}.
    오류: 400 STT_001(빈 녹음)·STT_002(10MB 초과)·STT_005(디코딩 실패), 422 STT_004(알아듣지 못함), 503 STT_003(둘 다 꺼짐)·STT_006(둘 다 실패).
 5. 오류 응답 형식: HTTPException detail={code, message} (팀 require_token과 같은 모양).
 6. /internal/tts(3차, 2026-10-30): 안내·답변 목소리 한 문장 {text, voice(F1~F5·M1~M5, 기본 F1)}
@@ -43,7 +44,7 @@ import re
 import time
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 
 from app import inference
@@ -250,13 +251,14 @@ async def _finish_log(pool, chat_log_id: int, answer_text: str, source: str, fir
 # ---------- 받아쓰기 ----------
 
 @router.post("/stt")
-async def stt(request: Request, audio: UploadFile = File(...)) -> dict:
-    """브라우저 녹음 → ffmpeg 16kHz mono wav → GMS whisper-1(language=ko)."""
+async def stt(request: Request, audio: UploadFile = File(...), videoId: int | None = Form(None)) -> dict:
+    """브라우저 녹음 → ffmpeg 16kHz mono wav → H200 faster-whisper → 실패하면 GMS whisper-1(language=ko).
+    videoId: 질문할 때 보던 영상(BE 요청, 2026-11-02). 지금은 기록·응답에만 쓴다."""
     raw = await audio.read()
     if not raw:
         raise _err(400, "STT_001", "녹음된 소리가 없어요.")
     if len(raw) > STT_MAX_BYTES:
-        raise _err(400, "STT_002", "녹음이 너무 길어요. 30초 안으로 말해 주세요.")
+        raise _err(400, "STT_002", "녹음이 너무 길어요. 60초 안으로 말해 주세요.")
     cfg = settings()
     has_gms = bool(cfg.gms_api_key and cfg.gms_gemini_base_url)
     inf = inference.for_chat(cfg, "stt")
@@ -284,7 +286,7 @@ async def stt(request: Request, audio: UploadFile = File(...)) -> dict:
             if db:
                 await db.log_call(CallLog(purpose="STT", model="whisper-1", latency_ms=int((time.monotonic() - t0) * 1000),
                                           error_code="AI_UNAVAILABLE"))
-            log.warning("whisper 실패: %s", str(e)[:200])
+            log.warning("whisper 실패(videoId=%s): %s", videoId, str(e)[:200])
         else:
             if db:
                 await db.log_call(CallLog(purpose="STT", model="whisper-1", latency_ms=int((time.monotonic() - t0) * 1000)))
@@ -292,7 +294,7 @@ async def stt(request: Request, audio: UploadFile = File(...)) -> dict:
         raise _err(503, "STT_006", "음성 인식 서버에 연결하지 못했어요. 글자로 입력해 주세요.")
     if not text:
         raise _err(422, "STT_004", "말을 알아듣지 못했어요. 다시 말해 주세요.")
-    return {"text": text, "engine": engine, "latencyMs": int((time.monotonic() - t0) * 1000)}
+    return {"text": text, "engine": engine, "latencyMs": int((time.monotonic() - t0) * 1000), "videoId": videoId}
 
 
 async def _to_wav16k(raw: bytes) -> bytes:

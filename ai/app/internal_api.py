@@ -27,7 +27,7 @@ FE는 부르지 않고, nginx에도 연결하지 않는다. X-Internal-Token 헤
    디코딩 실패), 502 GMS_ERROR(둘 다 꺼짐·실패).
 5. 오류 응답 형식: 본문 {code, message}만(공통 응답 봉투·detail 없음). 요청 형식 오류는 400 INVALID_REQUEST.
 6. /internal/tts(공개 /api/v1/tts용, 명세 밖 추가): 안내 목소리 한 문장 {text, voice(F1~F5·M1~M5, 기본 F1)}
-   → H200 Supertonic 3(크레딧 0, 문장당 약 0.04초) → S3 audio/guide/{voice}/{해시}.mp3(같은 문장은 저장본) → presigned 6시간.
+   → H200 Supertonic 3(크레딧 0, 120자 조각마다 약 0.3초, 긴 글은 조각 mp3를 이음) → S3 audio/guide/{voice}/{해시}.mp3(같은 문장은 저장본) → presigned 6시간.
    응답 {audioUrl, audioKey, durationMs, cached, latencyMs}. 만들지 못하면 200 + audioUrl null·reason(TTS_002 H200 꺼짐,
    TTS_003 실패) → Spring은 그대로 넘기고 FE는 브라우저 음성으로 읽는다. 빈 문장만 400 TTS_001.
    숫자·영어는 한국어 읽기로 바꾸고 ▶·🅰 같은 기호·이모지는 지운 뒤 만든다(app/tts_text.py).
@@ -43,8 +43,12 @@ import hashlib
 import hmac
 import json
 import logging
+import os
 import re
+import subprocess
+import tempfile
 import time
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
@@ -64,6 +68,9 @@ ANSWER_LOCK_SEC = 120  # 같은 chatLogId 답변 중복 막기(Spring 전체 제
 ANSWER_AUDIO_URL_SEC = 6 * 3600  # 답변 음성 presigned 주소 6시간(명세)
 TTS_VOICES = {f"{g}{i}" for g in "FM" for i in range(1, 6)}  # Supertonic 3 목소리(gpu_server와 같음)
 TTS_MAX_CHARS = 500
+# gpu_server 크기별 세션은 소리 20초까지라 120자(약 17초)까지 0.3초, 130자부터 3.5초·300자부터 5초를 넘겨 실패하고
+# 그동안 다른 요청도 밀린다(2026-11-02 실측) → 긴 글은 이 길이 이하 조각으로 나눠 합성하고 mp3를 잇는다
+TTS_CHUNK_CHARS = 120
 TTS_AUDIO_URL_SEC = 6 * 3600  # 안내 음성 presigned 주소(답변 음성과 같게 6시간)
 STT_MAX_BYTES = 10 * 1024 * 1024
 WHISPER_TIMEOUT = 5  # GMS whisper-1(PoC 1.0~2.6초). H200 STT_TIMEOUT과 합쳐 Spring 제한 10초 안
@@ -410,6 +417,52 @@ def tts_key(text: str, voice: str) -> str:
     return f"audio/guide/{voice}/{hashlib.sha1(text.encode()).hexdigest()[:16]}.mp3"
 
 
+def tts_chunks(text: str, limit: int = TTS_CHUNK_CHARS) -> list[str]:
+    """문장 끝에서 나누고 limit 안에서 이웃 문장을 묶는다(호출 수를 줄이고 억양을 이어 가게). 한 문장이 limit보다 길면
+    쉼표, 그다음 띄어쓰기에서 자르고, 그래도 길면 글자 수로 자른다."""
+    def split_long(s: str) -> list[str]:
+        if len(s) <= limit:
+            return [s]
+        for sep in (r"(?<=,)\s*", r"\s+"):
+            parts = [p for p in re.split(sep, s) if p]
+            if len(parts) > 1:
+                return [q for p in pack(parts) for q in split_long(p)]
+        return [s[i:i + limit] for i in range(0, len(s), limit)]
+
+    def pack(parts: list[str]) -> list[str]:
+        out: list[str] = []
+        for p in parts:
+            if out and len(out[-1]) + 1 + len(p) <= limit:
+                out[-1] += " " + p
+            else:
+                out.append(p)
+        return out
+
+    sentences = [s for s in re.split(r"(?<=[.?!…])\s+", text.strip()) if s]
+    return pack([q for s in sentences for q in split_long(s)])
+
+
+async def _join_mp3(parts: list[bytes]) -> bytes:
+    """조각 mp3를 하나로. 그냥 붙이면 첫 조각의 길이 헤더(Xing)만 남아 브라우저가 일찍 멈출 수 있어 ffmpeg로 다시 싼다(재인코딩 없음)."""
+    if len(parts) == 1:
+        return parts[0]
+    return await asyncio.to_thread(_ffmpeg_concat, parts)
+
+
+def _ffmpeg_concat(parts: list[bytes]) -> bytes:
+    with tempfile.TemporaryDirectory() as d:
+        names = [os.path.join(d, f"{i}.mp3") for i in range(len(parts))]
+        for name, b in zip(names, parts, strict=True):
+            Path(name).write_bytes(b)
+        Path(d, "list.txt").write_text("".join(f"file '{n}'\n" for n in names))
+        out = os.path.join(d, "out.mp3")
+        r = subprocess.run(["ffmpeg", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", os.path.join(d, "list.txt"),
+                            "-c", "copy", out], capture_output=True, check=False)
+        if r.returncode != 0:
+            raise RuntimeError(r.stderr.decode(errors="replace")[:300])
+        return Path(out).read_bytes()
+
+
 @router.post("/tts")
 async def tts(req: TtsRequest, request: Request) -> dict:
     """안내 목소리 한 문장 → H200 Supertonic → S3 mp3 → presigned 주소. 같은 문장·목소리는 저장본(해시 키)을 다시 쓴다.
@@ -438,11 +491,16 @@ async def tts(req: TtsRequest, request: Request) -> dict:
     if not inf:
         return missing("TTS_002")  # H200 꺼짐
     db = getattr(request.app.state, "db", None)
+    parts, ms = [], 0
     try:
-        audio, ms = await inf.tts(text, voice)
-    except inference.InferenceError as e:
-        await inference.log_remote(db, "TTS", "supertonic", t0, error=e.code)
-        return missing("TTS_003")  # H200 실패
+        for chunk in tts_chunks(text):  # 차례로: H200 TTS는 한 번에 하나씩 처리해 동시에 보내도 빨라지지 않는다
+            b, m = await inf.tts(chunk, voice)
+            parts.append(b)
+            ms += m
+        audio = await _join_mp3(parts)
+    except (inference.InferenceError, RuntimeError) as e:
+        await inference.log_remote(db, "TTS", "supertonic", t0, error=getattr(e, "code", "TTS_JOIN"))
+        return missing("TTS_003")  # H200 실패(조각 하나라도)·잇기 실패
     await storage.put_bytes(key, audio, "audio/mpeg")
     await storage.put_json(meta_key, {"durationMs": ms, "voice": voice, "text": text})
     await inference.log_remote(db, "TTS", "supertonic", t0)

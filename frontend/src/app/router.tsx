@@ -16,6 +16,7 @@ import TutorialPage from '@/pages/tutorial/TutorialPage'
 import HomePage from '@/pages/home/HomePage'
 import SearchPage from '@/pages/home/SearchPage'
 import YoutubeCheckPage from '@/pages/home/YoutubeCheckPage'
+import RegisterPage from '@/pages/register/RegisterPage'
 import NotFoundPage from '@/pages/errors/NotFoundPage'
 import RouteError from '@/pages/errors/RouteError'
 import RootError from '@/pages/errors/RootError'
@@ -50,12 +51,10 @@ const userRoutes: RouteObject[] = [
       { index: true, element: <HomePage /> },
       { path: 'search', element: <SearchPage /> },
       { path: 'search/youtube', element: <YoutubeCheckPage /> },
-      page('register', { title: '영상 등록' }),
-      page('register/upload', { title: '영상 파일 올리기' }),
-      page('register/upload/title', { title: '제목 정하기' }),
-      page('register/upload/open', { title: '공개 범위 정하기' }),
-      page('upload/:videoId', { title: '영상 올리는 중' }),
-      page('upload/:videoId/failed', { title: '업로드 끊김' }),
+      { path: 'register', element: <RegisterPage /> },
+      // 업로드 단계는 한 화면(/register) 안에서 바뀐다. 예전 주소는 처음 단계로 보낸다
+      { path: 'register/*', element: <Navigate to="/register" replace /> },
+      { path: 'upload/*', element: <Navigate to="/register" replace /> },
       page('jobs/:jobId', { title: '해설 만들기' }),
       page('watch/:videoId', { title: '영상 보기' }),
       { path: 'tutorial/:step', element: <TutorialPage /> },

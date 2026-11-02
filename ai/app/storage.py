@@ -15,11 +15,13 @@ from app.config import Settings
 class Storage(Protocol):
     async def exists(self, key: str) -> bool: ...
     async def get_json(self, key: str) -> Any: ...
+    async def get_bytes(self, key: str) -> bytes: ...
     async def put_json(self, key: str, obj: Any) -> None: ...
     async def put_bytes(self, key: str, data: bytes, content_type: str) -> None: ...
     # 업로드 영상(LOCAL): 원본을 임시 폴더로 받고, 재생용 MP4를 올린다(큰 파일이라 메모리에 다 올리지 않음)
     async def download_file(self, key: str, path: Path) -> None: ...
     async def upload_file(self, key: str, path: Path, content_type: str) -> None: ...
+    async def presign(self, key: str, expires_sec: int) -> str | None: ...
 
 
 def _dumps(obj: Any) -> bytes:
@@ -39,6 +41,9 @@ class LocalStorage:
     async def get_json(self, key: str) -> Any:
         return json.loads(self._p(key).read_text(encoding="utf-8"))
 
+    async def get_bytes(self, key: str) -> bytes:
+        return self._p(key).read_bytes()
+
     async def put_json(self, key: str, obj: Any) -> None:
         await self.put_bytes(key, _dumps(obj), "application/json")
 
@@ -55,6 +60,9 @@ class LocalStorage:
         p = self._p(key)
         p.parent.mkdir(parents=True, exist_ok=True)
         await asyncio.to_thread(shutil.copyfile, path, p)
+
+    async def presign(self, key: str, expires_sec: int) -> str | None:
+        return None  # 로컬(개발)은 재생 주소가 없다 → FE가 브라우저 음성으로 읽는다
 
 
 class S3Storage:
@@ -83,6 +91,9 @@ class S3Storage:
             return json.loads(self.s3.get_object(Bucket=self.bucket, Key=key)["Body"].read())
         return await asyncio.to_thread(get)
 
+    async def get_bytes(self, key: str) -> bytes:
+        return await asyncio.to_thread(lambda: self.s3.get_object(Bucket=self.bucket, Key=key)["Body"].read())
+
     async def put_json(self, key: str, obj: Any) -> None:
         await self.put_bytes(key, _dumps(obj), "application/json")
 
@@ -95,6 +106,10 @@ class S3Storage:
 
     async def upload_file(self, key: str, path: Path, content_type: str) -> None:
         await asyncio.to_thread(self.s3.upload_file, str(path), self.bucket, key, ExtraArgs={"ContentType": content_type})
+
+    async def presign(self, key: str, expires_sec: int) -> str | None:
+        return await asyncio.to_thread(self.s3.generate_presigned_url, "get_object",
+                                       Params={"Bucket": self.bucket, "Key": key}, ExpiresIn=expires_sec)
 
 
 def make_storage(cfg: Settings) -> Storage:

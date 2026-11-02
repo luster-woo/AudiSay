@@ -1,0 +1,428 @@
+{
+ "youtubeId": "WTFmpDwbY5M",
+ "model": "gemini-3.8-flash",
+ "result": {
+  "category": "기타",
+  "summary_30s": "게리모드 캐릭터들이 등장해 'L을 가져가'라는 말장난을 벌입니다. CLOCK에서 L을 빼거나 POOL에서 L을 빼며 소동이 일어나고, 결국 아기를 빼앗긴 뒤 녹색 정장을 입은 인물이 폭발하는 코믹 단편 영상입니다.",
+  "dialogue": [
+   {
+    "start": "00:00",
+    "end": "00:01",
+    "speaker": "L을 가져가",
+    "text": "내 이름은 L을 가져가"
+   },
+   {
+    "start": "00:01",
+    "end": "00:05",
+    "speaker": "L을 가져가",
+    "text": "조선천지 최고의 L을 가져가는 사람이다"
+   },
+   {
+    "start": "00:05",
+    "end": "00:08",
+    "speaker": "L을 가져가",
+    "text": "에엑따 L을 가져가다"
+   },
+   {
+    "start": "00:08",
+    "end": "00:09",
+    "speaker": "연구원",
+    "text": "이건 시계입니다"
+   },
+   {
+    "start": "00:09",
+    "end": "00:11",
+    "speaker": "연구원",
+    "text": "영어로는 CLOCK이죠"
+   },
+   {
+    "start": "00:11",
+    "end": "00:12",
+    "speaker": "L을 가져가",
+    "text": "에엑따 L이다"
+   },
+   {
+    "start": "00:12",
+    "end": "00:14",
+    "speaker": "L을 가져가",
+    "text": "L을 가져가"
+   },
+   {
+    "start": "00:14",
+    "end": "00:17",
+    "speaker": "연구원",
+    "text": "CLOCK에서 L을 가져가면 COCK이다"
+   },
+   {
+    "start": "00:17",
+    "end": "00:20",
+    "speaker": "연구원",
+    "text": "COCK은 한국말로 꼬1추다 이런 말이야"
+   },
+   {
+    "start": "00:21",
+    "end": "00:23",
+    "speaker": "경찰",
+    "text": "너를 공연음란죄로 체포한다"
+   },
+   {
+    "start": "00:23",
+    "end": "00:25",
+    "speaker": "연구원",
+    "text": "한번만 봐주세요"
+   },
+   {
+    "start": "00:25",
+    "end": "00:26",
+    "speaker": "경찰",
+    "text": "뭐 줄건데?"
+   },
+   {
+    "start": "00:26",
+    "end": "00:28",
+    "speaker": "연구원",
+    "text": "수영장 드리겠습니다"
+   },
+   {
+    "start": "00:28",
+    "end": "00:30",
+    "speaker": "경찰",
+    "text": "아주 좋아 정말 좋아요 ㅎㅎㅎ"
+   },
+   {
+    "start": "00:30",
+    "end": "00:32",
+    "speaker": "연구원",
+    "text": "수영장은 영어로 POOL입니다"
+   },
+   {
+    "start": "00:32",
+    "end": "00:33",
+    "speaker": "L을 가져가",
+    "text": "에엑따 L이다"
+   },
+   {
+    "start": "00:33",
+    "end": "00:35",
+    "speaker": "L을 가져가",
+    "text": "L을 가져가"
+   },
+   {
+    "start": "00:37",
+    "end": "00:38",
+    "speaker": "경찰",
+    "text": "이게 뭐야!!"
+   },
+   {
+    "start": "00:38",
+    "end": "00:40",
+    "speaker": "연구원",
+    "text": "조, 잠깐;"
+   },
+   {
+    "start": "00:40",
+    "end": "00:41",
+    "speaker": "연구원",
+    "text": "사랑의 힘으로 이겨낼 수 없을까?"
+   },
+   {
+    "start": "00:41",
+    "end": "00:44",
+    "speaker": "경찰",
+    "text": "ㅎㅎㅎ 듣고보니 그럴듯하구만♡"
+   },
+   {
+    "start": "00:45",
+    "end": "00:46",
+    "speaker": "연구원",
+    "text": "임신을 했다"
+   },
+   {
+    "start": "00:46",
+    "end": "00:47",
+    "speaker": "연구원",
+    "text": "애를 낳았다"
+   },
+   {
+    "start": "00:47",
+    "end": "00:48",
+    "speaker": "L을 가져가",
+    "text": "에엑따 애다"
+   },
+   {
+    "start": "00:48",
+    "end": "00:50",
+    "speaker": "L을 가져가",
+    "text": "애를 가져가"
+   },
+   {
+    "start": "00:50",
+    "end": "00:51",
+    "speaker": "초록 정장 남성",
+    "text": "재배맨,"
+   },
+   {
+    "start": "00:51",
+    "end": "00:52",
+    "speaker": "L을 가져가",
+    "text": "어, 무슨"
+   }
+  ],
+  "scenes": [
+   {
+    "start": "00:00",
+    "end": "00:08",
+    "title": "도심 한복판에서 기괴한 춤을 추는 남성들",
+    "people": [
+     {
+      "name": "L을 가져가",
+      "basis": "대사에서 '내 이름은 L을 가져가'",
+      "appearance": "비니 모자를 쓰고 국방색 군용 조끼를 입은 기괴한 표정의 남성"
+     },
+     {
+      "name": "연구원",
+      "basis": "흰 연구원 가운 착용",
+      "appearance": "안경을 쓰고 흰색 가운에 넥타이를 맨 대머리 남성"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "내 이름은 L을 가져가",
+      "text_type": "SUBTITLE",
+      "importance": "중",
+      "same_as_dialogue": true
+     },
+     {
+      "text": "조선천지 최고의 L을 가져가는 사람이다",
+      "text_type": "SUBTITLE",
+      "importance": "중",
+      "same_as_dialogue": true
+     },
+     {
+      "text": "에엑따 L을 가져가다",
+      "text_type": "SUBTITLE",
+      "importance": "중",
+      "same_as_dialogue": true
+     }
+    ]
+   },
+   {
+    "start": "00:08",
+    "end": "00:21",
+    "title": "CLOCK에서 L을 뺏겨 COCK이 되는 장면",
+    "people": [
+     {
+      "name": "연구원",
+      "basis": "흰 연구원 가운 착용",
+      "appearance": "벽시계를 한 손에 들고 서 있는 대머리 연구원"
+     },
+     {
+      "name": "L을 가져가",
+      "basis": "이전 장면 등장",
+      "appearance": "날아차기로 날아와 L 글자를 낚아채는 남성"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "이건 시계입니다",
+      "text_type": "SUBTITLE",
+      "importance": "중",
+      "same_as_dialogue": true
+     },
+     {
+      "text": "CLOCK",
+      "text_type": "OTHER",
+      "importance": "상",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "영어로는 CLOCK이죠",
+      "text_type": "SUBTITLE",
+      "importance": "중",
+      "same_as_dialogue": true
+     },
+     {
+      "text": "C OCK",
+      "text_type": "OTHER",
+      "importance": "상",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "CLOCK에서 L을 가져가면 COCK이다",
+      "text_type": "SUBTITLE",
+      "importance": "중",
+      "same_as_dialogue": true
+     },
+     {
+      "text": "COCK은 한국말로 꼬1추다 이런 말이야",
+      "text_type": "SUBTITLE",
+      "importance": "중",
+      "same_as_dialogue": true
+     }
+    ]
+   },
+   {
+    "start": "00:21",
+    "end": "00:44",
+    "title": "경찰의 단속과 POOL 수영장 소동",
+    "people": [
+     {
+      "name": "경찰",
+      "basis": "대사 '체포한다' 및 파란 베레모 착용",
+      "appearance": "파란 베레모를 쓰고 권총을 든 수염 난 남성"
+     },
+     {
+      "name": "연구원",
+      "basis": "흰 연구원 가운 착용",
+      "appearance": "두 손을 들고 쩔쩔매는 연구원"
+     },
+     {
+      "name": "L을 가져가",
+      "basis": "이전 장면 등장",
+      "appearance": "공중에서 POOL의 L을 낚아채는 남성"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "너를 공연음란죄로 체포한다",
+      "text_type": "SUBTITLE",
+      "importance": "중",
+      "same_as_dialogue": true
+     },
+     {
+      "text": "POOL",
+      "text_type": "OTHER",
+      "importance": "상",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "POO",
+      "text_type": "OTHER",
+      "importance": "상",
+      "same_as_dialogue": false
+     }
+    ]
+   },
+   {
+    "start": "00:44",
+    "end": "00:59",
+    "title": "연구원의 출산과 재배맨 폭발 엔딩",
+    "people": [
+     {
+      "name": "연구원",
+      "basis": "흰 연구원 가운 착용",
+      "appearance": "초록색 아기 인형을 안고 있는 연구원"
+     },
+     {
+      "name": "L을 가져가",
+      "basis": "이전 장면 등장",
+      "appearance": "연구원의 아기를 낚아채 달아나는 남성"
+     },
+     {
+      "name": "초록 정장 남성",
+      "basis": null,
+      "appearance": "초록색 페이스페인팅에 초록 정장을 입은 남성"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "애를 납치하지 맙시다.\n_애를가져가",
+      "text_type": "OTHER",
+      "importance": "상",
+      "same_as_dialogue": false
+     }
+    ]
+   },
+   {
+    "start": "00:59",
+    "end": "01:10",
+    "title": "쿠키 영상: 반복되는 코믹 댄스",
+    "people": [
+     {
+      "name": "연구원",
+      "basis": "흰 가운 착용",
+      "appearance": "다리를 높이 들며 춤추는 연구원"
+     },
+     {
+      "name": "L을 가져가",
+      "basis": "이전 장면 등장",
+      "appearance": "손가락으로 L 모양을 그리며 발차기 댄스를 추는 남성"
+     }
+    ],
+    "screen_text": []
+   }
+  ],
+  "lines": [
+   {
+    "at": "00:00",
+    "level": 1,
+    "text": "한 남성이 이마에 손가락으로 L자를 그리며 춤을 춥니다."
+   },
+   {
+    "at": "00:02",
+    "level": 2,
+    "text": "남성의 얼굴이 기괴하게 일그러집니다."
+   },
+   {
+    "at": "00:06",
+    "level": 3,
+    "text": "흰 가운을 입은 연구원도 마주 보고 다리를 뻗으며 춤을 춥니다."
+   },
+   {
+    "at": "00:09",
+    "level": 1,
+    "text": "연구원이 벽시계를 들자 옆에 영어 단어 CLOCK이 나타납니다."
+   },
+   {
+    "at": "00:13",
+    "level": 1,
+    "text": "남성이 날아와 CLOCK에서 L 글자를 낚아챕니다."
+   },
+   {
+    "at": "00:19",
+    "level": 2,
+    "text": "L이 빠진 단어 COCK이 화면에 모자이크 처리됩니다."
+   },
+   {
+    "at": "00:22",
+    "level": 1,
+    "text": "파란 모자를 쓴 경찰이 권총을 겨누며 나타납니다."
+   },
+   {
+    "at": "00:27",
+    "level": 2,
+    "text": "도로 한가운데에 네모난 간이 수영장이 생겨납니다."
+   },
+   {
+    "at": "00:33",
+    "level": 1,
+    "text": "남성이 POOL 글자에서 L을 가져가자 수영장 물이 똥물로 변합니다."
+   },
+   {
+    "at": "00:44",
+    "level": 1,
+    "text": "경찰과 연구원이 서로 얼굴을 비비며 포옹합니다."
+   },
+   {
+    "at": "00:46",
+    "level": 1,
+    "text": "연구원이 초록색 아기를 품에 안고 나타납니다."
+   },
+   {
+    "at": "00:49",
+    "level": 2,
+    "text": "남성이 아기를 가로채자 아기가 초록 정장의 어른으로 변합니다."
+   },
+   {
+    "at": "00:52",
+    "level": 1,
+    "text": "초록 정장의 남성이 달려들어 거대한 폭발을 일으킵니다."
+   },
+   {
+    "at": "00:56",
+    "level": 1,
+    "text": "화면에 '애를 납치하지 맙시다'라는 문구가 뜹니다."
+   }
+  ]
+ }
+}

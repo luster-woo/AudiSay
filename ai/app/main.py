@@ -9,9 +9,12 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Request, Response
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from redis.asyncio import Redis
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import inference
 from app.config import settings
@@ -60,6 +63,22 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="AudiSay AI", lifespan=lifespan)
 app.include_router(internal_router)
+
+
+# 내부 API 오류는 공통 응답 봉투·detail 없이 HTTP 상태와 {"code","message"}만(AI 서버 내부 명세서 "공통")
+@app.exception_handler(StarletteHTTPException)
+async def http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+    if isinstance(exc.detail, dict) and "code" in exc.detail:
+        body = exc.detail
+    else:
+        body = {"code": "NOT_FOUND" if exc.status_code == 404 else "HTTP_ERROR", "message": str(exc.detail)}
+    return JSONResponse(body, status_code=exc.status_code, headers=getattr(exc, "headers", None))
+
+
+@app.exception_handler(RequestValidationError)
+async def invalid_request(request: Request, exc: RequestValidationError) -> JSONResponse:
+    where = ", ".join(".".join(str(x) for x in e["loc"][1:]) or "body" for e in exc.errors())
+    return JSONResponse({"code": "INVALID_REQUEST", "message": f"요청 형식이 맞지 않습니다: {where}"}, status_code=400)
 
 
 @app.get("/health")

@@ -1,0 +1,350 @@
+{
+ "youtubeId": "3O7FSR1sioM",
+ "model": "gemini-3.8-flash",
+ "result": {
+  "category": "게임",
+  "summary_30s": "롤 전 프로게이머 Cyanide의 별세 소식과 함께 라이엇 게임즈가 제공하는 무료 보상인 프나틱 자르반 4세 스킨 및 칭호 획득 미션, 녹슨 블리츠크랭크 스킨 획득 조건과 파랑 정수 상점 오픈 일정을 안내합니다.",
+  "dialogue": [
+   {
+    "start": "00:00",
+    "end": "00:04",
+    "speaker": null,
+    "text": "영상에 앞서 시즌1 월드 챔피언이자 MVP였던 슈세이 선수가"
+   },
+   {
+    "start": "00:04",
+    "end": "00:08",
+    "speaker": null,
+    "text": "지난해 안타깝게 세상을 떠난 데 이어 또 다른 시즌1 월드 챔피언인"
+   },
+   {
+    "start": "00:08",
+    "end": "00:11",
+    "speaker": null,
+    "text": "Cyanide 선수의 별세 소식이 전해졌습니다"
+   },
+   {
+    "start": "00:11",
+    "end": "00:15",
+    "speaker": null,
+    "text": "이를 기리기 위해 라이엇은 몇 가지를 준비했는데요"
+   },
+   {
+    "start": "00:16",
+    "end": "00:19",
+    "speaker": null,
+    "text": "프나틱 자르반 4세 스킨"
+   },
+   {
+    "start": "00:20",
+    "end": "00:23",
+    "speaker": null,
+    "text": "'Young Legend Cyanide' 칭호"
+   },
+   {
+    "start": "00:24",
+    "end": "00:27",
+    "speaker": null,
+    "text": "자르반 4세로 3판만 플레이하면 두 보상을 획득할 수 있습니다"
+   },
+   {
+    "start": "00:28",
+    "end": "00:33",
+    "speaker": null,
+    "text": "또한 새로운 녹슨 블리츠크랭크 스킨이 10월 21일 이전까지"
+   },
+   {
+    "start": "00:33",
+    "end": "00:37",
+    "speaker": null,
+    "text": "리그 오브 레전드 클래식 모드를 20판 이상 플레이한 모든 유저에게"
+   },
+   {
+    "start": "00:37",
+    "end": "00:40",
+    "speaker": null,
+    "text": "무료로 지급된다고 하네요 만약 못 하신다면"
+   },
+   {
+    "start": "00:41",
+    "end": "00:44",
+    "speaker": null,
+    "text": "추후 파랑 정수 상점에서도 파랑 정수 15만개로 구매할 수 있습니다"
+   }
+  ],
+  "scenes": [
+   {
+    "start": "00:00",
+    "end": "00:04",
+    "title": "시즌1 월드 챔피언 슈세이 선수의 경기 장면",
+    "people": [
+     {
+      "name": "슈세이",
+      "basis": "대사에서 슈세이라고 언급",
+      "appearance": "헤드셋을 쓰고 컴퓨터 화면을 응시하는 장발의 남성"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "롤 그것이 알고싶다 | 무료 스킨 획득 방법!",
+      "text_type": "TITLE",
+      "importance": "하",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "영상에 앞서 시즌1 월드 챔피언이자 MVP였던 슈세이 선수가",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": true
+     }
+    ]
+   },
+   {
+    "start": "00:04",
+    "end": "00:08",
+    "title": "슈세이 선수의 흑백 프로필 사진",
+    "people": [
+     {
+      "name": "슈세이",
+      "basis": "대사에서 슈세이라고 언급",
+      "appearance": "수염을 기르고 팔짱을 낀 채 정면을 바라보는 장발의 남성"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "롤 그것이 알고싶다 | 무료 스킨 획득 방법!",
+      "text_type": "TITLE",
+      "importance": "하",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "지난해 안타깝게 세상을 떠난 데 이어 또 다른 시즌1 월드 챔피언인",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": true
+     }
+    ]
+   },
+   {
+    "start": "00:08",
+    "end": "00:15",
+    "title": "Cyanide 선수의 흑백 사진",
+    "people": [
+     {
+      "name": "Cyanide",
+      "basis": "자막 및 대사",
+      "appearance": "모자를 뒤로 쓰고 웃고 있는 청년"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "롤 그것이 알고싶다 | 무료 스킨 획득 방법!",
+      "text_type": "TITLE",
+      "importance": "하",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "Cyanide 선수의 별세 소식이 전해졌습니다",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": true
+     },
+     {
+      "text": "이를 기리기 위해 라이엇은 몇 가지를 준비했는데요",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": true
+     }
+    ]
+   },
+   {
+    "start": "00:15",
+    "end": "00:23",
+    "title": "프나틱 자르반 4세 스킨과 미션 보상 화면",
+    "people": [],
+    "screen_text": [
+     {
+      "text": "롤 그것이 알고싶다 | 무료 스킨 획득 방법!",
+      "text_type": "TITLE",
+      "importance": "하",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "프나틱 자르반 4세 스킨",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": true
+     },
+     {
+      "text": "YOUNG LEGEND CYANIDE MISSION REWARD",
+      "text_type": "UI",
+      "importance": "중",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "'Young Legend Cyanide' 칭호",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": true
+     }
+    ]
+   },
+   {
+    "start": "00:23",
+    "end": "00:27",
+    "title": "자르반 4세 일러스트",
+    "people": [],
+    "screen_text": [
+     {
+      "text": "롤 그것이 알고싶다 | 무료 스킨 획득 방법!",
+      "text_type": "TITLE",
+      "importance": "하",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "자르반 4세로 3판만 플레이하면 두 보상을 획득할 수 있습니다",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": true
+     }
+    ]
+   },
+   {
+    "start": "00:27",
+    "end": "00:31",
+    "title": "녹슨 블리츠크랭크 일러스트",
+    "people": [],
+    "screen_text": [
+     {
+      "text": "롤 그것이 알고싶다 | 무료 스킨 획득 방법!",
+      "text_type": "TITLE",
+      "importance": "하",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "또한 새로운 녹슨 블리츠크랭크 스킨이 10월 21일 이전까지",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": true
+     }
+    ]
+   },
+   {
+    "start": "00:31",
+    "end": "00:40",
+    "title": "리그 오브 레전드 챔피언 일러스트",
+    "people": [],
+    "screen_text": [
+     {
+      "text": "롤 그것이 알고싶다 | 무료 스킨 획득 방법!",
+      "text_type": "TITLE",
+      "importance": "하",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "리그 오브 레전드 클래식 모드를 20판 이상 플레이한 모든 유저에게",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": true
+     },
+     {
+      "text": "무료로 지급된다고 하네요 만약 못 하신다면",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": true
+     }
+    ]
+   },
+   {
+    "start": "00:40",
+    "end": "00:44",
+    "title": "상점 아이콘 화면",
+    "people": [],
+    "screen_text": [
+     {
+      "text": "롤 그것이 알고싶다 | 무료 스킨 획득 방법!",
+      "text_type": "TITLE",
+      "importance": "하",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "추후 파랑 정수 상점에서도 파랑 정수 15만개로 구매할 수 있습니다",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": true
+     }
+    ]
+   },
+   {
+    "start": "00:44",
+    "end": "00:48",
+    "title": "파랑 정수 상점 오픈 안내",
+    "people": [],
+    "screen_text": [
+     {
+      "text": "롤 그것이 알고싶다 | 무료 스킨 획득 방법!",
+      "text_type": "TITLE",
+      "importance": "하",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "26.24 BLUE ESSENCE EMPORIUM",
+      "text_type": "UI",
+      "importance": "중",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "+파랑 정수 상점이 12월 10일에 다시 돌아옵니다!",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": false
+     }
+    ]
+   },
+   {
+    "start": "00:48",
+    "end": "01:02",
+    "title": "영상 아웃트로 화면",
+    "people": [],
+    "screen_text": []
+   }
+  ],
+  "lines": [
+   {
+    "at": "00:03",
+    "level": 1,
+    "text": "검은 배경 가운데 사진이 바뀝니다."
+   },
+   {
+    "at": "00:06",
+    "level": 2,
+    "text": "팔짱을 낀 슈세이 선수의 흑백 사진입니다."
+   },
+   {
+    "at": "00:09",
+    "level": 2,
+    "text": "모자를 쓴 시아나이드 선수가 웃고 있습니다."
+   },
+   {
+    "at": "00:19",
+    "level": 1,
+    "text": "보상 팝업창과 스킨 이미지가 차례로 나타납니다."
+   },
+   {
+    "at": "00:25",
+    "level": 2,
+    "text": "창을 든 자르반 4세의 일러스트가 나옵니다."
+   },
+   {
+    "at": "00:44",
+    "level": 1,
+    "text": "파랑 정수 상점이 12월 10일 열린다는 자막이 뜹니다."
+   },
+   {
+    "at": "00:49",
+    "level": 1,
+    "text": "검은 바탕에 채널 로고가 놓인 엔딩 화면으로 이어집니다."
+   }
+  ]
+ }
+}

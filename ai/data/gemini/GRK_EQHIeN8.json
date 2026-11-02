@@ -1,0 +1,440 @@
+{
+ "youtubeId": "GRK_EQHIeN8",
+ "model": "gemini-3.5-flash",
+ "result": {
+  "category": "요리·음식",
+  "summary_30s": "초코 츄러스를 만드는 베이킹 영상입니다. 버터, 우유, 물, 설탕, 소금을 끓인 뒤 밀가루와 코코아 파우더 등을 섞어 반죽을 만듭니다. 반죽에 달걀을 섞은 후 짤주머니로 모양을 짜서 냉동실에서 굳힙니다. 굳힌 반죽을 기름에 튀긴 뒤 코코아 시나몬 슈가를 묻히고 melted 초콜릿에 찍어 초코 츄러스를 완성합니다.",
+  "dialogue": [],
+  "scenes": [
+   {
+    "start": "00:00",
+    "end": "00:13",
+    "title": "완성된 초코 츄러스 소개",
+    "people": [
+     {
+      "name": null,
+      "basis": null,
+      "appearance": "하늘색 앞치마를 입은 요리사"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "Crispy & Chewy",
+      "text_type": "TITLE",
+      "importance": "중",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "Chocolate Churros",
+      "text_type": "TITLE",
+      "importance": "상",
+      "same_as_dialogue": false
+     }
+    ]
+   },
+   {
+    "start": "00:13",
+    "end": "00:40",
+    "title": "버터와 우유, 물, 설탕, 소금 끓이기",
+    "people": [
+     {
+      "name": null,
+      "basis": null,
+      "appearance": "하늘색 앞치마를 입은 요리사"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "35g 무염버터, 60g 우유 35g Unsalted butter, 60g Milk",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "150g 물, 15g 설탕, 2g 소금 150g Water, 15g Sugar, 2g Salt",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": false
+     }
+    ]
+   },
+   {
+    "start": "00:40",
+    "end": "01:31",
+    "title": "가루 재료 체 쳐서 반죽 섞기",
+    "people": [
+     {
+      "name": null,
+      "basis": null,
+      "appearance": "하늘색 앞치마를 입은 요리사"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "80g 중력분, 25g 타피오카 전분, 15g 코코아 파우더 80g All-purpose flour, 25g Tapioca starch, 15g Cocoa powder",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": false
+     }
+    ]
+   },
+   {
+    "start": "01:31",
+    "end": "02:05",
+    "title": "반죽 약불에서 볶아 익히기",
+    "people": [
+     {
+      "name": null,
+      "basis": null,
+      "appearance": "하늘색 앞치마를 입은 요리사"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "약불에서 약 2분 정도 골고루 볶아 주세요 Cook over low heat for about 2 minutes, stirring evenly",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": false
+     }
+    ]
+   },
+   {
+    "start": "02:05",
+    "end": "03:08",
+    "title": "반죽 식히고 달걀 및 바닐라 익스트랙 섞기",
+    "people": [
+     {
+      "name": null,
+      "basis": null,
+      "appearance": "하늘색 앞치마를 입은 요리사"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "따뜻한 정도로 식혀주세요 Let it cool until just warm",
+      "text_type": "SUBTITLE",
+      "importance": "중",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "80g 달걀, 3g 바닐라 익스트랙 80g Egg, 3g Vanilla extract",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": false
+     }
+    ]
+   },
+   {
+    "start": "03:08",
+    "end": "04:02",
+    "title": "짤주머니로 반죽 짜고 냉동실에 굳히기",
+    "people": [
+     {
+      "name": null,
+      "basis": null,
+      "appearance": "하늘색 앞치마를 입은 요리사"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "냉동실에서 약 20~30분 정도 굳혀주세요 Harden in the freezer for about 20~30 minutes",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": false
+     }
+    ]
+   },
+   {
+    "start": "04:02",
+    "end": "04:24",
+    "title": "코코아 시나몬 슈가 만들기",
+    "people": [
+     {
+      "name": null,
+      "basis": null,
+      "appearance": "하늘색 앞치마를 입은 요리사"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "35g 설탕, 소금 한 꼬집, 2g 코코아 파우더, 1g 시나몬 파우더 35g Sugar, A pinch of salt, 2g Cocoa powder, 1g Cinnamon powder",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": false
+     }
+    ]
+   },
+   {
+    "start": "04:24",
+    "end": "05:14",
+    "title": "굳힌 반죽 기름에 튀기기",
+    "people": [
+     {
+      "name": null,
+      "basis": null,
+      "appearance": "하늘색 앞치마를 입은 요리사"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "약 170℃에서 약 4분 30초~5분 정도 튀겨 주세요 Fry at about 170℃ for 4 minutes 30 seconds~5 minutes",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "약 2분 정도 기름을 빼고 코코아 시나몬 슈가를 묻혀 주세요 Let the excess oil drain for about 2 minutes, then coat with the cinnamon sugar",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": false
+     }
+    ]
+   },
+   {
+    "start": "05:14",
+    "end": "06:18",
+    "title": "남은 반죽 튀겨서 코코아 시나몬 슈가 묻히기",
+    "people": [
+     {
+      "name": null,
+      "basis": null,
+      "appearance": "하늘색 앞치마를 입은 요리사"
+     }
+    ],
+    "screen_text": []
+   },
+   {
+    "start": "06:18",
+    "end": "06:49",
+    "title": "초콜릿 디핑 소스 준비하기",
+    "people": [
+     {
+      "name": null,
+      "basis": null,
+      "appearance": "하늘색 앞치마를 입은 요리사"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "80g 다크 커버춰 초콜릿, 5g 식용유 80g Dark couverture chocolate, 5g Vegetable oil",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": false
+     }
+    ]
+   },
+   {
+    "start": "06:49",
+    "end": "08:12",
+    "title": "초코 츄러스 완성 및 시식",
+    "people": [
+     {
+      "name": null,
+      "basis": null,
+      "appearance": "하늘색 앞치마를 입은 요리사"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "THANK YOU FOR WATCHING",
+      "text_type": "TITLE",
+      "importance": "중",
+      "same_as_dialogue": false
+     }
+    ]
+   }
+  ],
+  "lines": [
+   {
+    "at": "00:00",
+    "level": 1,
+    "text": "바삭하고 쫀득한 초코 츄러스를 만듭니다."
+   },
+   {
+    "at": "00:03",
+    "level": 2,
+    "text": "길쭉한 초코 츄러스를 초콜릿 소스에 푹 담급니다."
+   },
+   {
+    "at": "00:08",
+    "level": 3,
+    "text": "옆에는 작고 귀여운 토끼 인형이 놓여 있습니다."
+   },
+   {
+    "at": "00:15",
+    "level": 1,
+    "text": "프라이팬에 무염버터 35그램과 우유 60그램을 넣습니다."
+   },
+   {
+    "at": "00:20",
+    "level": 1,
+    "text": "물 150그램, 설탕 15그램, 소금 2그램을 추가합니다."
+   },
+   {
+    "at": "00:26",
+    "level": 2,
+    "text": "주걱으로 가볍게 저어주며 버터를 불에 녹입니다."
+   },
+   {
+    "at": "00:33",
+    "level": 3,
+    "text": "액체가 가장자리부터 보글보글 끓어오릅니다."
+   },
+   {
+    "at": "00:42",
+    "level": 1,
+    "text": "불을 끄고 중력분 80그램, 타피오카 전분 25그램, 코코아 파우더 15그램을 체쳐 넣습니다."
+   },
+   {
+    "at": "00:57",
+    "level": 2,
+    "text": "주걱으로 가루가 보이지 않을 때까지 잘 섞어줍니다."
+   },
+   {
+    "at": "01:10",
+    "level": 3,
+    "text": "점차 덩어리가 지며 진한 갈색 반죽이 됩니다."
+   },
+   {
+    "at": "01:34",
+    "level": 1,
+    "text": "약불에서 약 2분 동안 반죽을 볶아줍니다."
+   },
+   {
+    "at": "01:42",
+    "level": 2,
+    "text": "주걱으로 반죽을 펼쳤다가 모으며 익힙니다."
+   },
+   {
+    "at": "02:06",
+    "level": 1,
+    "text": "반죽을 유리 볼에 옮겨 따뜻한 정도로 식힙니다."
+   },
+   {
+    "at": "02:20",
+    "level": 1,
+    "text": "달걀 80그램과 바닐라 익스트랙 3그램을 넣습니다."
+   },
+   {
+    "at": "02:30",
+    "level": 2,
+    "text": "주걱으로 끊어가며 반죽에 달걀물을 매끄럽게 섞습니다."
+   },
+   {
+    "at": "02:50",
+    "level": 3,
+    "text": "반죽이 윤기가 흐르는 촉촉한 상태가 됩니다."
+   },
+   {
+    "at": "03:09",
+    "level": 1,
+    "text": "별 깍지를 낀 짤주머니에 반죽을 담습니다."
+   },
+   {
+    "at": "03:15",
+    "level": 1,
+    "text": "오븐 트레이 위에 일정한 길이로 길게 짭니다."
+   },
+   {
+    "at": "03:25",
+    "level": 2,
+    "text": "칼로 끝부분을 깔끔하게 잘라 가며 형태를 만듭니다."
+   },
+   {
+    "at": "03:56",
+    "level": 1,
+    "text": "냉동실에서 20분에서 30분 정도 반죽을 굳힙니다."
+   },
+   {
+    "at": "04:05",
+    "level": 1,
+    "text": "용기에 설탕 35그램, 소금 한 꼬집, 코코아 파우더 2그램, 시나몬 파우더 1그램을 넣습니다."
+   },
+   {
+    "at": "04:15",
+    "level": 2,
+    "text": "주걱으로 가루 재료들을 골고루 섞어 둡니다."
+   },
+   {
+    "at": "04:26",
+    "level": 1,
+    "text": "170도로 달군 기름에 굳힌 반죽을 넣고 4분 30초에서 5분간 튀깁니다."
+   },
+   {
+    "at": "04:41",
+    "level": 3,
+    "text": "튀김 냄비 안에서 츄러스가 기포를 내며 튀겨집니다."
+   },
+   {
+    "at": "04:55",
+    "level": 1,
+    "text": "튀긴 츄러스를 건져내어 2분 정도 기름을 뺍니다."
+   },
+   {
+    "at": "05:00",
+    "level": 1,
+    "text": "준비한 코코아 시나몬 슈가를 골고루 묻혀줍니다."
+   },
+   {
+    "at": "05:15",
+    "level": 2,
+    "text": "남은 반죽들도 기름에 넣고 노릇하게 튀겨냅니다."
+   },
+   {
+    "at": "05:35",
+    "level": 2,
+    "text": "젓가락으로 굴려가며 골고루 익혀 건져냅니다."
+   },
+   {
+    "at": "05:50",
+    "level": 2,
+    "text": "기름을 뺀 뒤 코코아 시나몬 슈가 용기에 굴려 코팅합니다."
+   },
+   {
+    "at": "06:13",
+    "level": 3,
+    "text": "설탕이 듬뿍 묻은 초코 츄러스가 완성되어 쌓입니다."
+   },
+   {
+    "at": "06:19",
+    "level": 1,
+    "text": "컵에 녹인 다크 커버춰 초콜릿 80그램과 식용유 5그램을 섞습니다."
+   },
+   {
+    "at": "06:29",
+    "level": 1,
+    "text": "츄러스 끝부분에 melted 초콜릿을 살짝 찍어 굳힙니다."
+   },
+   {
+    "at": "06:42",
+    "level": 3,
+    "text": "초콜릿이 묻은 츄러스를 유황지 위에 차례로 나열합니다."
+   },
+   {
+    "at": "06:50",
+    "level": 1,
+    "text": "접시에 츄러스와 디핑용 초콜릿 소스를 함께 담아냅니다."
+   },
+   {
+    "at": "07:00",
+    "level": 2,
+    "text": "츄러스를 반으로 갈라 겉은 바삭하고 속은 쫀득한 질감을 보여줍니다."
+   },
+   {
+    "at": "07:10",
+    "level": 2,
+    "text": "디핑 초콜릿 소스에 츄러스를 푹 찍어 올려봅니다."
+   },
+   {
+    "at": "07:22",
+    "level": 3,
+    "text": "츄러스를 손으로 찢자 찰기 있는 속 반죽이 드러납니다."
+   },
+   {
+    "at": "07:58",
+    "level": 1,
+    "text": "먹음직스러운 초코 츄러스가 완성되었습니다."
+   }
+  ]
+ }
+}

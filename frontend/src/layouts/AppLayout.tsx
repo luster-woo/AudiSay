@@ -17,8 +17,8 @@ export function AppLayout() {
   return (
     <>
       <SkipLink />
-      <header className="border-b border-line bg-paper">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-6 px-8 py-3">
+      <header className="bg-paper">
+        <div className="mx-auto flex min-h-18 max-w-[90rem] items-center justify-between gap-6 px-16">
           <BrandLogo subtitle="화면해설 플레이어" />
           <div className="flex items-center gap-6">
             <MainNav />
@@ -27,7 +27,7 @@ export function AppLayout() {
         </div>
       </header>
       <AnnounceBar />
-      <main id="main" tabIndex={-1} className="mx-auto max-w-7xl px-8 py-10 outline-none">
+      <main id="main" tabIndex={-1} className="mx-auto max-w-[90rem] px-16 pt-8 pb-16 outline-none">
         <Outlet />
       </main>
     </>

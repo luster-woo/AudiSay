@@ -36,7 +36,7 @@ export function MainNav() {
               <Link
                 to={item.to}
                 aria-current={active ? 'page' : undefined}
-                className={`flex min-h-touch items-center border-b-4 px-4 font-bold ${
+                className={`flex min-h-touch items-center border-b-4 px-4 text-lg font-bold ${
                   active ? 'border-navy text-navy' : 'border-transparent text-ink'
                 }`}
               >

@@ -93,9 +93,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     navigate('/landing', { replace: true })
   }, [announce, navigate, queryClient])
 
+  const updateUser = useCallback((patch: Partial<SessionUser>) => {
+    setUser((prev) => (prev ? { ...prev, ...patch } : prev))
+  }, [])
+
   const value = useMemo<AuthValue>(
-    () => ({ status, user, isAdmin: user?.role === 'ADMIN', login, logout }),
-    [status, user, login, logout],
+    () => ({ status, user, isAdmin: user?.role === 'ADMIN', login, logout, updateUser }),
+    [status, user, login, logout, updateUser],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

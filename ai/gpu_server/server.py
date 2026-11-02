@@ -26,7 +26,7 @@ from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-VERSION = 12
+VERSION = 13
 VLM_REPO = os.getenv("VLM_REPO", "Qwen/Qwen3-VL-8B-Instruct")
 WHISPER_REPO = os.getenv("WHISPER_REPO", "deepdml/faster-whisper-large-v3-turbo-ct2")
 DEVICE = os.getenv("DEVICE", "cuda:0")
@@ -318,15 +318,17 @@ def wav_16k(data: bytes):
 
 
 @app.post("/stt")
-def stt(audio: UploadFile = File(...), language: str = Form("ko")):
+def stt(audio: UploadFile = File(...), language: str = Form("ko"), prompt: str = Form("")):
     """language: "ko"(기본, 질문 녹음) 또는 "auto"(업로드 영상: 언어 자동 감지). 버전 5부터.
+    prompt: 받아쓰기 힌트(영상 제목·인물 이름·목차 단어). 고유명사 인식을 높인다. 버전 13부터(옛 클라이언트는 안 보냄).
     한국어로 고정하면 영어 내레이션 영상을 "1.2.1." 같은 엉터리로 받아쓴다(2026-10-29 망고 커리 시험)."""
     t0 = time.time()
     # 노트북이 16kHz mono 16bit wav로 보내므로 PyAV 없이 직접 읽는다(PyAV 버전 충돌로 받아쓰기가 실패한 적이 있음)
     samples = wav_16k(audio.file.read())
     lang = None if language == "auto" else language
     with _lock:
-        segs, info = whisper().transcribe(samples, language=lang, beam_size=5, vad_filter=True, condition_on_previous_text=False)
+        segs, info = whisper().transcribe(samples, language=lang, beam_size=5, vad_filter=True, condition_on_previous_text=False,
+                                          initial_prompt=prompt.strip()[:400] or None)
         segs = list(segs)
     _count("stt", t0)
     return {"segments": [{"startMs": int(s.start * 1000), "endMs": int(s.end * 1000), "text": s.text.strip()}

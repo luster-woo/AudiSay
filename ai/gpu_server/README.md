@@ -192,3 +192,7 @@ uv run python scripts/h200_call.py POST /warmup
 | 느렸던 것 | 새 문장마다 1.6초: cuDNN이 입력 크기가 바뀔 때마다 계산 방법을 다시 찾음 → 길이를 묶음 크기로 맞추고 크기별 세션을 따로 둠(`tts_bucket.py`, 53개, 약 20GB). 켠 뒤 약 45초 동안 뒤에서 미리 만든다(`/health`의 `ttsWarmSessions`가 53이면 끝) |
 | 잠금 | Qwen·Whisper와 따로 잠근다(`_tts_lock`). 다른 사람의 해설 만들기가 GPU를 잡고 있어도 안내는 기다리지 않는다 |
 | 실측 | 서버 안 0.04초, 터널 너머 왕복 0.1~0.16초(mp3로 받아 전송량 490KB → 약 40KB) |
+
+### 버전 13 (2026-11-02) — 받아쓰기 힌트
+
+`POST /stt`가 `prompt`(영상 제목·인물 이름·목차 단어)를 받아 faster-whisper `initial_prompt`로 넣는다. 질문 녹음에서 고유명사 인식을 높인다. 옛 클라이언트는 보내지 않으므로 그대로 동작한다.

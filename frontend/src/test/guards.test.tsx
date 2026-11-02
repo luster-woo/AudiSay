@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import { reissueAccessToken } from '@/api/client'
 import { usersApi } from '@/api/users'
 import type { Me, Role } from '@/api/types'
@@ -67,11 +67,9 @@ test('관리자가 로그인 화면에 오면 신고 처리로 보내고 사이�
 test('현재 메뉴에 aria-current 가 붙는다 (/verify → 내 정보)', async () => {
   loginAs('VISUALLY_IMPAIRED')
   renderRoute('/verify')
-  expect(await screen.findByRole('link', { name: '내 정보' })).toHaveAttribute(
-    'aria-current',
-    'page',
-  )
-  expect(screen.getByRole('link', { name: '홈' })).not.toHaveAttribute('aria-current')
+  const nav = within(await screen.findByRole('navigation', { name: '주 메뉴' }))
+  expect(nav.getByRole('link', { name: '내 정보' })).toHaveAttribute('aria-current', 'page')
+  expect(nav.getByRole('link', { name: '홈' })).not.toHaveAttribute('aria-current')
   expect(document.documentElement.dataset.fontScale).toBe('3')
 })
 

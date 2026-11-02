@@ -11,8 +11,8 @@ export interface UploadDraft {
   visibility: Visibility
 }
 
-/** idle → starting(사전 검사) → uploading → completing → (onDone) / failed(연결 끊김) */
-export type UploadPhase = 'idle' | 'starting' | 'uploading' | 'completing' | 'failed'
+/** idle → starting(사전 검사) → uploading → completing → done(서버가 해설 만들기 시작) / failed(연결 끊김) */
+export type UploadPhase = 'idle' | 'starting' | 'uploading' | 'completing' | 'done' | 'failed'
 
 /**
  * 영상 업로드 한 건의 상태.
@@ -54,6 +54,7 @@ export function useVideoUpload(onDone: (result: UploadCompleteResult) => void) {
         setPhase('completing')
         const result = await uploadsApi.complete(videoId, parts)
         videoIdRef.current = null
+        setPhase('done')
         onDoneRef.current(result)
       } catch {
         if (controller.signal.aborted) return // 사용자가 멈춘 경우

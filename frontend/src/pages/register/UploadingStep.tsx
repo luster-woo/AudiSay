@@ -36,8 +36,10 @@ export function UploadingStep({
   const { announce } = useAnnouncer()
   const headingRef = useRef<HTMLHeadingElement>(null)
   const [confirmStop, setConfirmStop] = useState(false)
-  const percent = totalBytes ? Math.min(100, Math.floor((loaded / totalBytes) * 100)) : 0
-  const remain = remainText(etaSec)
+  const percent =
+    phase === 'done' ? 100 : totalBytes ? Math.min(100, Math.floor((loaded / totalBytes) * 100)) : 0
+  const finished = phase === 'completing' || phase === 'done'
+  const remain = finished ? '다 올렸어요' : remainText(etaSec)
 
   usePageEntry({
     title: '영상 올리는 중',
@@ -55,7 +57,7 @@ export function UploadingStep({
   }, [percent, remain, announce])
 
   useEffect(() => {
-    if (phase === 'completing') announce('다 올렸어요. 해설 만들기로 넘어가요.')
+    if (phase === 'completing') announce('다 올렸어요. 해설 만들기를 준비하고 있어요.')
     if (phase === 'failed') {
       announce('연결이 끊겨 업로드가 멈췄어요. 처음부터 다시 올리기 버튼에 있어요.', {
         politeness: 'assertive',
@@ -67,7 +69,7 @@ export function UploadingStep({
     <div className="max-w-[60rem]">
       <p className="text-2xl font-bold text-navy">영상 올리기</p>
       <h1 ref={headingRef} tabIndex={-1} className="mt-6 text-[2.75rem] font-bold outline-none">
-        {phase === 'completing' ? '다 올렸어요' : '영상을 올리고 있어요'}
+        {phase === 'completing' || phase === 'done' ? '다 올렸어요' : '영상을 올리고 있어요'}
       </h1>
       <p className="mt-6 text-2xl">
         {title} · {formatSize(totalBytes)}
@@ -82,23 +84,27 @@ export function UploadingStep({
         className="mt-10 h-7"
       />
       <p className="mt-6 text-2xl text-ink-muted">
-        {formatSize(loaded)} / {formatSize(totalBytes)} · {remain}
+        {formatSize(finished ? totalBytes : loaded)} / {formatSize(totalBytes)} · {remain}
       </p>
       <p className="mt-8 text-2xl">
-        다 올라가면 바로 해설 만들기로 넘어가요. 올리는 동안 이 화면에 머물러 주세요.
+        {finished
+          ? '해설 만들기를 준비하고 있어요.'
+          : '다 올라가면 해설 만들기가 바로 시작돼요. 올리는 동안 이 화면에 머물러 주세요.'}
       </p>
-      <Button
-        variant="secondary"
-        size="2xl"
-        disabled={phase !== 'uploading'}
-        onClick={() => {
-          setConfirmStop(true)
-          announce('업로드를 멈출까요? 계속 올리기 버튼에 있어요.')
-        }}
-        className="mt-8 min-w-[14rem]"
-      >
-        업로드 멈추기
-      </Button>
+      {!finished && (
+        <Button
+          variant="secondary"
+          size="2xl"
+          disabled={phase !== 'uploading'}
+          onClick={() => {
+            setConfirmStop(true)
+            announce('업로드를 멈출까요? 계속 올리기 버튼에 있어요.')
+          }}
+          className="mt-8 min-w-[14rem]"
+        >
+          업로드 멈추기
+        </Button>
+      )}
 
       <StatusDialog
         open={confirmStop && phase === 'uploading'}

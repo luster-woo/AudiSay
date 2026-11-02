@@ -36,7 +36,9 @@ MAX_SHIFT_MS = 6_000  # 대사를 피해 뒤로 미는 최대 거리. 내레이�
 def place(at_ms: int, dialogues: list[dict], duration_ms: int) -> tuple[int, int | None]:
     """대사 중간이면 대사가 끝난 직후로 옮긴다. 대사가 이어져 MAX_SHIFT_MS 넘게 밀려야 하면, 처음 만난 대사 끝(말이
     끊기는 자리)에 두고 gapEndMs는 null(빈틈 없음 → 재생 엔진이 영상을 잠깐 멈추고 읽는다).
-    데모 검증(2026-10-29): 영어 내레이션 요리 영상에서 115문장이 모두 영상 끝(124초)으로 밀린 문제."""
+    데모 검증(2026-10-29): 영어 내레이션 요리 영상에서 115문장이 모두 영상 끝(124초)으로 밀린 문제.
+    처음 만난 대사 끝마저 MAX_SHIFT_MS보다 멀면(노래 한 절이 대사 하나로 잡힘) 원래 시각에 둔다. 데모 검증(2026-11-02):
+    노래 영상에서 0:08~0:38 해설이 모두 1:15(1절 끝)로, 1:39~2:38 해설이 3:02로 몰린 문제."""
     t = at_ms
     first_end = None
     moved = True
@@ -47,7 +49,7 @@ def place(at_ms: int, dialogues: list[dict], duration_ms: int) -> tuple[int, int
                 first_end = first_end if first_end is not None else d["endMs"]
                 t, moved = d["endMs"], True
         if t - at_ms > MAX_SHIFT_MS:
-            t = first_end
+            t = first_end if first_end - at_ms <= MAX_SHIFT_MS else at_ms
             break
     t = min(t, duration_ms)
     if any(d["startMs"] <= t < d["endMs"] for d in dialogues):  # 바로 다음 대사가 이어짐 → 빈틈 없음

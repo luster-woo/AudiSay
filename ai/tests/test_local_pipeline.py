@@ -66,6 +66,14 @@ def test_place_caps_shift_for_nonstop_narration():
     assert place(1000, [{"startMs": 0, "endMs": 2000, "text": "a"}, {"startMs": 5000, "endMs": 6000, "text": "b"}], 10_000) == (2000, 5000)
 
 
+
+def test_place_keeps_time_inside_long_song_segment():
+    """노래 한 절이 대사 하나(0:03~1:15)로 잡히면 끝(1:15)으로 몰지 않고 원래 시각에 둔다(데모 2026-11-02)."""
+    song = [{"startMs": 3_000, "endMs": 75_000, "text": "가사"}, {"startMs": 87_000, "endMs": 182_000, "text": "가사"}]
+    assert [place(a, song, 207_000) for a in (8_000, 38_000, 99_000, 158_000)] == [
+        (8_000, None), (38_000, None), (99_000, None), (158_000, None)]
+    assert place(72_000, song, 207_000) == (75_000, 87_000)  # 끝이 6초 안이면 예전처럼 끝난 직후 빈 구간으로
+
 def test_genre_guide_uses_character_book():
     extra, series = prompts.genre_guide("먼작귀 113화")
     assert series == "chiikawa" and "시리즈 등장인물 사전" in extra and "치이카와" in extra

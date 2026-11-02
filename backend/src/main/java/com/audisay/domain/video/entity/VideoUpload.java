@@ -105,6 +105,13 @@ public class VideoUpload {
         this.transcodeStatus = TranscodeStatus.DONE;
     }
 
+    /** 재생용 파일을 만들기 전에 작업이 실패했다. 이미 만들었으면 그대로 둔다 */
+    public void failTranscode() {
+        if (transcodeStatus != TranscodeStatus.DONE) {
+            this.transcodeStatus = TranscodeStatus.FAILED;
+        }
+    }
+
     /** 변환이 끝나 재생용 파일이 있는지 */
     public boolean isPlayable() {
         return transcodeStatus == TranscodeStatus.DONE && playbackKey != null;

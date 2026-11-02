@@ -9,8 +9,6 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public enum MessageType {
     JOB_PREPARE(RabbitConfig.PREPARE_QUEUE),
-    JOB_TRANSCRIBE(RabbitConfig.TRANSCRIBE_QUEUE),
-    JOB_SCENE(RabbitConfig.SCENE_QUEUE),
     JOB_DESCRIBE(RabbitConfig.DESCRIBE_QUEUE),
     JOB_MERGE(RabbitConfig.MERGE_QUEUE),
     JOB_TTS(RabbitConfig.TTS_QUEUE),

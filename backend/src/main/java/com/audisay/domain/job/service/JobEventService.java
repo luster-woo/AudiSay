@@ -16,9 +16,9 @@ import com.audisay.domain.job.message.result.PrepareResult;
 import com.audisay.domain.job.message.result.TtsResult;
 import com.audisay.domain.job.repository.JobChunkRepository;
 import com.audisay.domain.job.repository.JobRepository;
+import com.audisay.domain.upload.service.UploadService;
 import com.audisay.domain.video.entity.Category;
 import com.audisay.domain.video.entity.Video;
-import com.audisay.domain.video.repository.VideoUploadRepository;
 import com.audisay.global.config.JobProperties;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
@@ -37,6 +37,7 @@ public class JobEventService {
     private static final int DESCRIBE_END = 70;
     private static final int MERGE_END = 80;
     private static final String UNKNOWN_ERROR = "UNKNOWN";
+    private static final String TRANSCODE_FAILED = "TRANSCODE_FAILED";
     private static final String YOUTUBE_WATCH_URL = "https://www.youtube.com/watch?v=";
 
     private final JobRepository jobRepository;
@@ -45,7 +46,7 @@ public class JobEventService {
     private final JobProgressNotifier notifier;
     private final JobEventDeduplicator deduplicator;
     private final DescriptionService descriptionService;
-    private final VideoUploadRepository videoUploadRepository;
+    private final UploadService uploadService;
     private final JobProperties jobProperties;
     private final ObjectMapper objectMapper;
     private final MeterRegistry meterRegistry;
@@ -97,7 +98,7 @@ public class JobEventService {
                 afterChunkFinished(job);
             }
             case JOB_TTS -> onTtsCompleted(job, objectMapper.convertValue(envelope.payload(), TtsResult.class));
-            case JOB_PREPARE, JOB_TRANSCRIBE, JOB_SCENE, JOB_MERGE -> failJob(job, errorCode);
+            case JOB_PREPARE, JOB_MERGE -> failJob(job, errorCode);
             case LINE_TTS, JOB_EVENT -> {
             }
         }
@@ -158,34 +159,29 @@ public class JobEventService {
             return;
         }
         Video video = job.getVideo();
-        video.changeCategory(toCategory(result.category()));
+        Category category = toCategory(result.category());
+        video.changeCategory(category);
+        String youtubeUrl = null;
         if (job.getPipeline() == Pipeline.LOCAL) {
-            // 해설 생성이 실패해도 변환된 재생용 파일은 쓸 수 있게 먼저 남긴다
-            finishTranscode(job, result.playbackKey());
-            log.error("LOCAL 파이프라인은 아직 지원하지 않음 jobId={}", job.getId());
-            failJob(job, UNKNOWN_ERROR);
-            return;
+            if (result.playbackKey() == null) {
+                log.error("LOCAL prepare 결과에 playbackKey 없음 jobId={}", job.getId());
+                failJob(job, TRANSCODE_FAILED);
+                return;
+            }
+            uploadService.finishTranscode(video.getId(), result.playbackKey());
+        } else {
+            youtubeUrl = YOUTUBE_WATCH_URL + video.getYoutubeVideoId();
         }
 
         List<JobChunk> chunks = jobChunkRepository.saveAll(result.chunks().stream()
                 .map(c -> JobChunk.create(job, c.chunkIndex(), c.startMs(), c.endMs(), c.contextSummary()))
                 .toList());
-        String youtubeUrl = YOUTUBE_WATCH_URL + video.getYoutubeVideoId();
         for (JobChunk chunk : chunks) {
             jobMessagePublisher.publish(job.getId(), MessageType.JOB_DESCRIBE,
-                    DescribePayload.of(chunk, job.getPipeline(), youtubeUrl, result.category()));
+                    DescribePayload.of(chunk, job.getPipeline(), youtubeUrl, category.name()));
         }
         job.updateProgress(PREPARE_END);
         notifier.progress(job);
-    }
-
-    private void finishTranscode(Job job, String playbackKey) {
-        if (playbackKey == null) {
-            log.warn("LOCAL prepare 결과에 playbackKey 없음 jobId={}", job.getId());
-            return;
-        }
-        videoUploadRepository.findById(job.getVideo().getId())
-                .ifPresent(upload -> upload.finishTranscode(playbackKey));
     }
 
     private void afterChunkFinished(Job job) {
@@ -203,7 +199,7 @@ public class JobEventService {
             failJob(job, errorCode == null ? UNKNOWN_ERROR : errorCode);
             return;
         }
-        jobMessagePublisher.publish(job.getId(), MessageType.JOB_MERGE, MergePayload.of(job.getId(),
+        jobMessagePublisher.publish(job.getId(), MessageType.JOB_MERGE, MergePayload.of(
                 job.getVideo().getId(), job.getPipeline(), covered, ChunkCoverage.coveredUntilMs(chunks)));
         notifier.progress(job);
     }
@@ -228,6 +224,9 @@ public class JobEventService {
 
     private void failJob(Job job, String errorCode) {
         job.fail(errorCode == null ? UNKNOWN_ERROR : errorCode);
+        if (job.getPipeline() == Pipeline.LOCAL) {
+            uploadService.failTranscode(job.getVideo().getId());
+        }
         notifier.failed(job);
         countFinished(job);
     }

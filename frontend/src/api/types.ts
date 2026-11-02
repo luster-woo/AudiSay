@@ -627,3 +627,59 @@ export interface ReportResult {
   reportId: number
   status: 'PENDING'
 }
+
+/* ───────────── 관리자 · AI 사용량 통계 ───────────── */
+
+/** 호출 묶음 공통 집계 */
+export interface AiUsageTotals {
+  calls: number
+  inputTokens: number
+  outputTokens: number
+  /** 모델 단가표 × 토큰으로 조회 시점에 계산. H200 호출은 0 */
+  estimatedCredits: number
+}
+
+export interface AiUsageByPurpose extends AiUsageTotals {
+  /** DESCRIBE, QUESTION, INTENT, STT, TTS, VERIFY … */
+  purpose: string
+  errorRate: number
+  p50LatencyMs: number | null
+  p95LatencyMs: number | null
+}
+
+export interface AiUsageByModel extends AiUsageTotals {
+  model: string
+}
+
+export interface AiUsageDaily extends AiUsageTotals {
+  /** YYYY-MM-DD (KST) */
+  date: string
+}
+
+/** GET /admin/stats/ai-usage 의 data */
+export interface AiUsageStats {
+  from: string
+  to: string
+  summary: AiUsageTotals & {
+    /** error_code 가 있는 호출 비율 (0 ~ 1) */
+    errorRate: number
+    /** 대체 응답(is_fallback) 비율 (0 ~ 1) */
+    fallbackRate: number
+  }
+  /** 크레딧 큰 순 */
+  byPurpose: AiUsageByPurpose[]
+  /** 크레딧 큰 순 */
+  byModel: AiUsageByModel[]
+  /** 날짜 순. 호출이 없는 날도 0 으로 온다 */
+  daily: AiUsageDaily[]
+  /** 유튜브 해설 재사용으로 아낀 크레딧 */
+  reuse: {
+    newJob: number
+    reused: number
+    joinedJob: number
+    avgCreditsPerVideo: number
+    savedCredits: number
+    /** savedCredits ÷ (savedCredits + 실제 생성 크레딧) */
+    savedRate: number
+  }
+}

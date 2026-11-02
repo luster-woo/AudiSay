@@ -43,6 +43,7 @@ const adminPage = (
 })
 const reportsPage = () => import('@/pages/admin/ReportsPage')
 const usersPage = () => import('@/pages/admin/UsersPage')
+const statsPage = () => import('@/pages/admin/StatsPage')
 
 /** 로그인 전에만 보는 화면 (로그인 상태면 RedirectIfAuthed 가 돌려보낸다) */
 const publicRoutes: RouteObject[] = [
@@ -97,8 +98,7 @@ const adminRoutes: RouteObject[] = [
           { index: true, element: <Navigate to="reports" replace /> },
           adminPage('reports', { title: '신고 처리', crumb: '신고 처리' }, reportsPage),
           adminPage('reports/:reportId', { title: '신고 처리', crumb: '신고 처리' }, reportsPage),
-          page('videos', { title: '해설 검수', crumb: '해설 검수' }),
-          page('videos/:videoId', { title: '해설 검수', crumb: '해설 검수' }),
+          adminPage('stats', { title: '통계' }, statsPage),
           adminPage('users', { title: '회원' }, usersPage),
         ],
       },

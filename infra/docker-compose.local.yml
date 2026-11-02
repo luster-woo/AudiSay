@@ -41,6 +41,33 @@ services:
     ports:
       - "127.0.0.1:5672:5672"     # 애플리케이션 접속
       - "127.0.0.1:15672:15672"   # 관리 화면 http://localhost:15672
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  ai:
+    build: ../ai                     # 경로는 이 파일(infra/) 기준
+    profiles: ["ai"]
+    env_file: ../.env
+    environment:
+      # .env의 localhost 값을 컨테이너 네트워크의 서비스 이름으로 덮어쓴다
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      RABBITMQ_HOST: rabbitmq
+      H200_BASE_URL: http://host.docker.internal:8100   # 호스트 8100 포트 (H200 터널 등)
+      WORKER_QUEUES: ""
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
 
 volumes:
   pgdata:

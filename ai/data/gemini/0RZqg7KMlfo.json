@@ -1,0 +1,403 @@
+{
+ "youtubeId": "0RZqg7KMlfo",
+ "model": "gemini-3.8-flash",
+ "result": {
+  "category": "기타",
+  "summary_30s": "야외에서 밤만쥬가 핫소스와 레몬을 곁들여 생굴을 먹자 치이카와 일행도 굴을 맛보는데 치이카와는 비린 바다향에 당황합니다. 밤에는 식당을 찾은 밤만쥬에게 직원이 마감 대신 스테이크를 대접합니다.",
+  "dialogue": [
+   {
+    "start": "00:00",
+    "end": "00:02",
+    "speaker": null,
+    "text": "먼작귀"
+   },
+   {
+    "start": "00:17",
+    "end": "00:18",
+    "speaker": null,
+    "text": "목넘김"
+   },
+   {
+    "start": "00:21",
+    "end": "00:23",
+    "speaker": null,
+    "text": "우리 주는 거야?"
+   },
+   {
+    "start": "00:32",
+    "end": "00:34",
+    "speaker": null,
+    "text": "목넘김"
+   },
+   {
+    "start": "00:34",
+    "end": "00:36",
+    "speaker": null,
+    "text": "먼작귀"
+   },
+   {
+    "start": "00:43",
+    "end": "00:46",
+    "speaker": null,
+    "text": "오늘 영업은 끝났어요"
+   },
+   {
+    "start": "00:48",
+    "end": "00:51",
+    "speaker": null,
+    "text": "그럼 대신에 스테이크를 드릴게요"
+   },
+   {
+    "start": "00:55",
+    "end": "00:57",
+    "speaker": null,
+    "text": "네 마음대로!"
+   },
+   {
+    "start": "01:02",
+    "end": "01:27",
+    "speaker": null,
+    "text": "(노래) 뭐야 벌써 아침이네 혼잣말 구워진 빵에 버터 발라 발라 빵이 불을 잔뜩 머금어서 아직 축축해"
+   }
+  ],
+  "scenes": [
+   {
+    "start": "00:00",
+    "end": "00:03",
+    "title": "타이틀 카드 '바다향'",
+    "people": [
+     {
+      "name": "치이카와",
+      "basis": "시리즈 등장인물 사전",
+      "appearance": "하얀 곰 모습에 눈물을 글썽이며 생굴을 든 모습"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "바다향",
+      "text_type": "TITLE",
+      "importance": "상",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "먼작귀",
+      "text_type": "TITLE",
+      "importance": "중",
+      "same_as_dialogue": true
+     }
+    ]
+   },
+   {
+    "start": "00:03",
+    "end": "00:13",
+    "title": "생굴을 먹고 음료를 마시는 밤만쥬",
+    "people": [
+     {
+      "name": null,
+      "basis": null,
+      "appearance": "머리 윗부분이 갈색인 다람쥐 모습의 동물 캐릭터"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "생굴",
+      "text_type": "TITLE",
+      "importance": "상",
+      "same_as_dialogue": false
+     }
+    ]
+   },
+   {
+    "start": "00:13",
+    "end": "00:20",
+    "title": "밤만쥬를 바라보는 세 친구",
+    "people": [
+     {
+      "name": "하치와레",
+      "basis": "시리즈 등장인물 사전",
+      "appearance": "머리 위쪽이 파란색인 하얀 고양이 모양 캐릭터"
+     },
+     {
+      "name": "우사기",
+      "basis": "시리즈 등장인물 사전",
+      "appearance": "노란색의 긴 귀를 가진 토끼 모양 캐릭터"
+     },
+     {
+      "name": "치이카와",
+      "basis": "시리즈 등장인물 사전",
+      "appearance": "작고 하얀 곰 모양 캐릭터"
+     },
+     {
+      "name": null,
+      "basis": null,
+      "appearance": "등을 돌린 채 그루터기 앞에 앉아 있는 갈색 윗머리의 캐릭터"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "꿀꺽",
+      "text_type": "SUBTITLE",
+      "importance": "중",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "목넘김",
+      "text_type": "SUBTITLE",
+      "importance": "중",
+      "same_as_dialogue": true
+     }
+    ]
+   },
+   {
+    "start": "00:20",
+    "end": "00:33",
+    "title": "굴을 건네받아 맛보는 세 친구",
+    "people": [
+     {
+      "name": "하치와레",
+      "basis": "시리즈 등장인물 사전",
+      "appearance": "생굴을 들고 미소 짓는 푸른 털 고양이"
+     },
+     {
+      "name": "우사기",
+      "basis": "시리즈 등장인물 사전",
+      "appearance": "생굴을 입에 넣고 감탄하는 노란 토끼"
+     },
+     {
+      "name": "치이카와",
+      "basis": "시리즈 등장인물 사전",
+      "appearance": "생굴을 먹고 눈물을 글썽이며 컵 음료를 마시는 하얀 곰"
+     },
+     {
+      "name": null,
+      "basis": null,
+      "appearance": "음료 캔을 건네주는 갈색 머리 캐릭터"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "바다향",
+      "text_type": "OTHER",
+      "importance": "상",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "비린내",
+      "text_type": "OTHER",
+      "importance": "중",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "목넘김",
+      "text_type": "SUBTITLE",
+      "importance": "중",
+      "same_as_dialogue": true
+     }
+    ]
+   },
+   {
+    "start": "00:33",
+    "end": "00:36",
+    "title": "아이캐치 장면",
+    "people": [
+     {
+      "name": "치이카와",
+      "basis": "시리즈 등장인물 사전",
+      "appearance": "문 뒤에서 빼꼼 고개를 내미는 하얀 곰"
+     },
+     {
+      "name": "하치와레",
+      "basis": "시리즈 등장인물 사전",
+      "appearance": "치이카와 머리 위에서 얼굴을 내미는 고양이"
+     },
+     {
+      "name": "우사기",
+      "basis": "시리즈 등장인물 사전",
+      "appearance": "하치와레 뒤에서 미소 짓는 토끼"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "먼작귀",
+      "text_type": "TITLE",
+      "importance": "상",
+      "same_as_dialogue": true
+     }
+    ]
+   },
+   {
+    "start": "00:36",
+    "end": "00:42",
+    "title": "밤길을 걷다 식당을 발견한 밤만쥬",
+    "people": [
+     {
+      "name": null,
+      "basis": null,
+      "appearance": "뺨을 붉힌 채 밤길을 걸어가는 갈색 머리의 캐릭터"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "로우",
+      "text_type": "OTHER",
+      "importance": "상",
+      "same_as_dialogue": false
+     }
+    ]
+   },
+   {
+    "start": "00:42",
+    "end": "00:59",
+    "title": "식당에서 스테이크를 대접받는 밤만쥬",
+    "people": [
+     {
+      "name": null,
+      "basis": null,
+      "appearance": "머리에 수건을 두른 양 모양 직원"
+     },
+     {
+      "name": null,
+      "basis": null,
+      "appearance": "카운터 의자에 앉아 스테이크를 먹는 갈색 머리 캐릭터"
+     },
+     {
+      "name": null,
+      "basis": null,
+      "appearance": "가면과 방탄복을 입고 커튼 뒤에서 불쑥 나타난 캐릭터"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "끝",
+      "text_type": "OTHER",
+      "importance": "중",
+      "same_as_dialogue": false
+     }
+    ]
+   },
+   {
+    "start": "00:59",
+    "end": "01:36",
+    "title": "엔딩 크레딧",
+    "people": [
+     {
+      "name": "치이카와",
+      "basis": "시리즈 등장인물 사전",
+      "appearance": "화면 오른쪽 아래에서 노래 부르는 하얀 곰"
+     },
+     {
+      "name": "하치와레",
+      "basis": "시리즈 등장인물 사전",
+      "appearance": "화면 왼쪽 아래에서 노래 부르는 푸른 무늬 고양이"
+     },
+     {
+      "name": "우사기",
+      "basis": "시리즈 등장인물 사전",
+      "appearance": "화면 오른쪽에서 뒤구르기하는 토끼"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "원작 nagano 「Chiikawa」",
+      "text_type": "OTHER",
+      "importance": "중",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "엔딩 테마곡 「혼잣말」",
+      "text_type": "OTHER",
+      "importance": "상",
+      "same_as_dialogue": false
+     }
+    ]
+   }
+  ],
+  "lines": [
+   {
+    "at": "00:03",
+    "level": 1,
+    "text": "싱싱한 생굴 그림 옆에 '생굴' 글자가 뜹니다."
+   },
+   {
+    "at": "00:05",
+    "level": 2,
+    "text": "굴 껍데기 위에 핫소스를 톡톡 떨어뜨리고 레몬즙을 짭니다."
+   },
+   {
+    "at": "00:07",
+    "level": 1,
+    "text": "갈색 머리의 밤만쥬가 껍데기째 굴을 호로록 삼킵니다."
+   },
+   {
+    "at": "00:10",
+    "level": 2,
+    "text": "얼음과 레몬이 든 음료를 단숨에 들이켭니다."
+   },
+   {
+    "at": "00:14",
+    "level": 1,
+    "text": "치이카와와 하치와레, 우사기가 나란히 서서 쳐다봅니다."
+   },
+   {
+    "at": "00:16",
+    "level": 2,
+    "text": "세 친구가 침을 꼴깍 삼키자 등 뒤의 밤만쥬가 손짓합니다."
+   },
+   {
+    "at": "00:20",
+    "level": 1,
+    "text": "밤만쥬가 세 친구에게 굴을 하나씩 나누어 줍니다."
+   },
+   {
+    "at": "00:24",
+    "level": 2,
+    "text": "세 친구가 각자 굴을 입안 가득 호로록 들이마십니다."
+   },
+   {
+    "at": "00:26",
+    "level": 1,
+    "text": "거센 파도 그림과 함께 치이카와 주변에 '바다향' 글자가 뜹니다."
+   },
+   {
+    "at": "00:28",
+    "level": 2,
+    "text": "치이카와 머리 위로 '비린내' 글자가 떠오르고 눈물이 글썽입니다."
+   },
+   {
+    "at": "00:30",
+    "level": 2,
+    "text": "밤만쥬가 찻잔을 건네자 치이카와가 찻물을 들이켭니다."
+   },
+   {
+    "at": "00:37",
+    "level": 1,
+    "text": "별이 반짝이는 밤, 밤만쥬가 콧노래를 부르며 걷습니다."
+   },
+   {
+    "at": "00:41",
+    "level": 1,
+    "text": "'로우' 간판이 걸린 식당 문 앞에 다다릅니다."
+   },
+   {
+    "at": "00:46",
+    "level": 2,
+    "text": "마감이라는 말에 밤만쥬가 어깨를 늘어뜨리며 실망합니다."
+   },
+   {
+    "at": "00:49",
+    "level": 1,
+    "text": "철판 위에서 김이 모락모락 나는 두툼한 스테이크가 나옵니다."
+   },
+   {
+    "at": "00:52",
+    "level": 2,
+    "text": "밤만쥬가 포크로 스테이크를 한 입 베어 물며 기뻐합니다."
+   },
+   {
+    "at": "00:54",
+    "level": 1,
+    "text": "커튼 뒤에서 노란 슈트를 입은 라멘 갑옷 씨가 나타납니다."
+   }
+  ]
+ }
+}

@@ -1,0 +1,362 @@
+{
+ "youtubeId": "g8gpSXmuFpY",
+ "model": "gemini-3.8-flash",
+ "result": {
+  "category": "기타",
+  "summary_30s": "밤샘 채취 작업을 마친 치이카와와 하치와레는 맛있는 냄새를 따라 식당으로 향합니다. 만석인 식당 안에서 합석을 제안받아 자리에 앉은 두 친구는 귤 주스를 마시며 술을 즐기는 어른 캐릭터에게 술 자격증 취득의 어려움에 대해 묻습니다.",
+  "dialogue": [
+   {
+    "start": "00:00",
+    "end": "00:02",
+    "speaker": null,
+    "text": "먼작귀"
+   },
+   {
+    "start": "00:07",
+    "end": "00:10",
+    "speaker": "하치와레",
+    "text": "아침까지 채취하느라 많이 피곤하지?"
+   },
+   {
+    "start": "00:10",
+    "end": "00:11",
+    "speaker": "치이카와",
+    "text": "응"
+   },
+   {
+    "start": "00:14",
+    "end": "00:15",
+    "speaker": "하치와레",
+    "text": "냄새 좋다"
+   },
+   {
+    "start": "00:32",
+    "end": "00:34",
+    "speaker": "하치와레",
+    "text": "우리도 뭐 먹고 갈까?"
+   },
+   {
+    "start": "00:34",
+    "end": "00:35",
+    "speaker": "치이카와",
+    "text": "응"
+   },
+   {
+    "start": "00:36",
+    "end": "00:38",
+    "speaker": "하치와레",
+    "text": "자리가 없어"
+   },
+   {
+    "start": "00:41",
+    "end": "00:42",
+    "speaker": "하치와레",
+    "text": "같이 앉재!"
+   },
+   {
+    "start": "00:43",
+    "end": "00:45",
+    "speaker": "하치와레",
+    "text": "정말 고맙습니다"
+   },
+   {
+    "start": "00:46",
+    "end": "00:50",
+    "speaker": "하치와레",
+    "text": "술 자격증은 아직 없으니까 우린 귤 주스 마시자"
+   },
+   {
+    "start": "00:55",
+    "end": "00:59",
+    "speaker": "하치와레",
+    "text": "저기, 술 자격증 말이에요 따기 힘드셨나요?"
+   },
+   {
+    "start": "01:04",
+    "end": "01:05",
+    "speaker": "하치와레",
+    "text": "엄청 힘들었나 봐"
+   }
+  ],
+  "scenes": [
+   {
+    "start": "00:00",
+    "end": "00:03",
+    "title": "타이틀 화면과 '밤샘 야근 후' 자막",
+    "people": [
+     {
+      "name": "치이카와",
+      "basis": "시리즈 등장인물 사전",
+      "appearance": "하얗고 둥근 몸에 작은 귀가 달린 생물"
+     },
+     {
+      "name": "하치와레",
+      "basis": "시리즈 등장인물 사전",
+      "appearance": "머리 윗부분이 파란 고양이 귀 모양 생물"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "먼작귀",
+      "text_type": "TITLE",
+      "importance": "상",
+      "same_as_dialogue": true
+     },
+     {
+      "text": "밤샘 야근 후",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": false
+     }
+    ]
+   },
+   {
+    "start": "00:03",
+    "end": "00:15",
+    "title": "아침 햇살을 받으며 걸어가는 치이카와와 하치와레",
+    "people": [
+     {
+      "name": "치이카와",
+      "basis": "시리즈 등장인물 사전",
+      "appearance": "풀밭 위에서 눈을 지그시 감고 미소 짓는 흰 생물"
+     },
+     {
+      "name": "하치와레",
+      "basis": "시리즈 등장인물 사전",
+      "appearance": "파란 머리 무늬를 한 채 미소 짓는 생물"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "맛있는 가게",
+      "text_type": "NAME_TAG",
+      "importance": "중",
+      "same_as_dialogue": false
+     }
+    ]
+   },
+   {
+    "start": "00:15",
+    "end": "00:31",
+    "title": "식당 안에서 홀로 술과 안주를 즐기는 쿠리만쥬",
+    "people": [
+     {
+      "name": null,
+      "basis": null,
+      "appearance": "머리 위쪽이 갈색이고 통통한 갈색빛 털을 가진 생물"
+     },
+     {
+      "name": "치이카와",
+      "basis": "시리즈 등장인물 사전",
+      "appearance": "가게 입구에 나란히 서서 안을 들여다보는 흰 생물"
+     },
+     {
+      "name": "하치와레",
+      "basis": "시리즈 등장인물 사전",
+      "appearance": "가게 입구에 나란히 서서 안을 들여다보는 파란 머리 생물"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "매콤한 죽순조림",
+      "text_type": "SUBTITLE",
+      "importance": "중",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "홉피 소주",
+      "text_type": "SUBTITLE",
+      "importance": "중",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "홉피 맥주",
+      "text_type": "SUBTITLE",
+      "importance": "중",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "먼작귀",
+      "text_type": "TITLE",
+      "importance": "중",
+      "same_as_dialogue": false
+     }
+    ]
+   },
+   {
+    "start": "00:31",
+    "end": "00:45",
+    "title": "식당에 들어서 합석하는 치이카와와 하치와레",
+    "people": [
+     {
+      "name": "치이카와",
+      "basis": "시리즈 등장인물 사전",
+      "appearance": "안을 살피며 조심스럽게 들어온 흰 생물"
+     },
+     {
+      "name": "하치와레",
+      "basis": "시리즈 등장인물 사전",
+      "appearance": "치이카와 곁에서 자리를 둘러보는 파란 머리 생물"
+     },
+     {
+      "name": null,
+      "basis": null,
+      "appearance": "테이블 맞은편 손짓으로 합석을 권하는 갈색 머리 생물"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "맛있는 가게",
+      "text_type": "NAME_TAG",
+      "importance": "중",
+      "same_as_dialogue": false
+     }
+    ]
+   },
+   {
+    "start": "00:45",
+    "end": "01:06",
+    "title": "귤 주스를 마시며 술 자격증에 대해 묻는 하치와레",
+    "people": [
+     {
+      "name": "치이카와",
+      "basis": "시리즈 등장인물 사전",
+      "appearance": "주스를 마시며 밥과 음식을 먹는 흰 생물"
+     },
+     {
+      "name": "하치와레",
+      "basis": "시리즈 등장인물 사전",
+      "appearance": "자격증에 대해 묻고 상대의 한숨에 당황하는 파란 머리 생물"
+     },
+     {
+      "name": null,
+      "basis": null,
+      "appearance": "안주를 먹다가 질문을 듣고 깊은 한숨을 내쉬는 갈색 머리 생물"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "메뉴",
+      "text_type": "TITLE",
+      "importance": "중",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "계속",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": false
+     }
+    ]
+   },
+   {
+    "start": "01:06",
+    "end": "01:42",
+    "title": "엔딩 크레디트 화면",
+    "people": [
+     {
+      "name": "치이카와",
+      "basis": "시리즈 등장인물 사전",
+      "appearance": "하단 오른쪽에서 고개를 내밀며 웃는 흰 생물"
+     },
+     {
+      "name": "하치와레",
+      "basis": "시리즈 등장인물 사전",
+      "appearance": "하단 왼쪽에서 노래에 맞춰 흥얼거리는 생물"
+     },
+     {
+      "name": "우사기",
+      "basis": "시리즈 등장인물 사전",
+      "appearance": "하단 우측에서 등장하는 노란 토끼 모양 생물"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "원작 nagano「Chiikawa」",
+      "text_type": "SUBTITLE",
+      "importance": "중",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "이전 영상 / 추천 영상",
+      "text_type": "UI",
+      "importance": "하",
+      "same_as_dialogue": false
+     }
+    ]
+   }
+  ],
+  "lines": [
+   {
+    "at": "00:03",
+    "level": 1,
+    "text": "맑은 하늘에 '밤샘 야근 후'라는 글자가 떠오릅니다."
+   },
+   {
+    "at": "00:05",
+    "level": 2,
+    "text": "치이카와와 하치와레가 풀밭 위를 걷습니다."
+   },
+   {
+    "at": "00:11",
+    "level": 3,
+    "text": "아침 햇살과 함께 산들바람이 불어옵니다."
+   },
+   {
+    "at": "00:13",
+    "level": 1,
+    "text": "두 친구가 '맛있는 가게'라는 간판 앞을 지나갑니다."
+   },
+   {
+    "at": "00:16",
+    "level": 1,
+    "text": "식당 안에서 갈색 털의 작은 생물이 매콤한 죽순조림을 먹습니다."
+   },
+   {
+    "at": "00:20",
+    "level": 2,
+    "text": "잔에 얼음과 술을 채우고 시원하게 들이킵니다."
+   },
+   {
+    "at": "00:26",
+    "level": 3,
+    "text": "입구에서 치이카와와 하치와레가 부러운 눈빛으로 쳐다봅니다."
+   },
+   {
+    "at": "00:35",
+    "level": 1,
+    "text": "가게 안에 손님이 가득 차 있습니다."
+   },
+   {
+    "at": "00:38",
+    "level": 2,
+    "text": "혼자 앉아 있던 생물이 앞자리를 톡톡 치며 손짓합니다."
+   },
+   {
+    "at": "00:42",
+    "level": 1,
+    "text": "치이카와와 하치와레가 맞은편에 나란히 앉습니다."
+   },
+   {
+    "at": "00:45",
+    "level": 2,
+    "text": "다양한 음료와 주류가 그려진 메뉴판을 살핍니다."
+   },
+   {
+    "at": "00:51",
+    "level": 2,
+    "text": "주문한 밥과 만두, 귤 주스가 상 위에 놓입니다."
+   },
+   {
+    "at": "00:59",
+    "level": 1,
+    "text": "술 자격증에 대해 묻자 맞은편 생물이 깊은 한숨을 내쉽니다."
+   },
+   {
+    "at": "01:04",
+    "level": 2,
+    "text": "치이카와와 하치와레가 깜짝 놀라 서로를 쳐다봅니다."
+   }
+  ]
+ }
+}

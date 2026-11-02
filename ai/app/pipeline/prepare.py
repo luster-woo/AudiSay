@@ -4,6 +4,8 @@ GEMINI_URL(유튜브): 영상을 내려받지 않고 Gemini에 유튜브 주소�
 (대사·장면·화면 글자·인물·누적형 해설 문장·30초 요약·카테고리)을 받아 jobs/{jobId}/full.json에 저장한다.
 조각 구간과 조각별 앞 내용 요약은 jobs/{jobId}/prepare.json에 저장한다.
 제목에 따라 장르 지침(시리즈 등장인물 사전·요리)을 프롬프트에 붙인다(pipeline/prompts.py, 데모 검증).
+Gemini 결과는 영상마다 한 번만 받는다(크레딧 재사용, 2026-11-02): S3 cache/gemini/{유튜브ID}.json → 레포에 넣어 둔
+데모 결과 ai/data/gemini/{유튜브ID}.json 순서로 찾고, 없을 때만 Gemini를 부른 뒤 S3에 남긴다.
 
 LOCAL(업로드): S3 원본을 받아 H200 오픈소스 모델로 나눠 분석하고(pipeline/local.py), 유튜브와 같은 full.json을 만든다.
 재생용 MP4는 playback/{videoId}.mp4에 올리고 결과 playbackKey로 알린다. 그 뒤 describe·merge·tts는 유튜브와 같다.
@@ -11,6 +13,7 @@ LOCAL(업로드): S3 원본을 받아 H200 오픈소스 모델로 나눠 분석�
 import asyncio
 import json
 import logging
+import re
 import tempfile
 import time
 from pathlib import Path
@@ -35,6 +38,17 @@ STAGE_END_PROGRESS = 20  # 진행률 범위 PREPARE 0~20
 CUT_SEARCH_RATIO = 0.25  # 조각 경계는 목표 시각 앞뒤 chunkSec의 25% 안에서 장면 경계·대사 틈을 찾는다
 MIN_LAST_CHUNK_RATIO = 0.3  # 마지막 조각이 chunkSec의 30%보다 짧으면 앞 조각에 붙인다
 CONTEXT_TITLES = 5  # 앞 내용 요약에 넣는 직전 장면 제목 수
+GEMINI_SEED_DIR = Path(__file__).resolve().parents[2] / "data" / "gemini"  # 데모에서 받아 둔 결과(이미지에 함께 들어감)
+YOUTUBE_ID = re.compile(r"(?:v=|youtu\.be/|shorts/|embed/)([\w-]{11})")
+
+
+def youtube_id(url: str | None) -> str | None:
+    m = YOUTUBE_ID.search(url or "")
+    return m.group(1) if m else None
+
+
+def gemini_cache_key(yt: str) -> str:
+    return f"cache/gemini/{yt}.json"
 
 
 def pick_model(duration_sec: int | None) -> str:
@@ -148,8 +162,22 @@ class Prepare:
         log.info("prepare 완료 job=%s 조각 %s개, 문장 %s개", job_id, len(prep["chunks"]), len(full["lines"]))
         await events.completed(self._result(prep_key, prep), progress=STAGE_END_PROGRESS)
 
+    async def _cached_raw(self, yt: str | None) -> dict | None:
+        """같은 유튜브 영상의 Gemini 결과({model, result}): S3 캐시 → 레포에 넣어 둔 데모 결과. 없으면 None."""
+        if not yt:
+            return None
+        if await self.storage.exists(gemini_cache_key(yt)):
+            return await self.storage.get_json(gemini_cache_key(yt))
+        seed = GEMINI_SEED_DIR / f"{yt}.json"
+        return json.loads(seed.read_text(encoding="utf-8")) if seed.exists() else None
+
     async def _describe_video(self, env: Envelope, events: Events, duration_sec: int | None) -> dict:
         p = env.payload
+        yt = youtube_id(p.get("youtubeUrl"))
+        cached = await self._cached_raw(yt)
+        if cached:
+            log.info("Gemini 결과 재사용 job=%s 영상=%s(%s, 크레딧 0)", env.jobId, yt, cached["model"])
+            return normalize(cached["result"], p.get("videoId"), cached["model"], (duration_sec or 0) * 1000 or None)
         model = pick_model(duration_sec)
         cfg = types.GenerateContentConfig(response_mime_type="application/json", response_schema=Narration,
                                           temperature=0.2, thinking_config=types.ThinkingConfig(thinking_budget=0))
@@ -169,6 +197,8 @@ class Prepare:
             Narration.model_validate(raw)
         except Exception as e:  # noqa: BLE001 - 형식이 깨진 응답은 다시 부르면 대개 고쳐진다
             raise WorkerError("UNKNOWN", f"Gemini 응답 형식 오류: {e}") from e
+        if yt:  # 다음에 같은 영상을 요청하면 다시 부르지 않게
+            await self.storage.put_json(gemini_cache_key(yt), {"youtubeId": yt, "model": model, "result": raw})
         full = normalize(raw, p.get("videoId"), model, (duration_sec or 0) * 1000 or None)
         log.info("Gemini 전체 해설 job=%s %s %.0f초", env.jobId, model, time.monotonic() - t0)
         return full

@@ -1,0 +1,437 @@
+{
+ "youtubeId": "Kk6-0458rxs",
+ "model": "gemini-3.5-flash",
+ "result": {
+  "category": "뉴스",
+  "summary_30s": "일론 머스크 테슬라 CEO가 로켓 추진 장치를 장착한 신형 로드스터를 공개하며 가파른 경사로 복합 주행 및 공중 회전 시연을 선보였습니다. 시속 60마일까지 0.81초 만에 도달하는 등 놀라운 성능을 자랑했지만, 상용화 및 일반 도로 주행 승인 등 과제가 남아있습니다.",
+  "dialogue": [
+   {
+    "start": "00:08",
+    "end": "00:10",
+    "speaker": null,
+    "text": "Welcome everybody. (모두 환영합니다.)"
+   },
+   {
+    "start": "00:23",
+    "end": "00:30",
+    "speaker": "일론 머스크",
+    "text": "Uh, you're going to see some crazy stuff tonight. Because what you see with your eyes, you will not believe. (여러분들은 오늘 밤 정말 믿기 힘든 광경을 보게 될 겁니다. 눈으로 직접 보고도 믿기 어려울 정도일 거예요.)"
+   },
+   {
+    "start": "00:31",
+    "end": "00:34",
+    "speaker": null,
+    "text": "3, 2, 1."
+   },
+   {
+    "start": "02:45",
+    "end": "02:46",
+    "speaker": null,
+    "text": "Well, it worked. (잘 작동했네요.)"
+   },
+   {
+    "start": "02:49",
+    "end": "03:01",
+    "speaker": "일론 머스크",
+    "text": "Flying cars are real. Yeah. Well, a friend of mine, Peter Thiel, once said that the future promised us flying cars, but instead we got 140 characters. Well, not anymore. (하늘을 나는 자동차는 현실이 되고 있습니다. 제 친구가 말하길 \"사람들은 미래가 하늘을 나는 자동차를 가져다줄 거라고 기대했지만, 정작 우리에게는 트위터의 140자 글자 수 제한뿐이었다\"고 말이죠. 하지만 상황이 달라졌습니다.)"
+   },
+   {
+    "start": "03:33",
+    "end": "03:36",
+    "speaker": null,
+    "text": "I mean, I've seen a lot of things, but I've never seen that before. (저도 많은 것을 봤지만, 이런 건 처음 봅니다.)"
+   },
+   {
+    "start": "03:38",
+    "end": "03:41",
+    "speaker": null,
+    "text": "Tony Hawk would be proud. We call that the kickflip. (토니 호크도 자랑스러워할 겁니다. 이걸 킥플립이라고 부르죠.)"
+   },
+   {
+    "start": "03:41",
+    "end": "03:42",
+    "speaker": null,
+    "text": "Yeah. (맞아요.)"
+   },
+   {
+    "start": "03:43",
+    "end": "03:45",
+    "speaker": null,
+    "text": "I think we've cleared more than our whole fleet. (우리 차량 전체보다 더 높이 뛰어오른 것 같네요.)"
+   },
+   {
+    "start": "03:46",
+    "end": "03:48",
+    "speaker": null,
+    "text": "Yeah, we can go, we can go further. (더 멀리 갈 수도 있습니다.)"
+   },
+   {
+    "start": "03:58",
+    "end": "04:03",
+    "speaker": "일론 머스크",
+    "text": "We need an audience to prove that it's not AI or SI. (우리는 오늘 밤 관객이 필요했습니다. 오늘 시연이 AI(인공지능) 또는 SI(슈퍼지능)가 아니라는 걸 증명하기 위해서 입니다.)"
+   },
+   {
+    "start": "04:24",
+    "end": "04:26",
+    "speaker": null,
+    "text": "This goes fast. (정말 빠릅니다.)"
+   },
+   {
+    "start": "04:39",
+    "end": "04:40",
+    "speaker": null,
+    "text": "We wanted (우리가 원했던 건)"
+   }
+  ],
+  "scenes": [
+   {
+    "start": "00:00",
+    "end": "00:23",
+    "title": "테슬라 야외 이벤트 무대에 등장하는 사람들",
+    "people": [
+     {
+      "name": "일론 머스크",
+      "basis": "이름 자막 및 얼굴 인식",
+      "appearance": "검은색 반팔 티셔츠와 바지 차림의 중년 남성"
+     },
+     {
+      "name": null,
+      "basis": null,
+      "appearance": "흰색 반팔 티셔츠와 검은 바지 차림의 금발 남성"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "ROADSTER",
+      "text_type": "TITLE",
+      "importance": "상",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "8 NEWS",
+      "text_type": "OTHER",
+      "importance": "하",
+      "same_as_dialogue": false
+     }
+    ]
+   },
+   {
+    "start": "00:23",
+    "end": "00:34",
+    "title": "무대 위에서 발언하는 일론 머스크",
+    "people": [
+     {
+      "name": "일론 머스크",
+      "basis": "이름 자막",
+      "appearance": "검은 티셔츠 차림으로 마이크를 잡고 말함"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "일론 머스크 스페이스X 최고경영자",
+      "text_type": "NAME_TAG",
+      "importance": "상",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "여러분들은 오늘 밤 정말 믿기 힘든 광경을 보게 될 겁니다. 눈으로 직접 보고도 믿기 어려울 정도일 거예요.",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": true
+     }
+    ]
+   },
+   {
+    "start": "00:34",
+    "end": "01:05",
+    "title": "신형 로드스터 메카닉 그래픽 영상",
+    "people": [],
+    "screen_text": [
+     {
+      "text": "ROADSTER",
+      "text_type": "TITLE",
+      "importance": "중",
+      "same_as_dialogue": false
+     }
+    ]
+   },
+   {
+    "start": "01:05",
+    "end": "02:26",
+    "title": "가파른 경사로 주행 및 공중 회전 시연",
+    "people": [],
+    "screen_text": [
+     {
+      "text": "RODSTR",
+      "text_type": "OTHER",
+      "importance": "하",
+      "same_as_dialogue": false
+     }
+    ]
+   },
+   {
+    "start": "02:26",
+    "end": "03:02",
+    "title": "추진 장치를 분사하며 야외에서 연속 주행하는 차량",
+    "people": [],
+    "screen_text": [
+     {
+      "text": "하늘을 나는 자동차는 현실이 되고 있습니다. 제 친구가 말하길 “사람들은 미래가 하늘을 나는 자동차를 가져다줄 거라고 기대했지만, 정작 우리에게는 트위터의 140자 글자 수 제한뿐이었다”고 말이죠. 하지만 상황이 달라졌습니다.",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": true
+     }
+    ]
+   },
+   {
+    "start": "03:02",
+    "end": "03:57",
+    "title": "다양한 각도에서 본 공중 점프 및 킥플립 시연",
+    "people": [],
+    "screen_text": []
+   },
+   {
+    "start": "03:57",
+    "end": "04:21",
+    "title": "무대 위로 등장한 신형 로드스터 실물",
+    "people": [
+     {
+      "name": "일론 머스크",
+      "basis": "이름 자막",
+      "appearance": "무대 중앙에서 발언 중인 중년 남성"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "일론 머스크 스페이스X 최고경영자",
+      "text_type": "NAME_TAG",
+      "importance": "상",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "우리는 오늘 밤 관객이 필요했습니다. 오늘 시연이 AI(인공지능) 또는 SI(슈퍼지능)가 아니라는 걸 증명하기 위해서 입니다.",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": true
+     }
+    ]
+   },
+   {
+    "start": "04:21",
+    "end": "04:55",
+    "title": "제로백 및 부스터 가속 테스트",
+    "people": [],
+    "screen_text": [
+     {
+      "text": "00:00:00:00",
+      "text_type": "OTHER",
+      "importance": "중",
+      "same_as_dialogue": false
+     }
+    ]
+   },
+   {
+    "start": "04:55",
+    "end": "06:14",
+    "title": "야외 무대에서 반복 시연되는 차체 회전 모습",
+    "people": [],
+    "screen_text": [
+     {
+      "text": "ROADSTER",
+      "text_type": "TITLE",
+      "importance": "상",
+      "same_as_dialogue": false
+     }
+    ]
+   }
+  ],
+  "lines": [
+   {
+    "at": "00:00",
+    "level": 1,
+    "text": "넓은 야외 행사장에 수많은 사람이 모여 있습니다."
+   },
+   {
+    "at": "00:02",
+    "level": 2,
+    "text": "무대 위 대형 화면에 로드스터 글자가 뜹니다."
+   },
+   {
+    "at": "00:05",
+    "level": 3,
+    "text": "흰 티셔츠 차림의 남성이 환호하며 걸어나옵니다."
+   },
+   {
+    "at": "00:10",
+    "level": 1,
+    "text": "테크노 스타일의 조명이 현장을 비춥니다."
+   },
+   {
+    "at": "00:14",
+    "level": 2,
+    "text": "일론 머스크가 두 손을 들며 무대로 등장합니다."
+   },
+   {
+    "at": "00:20",
+    "level": 3,
+    "text": "검은색 로드스터 티셔츠를 입고 있습니다."
+   },
+   {
+    "at": "00:35",
+    "level": 1,
+    "text": "로드스터 차체의 내부 메카닉 그래픽이 펼쳐집니다."
+   },
+   {
+    "at": "00:45",
+    "level": 2,
+    "text": "배기구와 바퀴 시스템이 투시되어 보입니다."
+   },
+   {
+    "at": "00:55",
+    "level": 3,
+    "text": "검은 연기와 함께 차체의 윤곽이 드러납니다."
+   },
+   {
+    "at": "01:06",
+    "level": 1,
+    "text": "흰색 스포츠카가 수직으로 솟은 경사로를 거꾸로 올라갑니다."
+   },
+   {
+    "at": "01:20",
+    "level": 2,
+    "text": "경사로 끝에서 회전하여 다시 내려옵니다."
+   },
+   {
+    "at": "01:33",
+    "level": 1,
+    "text": "가파른 경사면을 따라 차가 직각에 가깝게 상승합니다."
+   },
+   {
+    "at": "01:45",
+    "level": 2,
+    "text": "공중에서 뒤집히며 제자리를 잡습니다."
+   },
+   {
+    "at": "02:00",
+    "level": 3,
+    "text": "화면 구석에 기울기와 고도가 표시됩니다."
+   },
+   {
+    "at": "02:16",
+    "level": 1,
+    "text": "추진력을 이용해 공중에서 천천히 하강합니다."
+   },
+   {
+    "at": "02:22",
+    "level": 2,
+    "text": "연기를 뿜으며 지면에 안착합니다."
+   },
+   {
+    "at": "02:35",
+    "level": 1,
+    "text": "트랙을 달리며 연속으로 연기를 분사합니다."
+   },
+   {
+    "at": "02:47",
+    "level": 2,
+    "text": "차가 가로등 아래를 지나 빠르게 이동합니다."
+   },
+   {
+    "at": "03:02",
+    "level": 1,
+    "text": "어둠 속에서 차량의 전조등이 켜집니다."
+   },
+   {
+    "at": "03:12",
+    "level": 2,
+    "text": "트럭과 다른 차들을 넘어 공중 점프합니다."
+   },
+   {
+    "at": "03:25",
+    "level": 3,
+    "text": "공중에서 한 바퀴 돌아 착지합니다."
+   },
+   {
+    "at": "03:32",
+    "level": 1,
+    "text": "추진력을 분사하며 공중에 수초간 떠 있습니다."
+   },
+   {
+    "at": "03:48",
+    "level": 2,
+    "text": "트럭 옆에서 차가 다시 뛰어오릅니다."
+   },
+   {
+    "at": "03:52",
+    "level": 1,
+    "text": "무대 위에 흰색 신형 로드스터가 세워져 있습니다."
+   },
+   {
+    "at": "04:04",
+    "level": 2,
+    "text": "문이 위로 열리는 버터플라이 도어 방식입니다."
+   },
+   {
+    "at": "04:11",
+    "level": 3,
+    "text": "미래지향적인 핸들과 내부 스크린이 보입니다."
+   },
+   {
+    "at": "04:16",
+    "level": 2,
+    "text": "차량 뒤쪽에 가변 스포일러가 솟아오릅니다."
+   },
+   {
+    "at": "04:22",
+    "level": 1,
+    "text": "직선 트랙에서 가속 테스트가 시작됩니다."
+   },
+   {
+    "at": "04:27",
+    "level": 2,
+    "text": "엄청난 연기와 함께 차가 번개처럼 튀어나갑니다."
+   },
+   {
+    "at": "04:40",
+    "level": 3,
+    "text": "옆에서 바라본 모습에서도 차가 순식간에 사라집니다."
+   },
+   {
+    "at": "04:56",
+    "level": 1,
+    "text": "붉은 조명 아래 차가 다시 트랙을 따라 달립니다."
+   },
+   {
+    "at": "05:03",
+    "level": 2,
+    "text": "공중으로 높이 솟구쳤다가 착지합니다."
+   },
+   {
+    "at": "05:21",
+    "level": 1,
+    "text": "야외 무대 전체가 한눈에 내려다보입니다."
+   },
+   {
+    "at": "05:33",
+    "level": 2,
+    "text": "여러 각도에서 촬영한 시연 장면이 교차됩니다."
+   },
+   {
+    "at": "05:48",
+    "level": 3,
+    "text": "세워진 차량들 위로 다시 회전 점프를 시도합니다."
+   },
+   {
+    "at": "06:03",
+    "level": 1,
+    "text": "공중 하강 후 연기를 뿜으며 바닥에 섭니다."
+   },
+   {
+    "at": "06:09",
+    "level": 2,
+    "text": "로드스터 로고와 함께 영상이 마무리됩니다."
+   }
+  ]
+ }
+}

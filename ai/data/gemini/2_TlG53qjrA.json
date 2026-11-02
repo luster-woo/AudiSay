@@ -1,0 +1,357 @@
+{
+ "youtubeId": "2_TlG53qjrA",
+ "model": "gemini-3.8-flash",
+ "result": {
+  "category": "기타",
+  "summary_30s": "시사는 카페에서 소용돌이 모양의 프렌치토스트를 행복하게 먹습니다. 다른 손님들이 같은 메뉴를 주문하자 왠지 으쓱해합니다. 이어 야외에서 만난 갑옷 씨를 사부님이라고 부르며 반갑게 인사합니다.",
+  "dialogue": [
+   {
+    "start": "00:01",
+    "end": "00:03",
+    "speaker": null,
+    "text": "먼작귀"
+   },
+   {
+    "start": "00:05",
+    "end": "00:06",
+    "speaker": "시사",
+    "text": "음~"
+   },
+   {
+    "start": "00:08",
+    "end": "00:10",
+    "speaker": "시사",
+    "text": "하웁 음"
+   },
+   {
+    "start": "00:10",
+    "end": "00:12",
+    "speaker": "시사",
+    "text": "음음음"
+   },
+   {
+    "start": "00:12",
+    "end": "00:14",
+    "speaker": "시사",
+    "text": "하웁 음"
+   },
+   {
+    "start": "00:14",
+    "end": "00:17",
+    "speaker": null,
+    "text": "음~ 음~ 음~"
+   },
+   {
+    "start": "00:17",
+    "end": "00:18",
+    "speaker": null,
+    "text": "아!"
+   },
+   {
+    "start": "00:20",
+    "end": "00:21",
+    "speaker": null,
+    "text": "이거!"
+   },
+   {
+    "start": "00:21",
+    "end": "00:24",
+    "speaker": "시사",
+    "text": "하웁 음음음"
+   },
+   {
+    "start": "00:24",
+    "end": "00:25",
+    "speaker": null,
+    "text": "음~"
+   },
+   {
+    "start": "00:25",
+    "end": "00:27",
+    "speaker": null,
+    "text": "우와~"
+   },
+   {
+    "start": "00:27",
+    "end": "00:30",
+    "speaker": "시사",
+    "text": "음~ 음!"
+   },
+   {
+    "start": "00:36",
+    "end": "00:39",
+    "speaker": "포셰트 갑옷 씨",
+    "text": "날씨 참 좋다~"
+   },
+   {
+    "start": "00:39",
+    "end": "00:42",
+    "speaker": "라면 갑옷 씨",
+    "text": "그래, 피크닉 가기 딱 좋은 날이야~"
+   },
+   {
+    "start": "00:42",
+    "end": "00:44",
+    "speaker": "포셰트 갑옷 씨",
+    "text": "그렇지~"
+   },
+   {
+    "start": "00:44",
+    "end": "00:45",
+    "speaker": "시사",
+    "text": "사부님!"
+   },
+   {
+    "start": "00:45",
+    "end": "00:46",
+    "speaker": "라면 갑옷 씨",
+    "text": "어?"
+   },
+   {
+    "start": "00:46",
+    "end": "00:47",
+    "speaker": "시사",
+    "text": "사부님!"
+   },
+   {
+    "start": "00:47",
+    "end": "00:49",
+    "speaker": "라면 갑옷 씨",
+    "text": "어, 요!"
+   },
+   {
+    "start": "00:49",
+    "end": "00:51",
+    "speaker": "시사",
+    "text": "안녕하세요~"
+   },
+   {
+    "start": "00:51",
+    "end": "00:53",
+    "speaker": "포셰트 갑옷 씨",
+    "text": "어? 사, 사부님이야?"
+   },
+   {
+    "start": "00:54",
+    "end": "00:56",
+    "speaker": "라면 갑옷 씨",
+    "text": "아, 아하하, 그렇지 뭐. 하하."
+   },
+   {
+    "start": "00:57",
+    "end": "00:59",
+    "speaker": "포셰트 갑옷 씨",
+    "text": "멋지다!"
+   }
+  ],
+  "scenes": [
+   {
+    "start": "00:00",
+    "end": "00:03",
+    "title": "오프닝 타이틀",
+    "people": [],
+    "screen_text": [
+     {
+      "text": "먼작귀",
+      "text_type": "TITLE",
+      "importance": "상",
+      "same_as_dialogue": true
+     }
+    ]
+   },
+   {
+    "start": "00:03",
+    "end": "00:30",
+    "title": "카페에서 프렌치토스트를 맛있게 먹는 시사",
+    "people": [
+     {
+      "name": "시사",
+      "basis": "영상 엔딩 크레딧 목소리 출연 목록",
+      "appearance": "사자 갈기 모양의 주황색 털을 두른 크림색 소형 동물"
+     },
+     {
+      "name": null,
+      "basis": null,
+      "appearance": "카운터에 서 있는 회색 갑옷 차림의 인물"
+     },
+     {
+      "name": null,
+      "basis": null,
+      "appearance": "테이블에 앉아 메뉴판을 보는 회색 털의 동물 두 마리"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "소용돌이빵 프렌치토스트",
+      "text_type": "SUBTITLE",
+      "importance": "중",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "왠지 기쁜 시사",
+      "text_type": "SUBTITLE",
+      "importance": "중",
+      "same_as_dialogue": false
+     }
+    ]
+   },
+   {
+    "start": "00:30",
+    "end": "00:33",
+    "title": "중간 아이캐치",
+    "people": [
+     {
+      "name": "치이카와",
+      "basis": "시리즈 등장인물 사전",
+      "appearance": "작고 하얀 곰 모양 캐릭터"
+     },
+     {
+      "name": "하치와레",
+      "basis": "시리즈 등장인물 사전",
+      "appearance": "머리 윗부분이 파란 고양이 캐릭터"
+     },
+     {
+      "name": "우사기",
+      "basis": "시리즈 등장인물 사전",
+      "appearance": "노란 토끼 모양 캐릭터"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "먼작귀",
+      "text_type": "TITLE",
+      "importance": "상",
+      "same_as_dialogue": false
+     }
+    ]
+   },
+   {
+    "start": "00:33",
+    "end": "01:00",
+    "title": "산책길에서 갑옷 씨들을 만나 반갑게 인사하는 시사",
+    "people": [
+     {
+      "name": "라면 갑옷 씨",
+      "basis": "영상 엔딩 크레딧 목소리 출연 목록",
+      "appearance": "노란빛이 도는 갑옷을 입은 인물"
+     },
+     {
+      "name": "포셰트 갑옷 씨",
+      "basis": "영상 엔딩 크레딧 목소리 출연 목록",
+      "appearance": "회색 갑옷을 입은 인물"
+     },
+     {
+      "name": "시사",
+      "basis": "영상 엔딩 크레딧 목소리 출연 목록",
+      "appearance": "주황색 갈기를 지닌 밝은 털색의 동물"
+     },
+     {
+      "name": "우사기",
+      "basis": "시리즈 등장인물 사전",
+      "appearance": "장난감 차를 끌며 지나가는 노란 토끼"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "끝",
+      "text_type": "TITLE",
+      "importance": "상",
+      "same_as_dialogue": false
+     }
+    ]
+   },
+   {
+    "start": "01:00",
+    "end": "01:30",
+    "title": "엔딩 크레딧",
+    "people": [],
+    "screen_text": [
+     {
+      "text": "원작 nagano 「Chiikawa」",
+      "text_type": "OTHER",
+      "importance": "하",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "목소리 시사 장채연",
+      "text_type": "OTHER",
+      "importance": "하",
+      "same_as_dialogue": false
+     }
+    ]
+   },
+   {
+    "start": "01:30",
+    "end": "01:36",
+    "title": "추천 영상 안내 화면",
+    "people": [],
+    "screen_text": [
+     {
+      "text": "이전 영상",
+      "text_type": "UI",
+      "importance": "중",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "추천 영상",
+      "text_type": "UI",
+      "importance": "중",
+      "same_as_dialogue": false
+     }
+    ]
+   }
+  ],
+  "lines": [
+   {
+    "at": "00:03",
+    "level": 1,
+    "text": "시사가 카페에서 디저트를 먹으려 합니다."
+   },
+   {
+    "at": "00:05",
+    "level": 2,
+    "text": "포크와 나이프를 쥔 채 흐뭇해합니다."
+   },
+   {
+    "at": "00:06",
+    "level": 3,
+    "text": "생크림과 시럽이 얹힌 둥근 프렌치토스트입니다."
+   },
+   {
+    "at": "00:14",
+    "level": 1,
+    "text": "옆 테이블 손님들이 같은 메뉴를 가리킵니다."
+   },
+   {
+    "at": "00:21",
+    "level": 2,
+    "text": "직원이 프렌치토스트 두 접시를 배달합니다."
+   },
+   {
+    "at": "00:27",
+    "level": 1,
+    "text": "시사가 왠지 뿌듯한 얼굴로 활짝 웃습니다."
+   },
+   {
+    "at": "00:33",
+    "level": 1,
+    "text": "갑옷을 입은 두 사람이 숲길을 걸어갑니다."
+   },
+   {
+    "at": "00:44",
+    "level": 2,
+    "text": "시사가 총총 다가와 인사를 건넵니다."
+   },
+   {
+    "at": "00:54",
+    "level": 2,
+    "text": "라면 갑옷 씨가 머리를 긁적입니다."
+   },
+   {
+    "at": "00:57",
+    "level": 3,
+    "text": "우사기가 장난감 자동차를 끌고 스쳐 지나갑니다."
+   }
+  ]
+ }
+}

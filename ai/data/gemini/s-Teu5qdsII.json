@@ -1,0 +1,438 @@
+{
+ "youtubeId": "s-Teu5qdsII",
+ "model": "gemini-3.8-flash",
+ "result": {
+  "category": "요리·음식",
+  "summary_30s": "뚝딱이 형이 뚝배기에 밥과 소스, 스팸, 옥수수콘, 체다치즈, 모짜렐라 치즈 등을 넣어 약불에서 익혀 만드는 초간단 치즈밥 레시피를 소개합니다.",
+  "dialogue": [
+   {
+    "start": "00:00",
+    "end": "00:03",
+    "speaker": "뚝딱이 형",
+    "text": "안녕, 1분 요리 뚝딱이 형이야."
+   },
+   {
+    "start": "00:03",
+    "end": "00:06",
+    "speaker": "뚝딱이 형",
+    "text": "오늘은 초딩 입맛 끝판왕 치즈밥 레시피를 알려줄게."
+   },
+   {
+    "start": "00:06",
+    "end": "00:08",
+    "speaker": "뚝딱이 형",
+    "text": "시간 없다. 바로 시작한다."
+   },
+   {
+    "start": "00:09",
+    "end": "00:11",
+    "speaker": "뚝딱이 형",
+    "text": "스팸 두 조각만 준비를 할 거야."
+   },
+   {
+    "start": "00:17",
+    "end": "00:20",
+    "speaker": "뚝딱이 형",
+    "text": "냄비에 참기름으로 살짝 기름칠을 해줘."
+   },
+   {
+    "start": "00:20",
+    "end": "00:24",
+    "speaker": "뚝딱이 형",
+    "text": "밥 한 공기 넣고 올리고당, 케찹, 고추장 한 숟가락씩 넣어줘."
+   },
+   {
+    "start": "00:25",
+    "end": "00:27",
+    "speaker": "뚝딱이 형",
+    "text": "그리고 잘 비벼줘."
+   },
+   {
+    "start": "00:28",
+    "end": "00:31",
+    "speaker": "뚝딱이 형",
+    "text": "여기에 스팸과 옥수수콘을 넣고 싶은 만큼 넣어줘."
+   },
+   {
+    "start": "00:32",
+    "end": "00:36",
+    "speaker": "뚝딱이 형",
+    "text": "그리고 체다치즈를 찢어서 넣고 모짜렐라 치즈로 덮어줘."
+   },
+   {
+    "start": "00:36",
+    "end": "00:38",
+    "speaker": "뚝딱이 형",
+    "text": "간지나게 김가루 올려주면 끝."
+   },
+   {
+    "start": "00:39",
+    "end": "00:41",
+    "speaker": "뚝딱이 형",
+    "text": "뚜껑 덮고 약불에서 15분."
+   },
+   {
+    "start": "00:42",
+    "end": "00:43",
+    "speaker": "아이",
+    "text": "와, 맛있겠다!"
+   },
+   {
+    "start": "00:43",
+    "end": "00:45",
+    "speaker": "뚝딱이 형",
+    "text": "침 좀 닦아 잼민아."
+   },
+   {
+    "start": "00:46",
+    "end": "00:47",
+    "speaker": "뚝딱이 형",
+    "text": "골고루 섞어주면"
+   },
+   {
+    "start": "00:47",
+    "end": "00:48",
+    "speaker": "아이",
+    "text": "와!"
+   },
+   {
+    "start": "00:48",
+    "end": "00:50",
+    "speaker": "뚝딱이 형",
+    "text": "미쳤다 미쳤어."
+   },
+   {
+    "start": "00:51",
+    "end": "00:54",
+    "speaker": "뚝딱이 형",
+    "text": "정말 쉽고 간단한 치즈밥 레시피야."
+   },
+   {
+    "start": "00:55",
+    "end": "00:57",
+    "speaker": "뚝딱이 형",
+    "text": "그럼 얘들아 다음에 또 만나자."
+   },
+   {
+    "start": "00:58",
+    "end": "00:59",
+    "speaker": "뚝딱이 형",
+    "text": "뚝딱!"
+   }
+  ],
+  "scenes": [
+   {
+    "start": "00:00",
+    "end": "00:08",
+    "title": "완성된 치즈밥을 뚝배기에서 비비는 모습",
+    "people": [
+     {
+      "name": "뚝딱이 형",
+      "basis": "대사에서 '1분 요리 뚝딱이 형이야'라고 소개함",
+      "appearance": "뚝배기 속 치즈밥을 숟가락으로 비비는 손"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "안녕",
+      "text_type": "SUBTITLE",
+      "importance": "하",
+      "same_as_dialogue": true
+     },
+     {
+      "text": "뚝딱이 형이야",
+      "text_type": "SUBTITLE",
+      "importance": "중",
+      "same_as_dialogue": true
+     },
+     {
+      "text": "초딩입맛 끝판왕",
+      "text_type": "SUBTITLE",
+      "importance": "중",
+      "same_as_dialogue": true
+     },
+     {
+      "text": "치즈밥",
+      "text_type": "TITLE",
+      "importance": "상",
+      "same_as_dialogue": true
+     },
+     {
+      "text": "바로 시작",
+      "text_type": "SUBTITLE",
+      "importance": "하",
+      "same_as_dialogue": true
+     }
+    ]
+   },
+   {
+    "start": "00:08",
+    "end": "00:16",
+    "title": "도마 위에서 스팸을 깍둑썰기하는 과정",
+    "people": [
+     {
+      "name": "뚝딱이 형",
+      "basis": "대사에서 '1분 요리 뚝딱이 형이야'라고 소개함",
+      "appearance": "칼로 스팸을 써는 손"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "스팸 두조각",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": true
+     },
+     {
+      "text": "깍두기 모양",
+      "text_type": "SUBTITLE",
+      "importance": "중",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "화장실 간 사이에...",
+      "text_type": "SUBTITLE",
+      "importance": "중",
+      "same_as_dialogue": false
+     }
+    ]
+   },
+   {
+    "start": "00:16",
+    "end": "00:27",
+    "title": "뚝배기에 참기름을 바르고 밥과 양념을 비비는 과정",
+    "people": [
+     {
+      "name": "뚝딱이 형",
+      "basis": "대사에서 '1분 요리 뚝딱이 형이야'라고 소개함",
+      "appearance": "뚝배기 안에 재료를 넣고 숟가락으로 비비는 손"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "참기름 기름칠",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": true
+     },
+     {
+      "text": "밥",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": true
+     },
+     {
+      "text": "올리고당 1",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "케찹 1",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "고추장 1",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "비벼",
+      "text_type": "SUBTITLE",
+      "importance": "중",
+      "same_as_dialogue": true
+     }
+    ]
+   },
+   {
+    "start": "00:27",
+    "end": "00:39",
+    "title": "비벼진 밥 위에 스팸, 콘, 치즈, 김가루를 얹는 과정",
+    "people": [
+     {
+      "name": "뚝딱이 형",
+      "basis": "대사에서 '1분 요리 뚝딱이 형이야'라고 소개함",
+      "appearance": "토핑 재료들을 차례로 얹는 손"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "스팸",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": true
+     },
+     {
+      "text": "옥수수콘",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": true
+     },
+     {
+      "text": "체다치즈",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": true
+     },
+     {
+      "text": "모짜렐라 치즈",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": true
+     },
+     {
+      "text": "간지용 김",
+      "text_type": "SUBTITLE",
+      "importance": "중",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "끝",
+      "text_type": "SUBTITLE",
+      "importance": "하",
+      "same_as_dialogue": true
+     }
+    ]
+   },
+   {
+    "start": "00:39",
+    "end": "00:56",
+    "title": "약불에 익힌 치즈밥을 비벼 한 숟가락 떠올리는 모습",
+    "people": [
+     {
+      "name": "뚝딱이 형",
+      "basis": "대사에서 '1분 요리 뚝딱이 형이야'라고 소개함",
+      "appearance": "치즈밥을 골고루 섞고 숟가락으로 떠올리는 손"
+     }
+    ],
+    "screen_text": [
+     {
+      "text": "뚜껑덮고 약불15분",
+      "text_type": "SUBTITLE",
+      "importance": "상",
+      "same_as_dialogue": true
+     },
+     {
+      "text": "섞어",
+      "text_type": "SUBTITLE",
+      "importance": "중",
+      "same_as_dialogue": true
+     },
+     {
+      "text": "ㅁㅊㄷ ㅁㅊㅇ",
+      "text_type": "SUBTITLE",
+      "importance": "하",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "댕쉬움",
+      "text_type": "SUBTITLE",
+      "importance": "중",
+      "same_as_dialogue": false
+     }
+    ]
+   },
+   {
+    "start": "00:56",
+    "end": "01:00",
+    "title": "치즈밥 레시피 안내 화면과 엔딩 로고",
+    "people": [],
+    "screen_text": [
+     {
+      "text": "치즈밥 레시피",
+      "text_type": "TITLE",
+      "importance": "상",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "밥 1공기\n참기름 살짝\n스팸 옥수수콘\n고추장 1\n올리고당 1\n케찹 1\n(단위: 숟가락)",
+      "text_type": "OTHER",
+      "importance": "상",
+      "same_as_dialogue": false
+     },
+     {
+      "text": "뚝딱!",
+      "text_type": "OTHER",
+      "importance": "하",
+      "same_as_dialogue": true
+     }
+    ]
+   }
+  ],
+  "lines": [
+   {
+    "at": "00:03",
+    "level": 1,
+    "text": "녹아내린 치즈와 밥을 뚝배기에서 골고루 비빕니다."
+   },
+   {
+    "at": "00:07",
+    "level": 2,
+    "text": "치즈가 밥알과 섞이며 길게 늘어납니다."
+   },
+   {
+    "at": "00:11",
+    "level": 1,
+    "text": "도마 위에서 스팸 두 조각을 작고 네모나게 썹니다."
+   },
+   {
+    "at": "00:14",
+    "level": 2,
+    "text": "고양이가 다가와 잘린 스팸의 냄새를 맡습니다."
+   },
+   {
+    "at": "00:17",
+    "level": 1,
+    "text": "작은 뚝배기 안쪽에 참기름을 붓고 솔로 골고루 바릅니다."
+   },
+   {
+    "at": "00:23",
+    "level": 2,
+    "text": "밥 한 공기에 고추장, 케첩, 올리고당을 한 숟가락씩 얹습니다."
+   },
+   {
+    "at": "00:26",
+    "level": 1,
+    "text": "숟가락으로 밥과 소스를 빨갛게 비빕니다."
+   },
+   {
+    "at": "00:29",
+    "level": 1,
+    "text": "비빈 밥 위에 스팸 조각과 옥수수콘을 듬뿍 올립니다."
+   },
+   {
+    "at": "00:32",
+    "level": 2,
+    "text": "체다치즈를 손으로 찢어 얹고 모짜렐라 치즈로 가득 덮습니다."
+   },
+   {
+    "at": "00:37",
+    "level": 3,
+    "text": "치즈 가운데에 김가루를 살짝 얹어 장식합니다."
+   },
+   {
+    "at": "00:40",
+    "level": 1,
+    "text": "약불에서 15분간 익혀 치즈가 부드럽게 녹았습니다."
+   },
+   {
+    "at": "00:48",
+    "level": 2,
+    "text": "숟가락으로 섞자 치즈가 끈끈하게 늘어납니다."
+   },
+   {
+    "at": "00:53",
+    "level": 1,
+    "text": "치즈가 듬뿍 엉겨 붙은 치즈밥을 크게 한 숟가락 떠올립니다."
+   },
+   {
+    "at": "00:57",
+    "level": 1,
+    "text": "치즈밥 재료와 양이 적힌 레시피 화면이 나옵니다."
+   }
+  ]
+ }
+}

@@ -49,6 +49,7 @@ services:
       POSTGRES_HOST: postgres
       REDIS_HOST: redis
       RABBITMQ_HOST: rabbitmq
+      AI_SERVER_URL: http://ai:8000
     depends_on:
       postgres:
         condition: service_healthy

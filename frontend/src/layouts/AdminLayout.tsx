@@ -1,8 +1,11 @@
+import { useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '@/features/auth/context'
+import { usePendingReportCount } from '@/features/admin/usePendingReportCount'
 import { useShortcutScope } from '@/features/shortcuts/context'
 import { SkipLink } from './parts/SkipLink'
 import { AdminBreadcrumb } from './parts/AdminBreadCrumb'
+import { AdminTopbarContext } from './parts/adminTopbar'
 
 interface AdminNavItem {
   to: string
@@ -11,7 +14,6 @@ interface AdminNavItem {
   badge?: { count: number; spoken: string }
 }
 
-// TODO(관리자 페이지 작업 시): 신고 처리 badge 를 신고 목록 API 의 처리 전 건수로 채운다
 const ADMIN_NAV: AdminNavItem[] = [
   { to: '/admin/reports', label: '신고 처리' },
   { to: '/admin/videos', label: '해설 검수' },
@@ -25,6 +27,13 @@ const ADMIN_NAV: AdminNavItem[] = [
 export function AdminLayout() {
   const { user, logout } = useAuth()
   useShortcutScope('admin')
+  const pendingCount = usePendingReportCount()
+  const [topbar, setTopbar] = useState<HTMLDivElement | null>(null)
+  const nav = ADMIN_NAV.map((item) =>
+    item.to === '/admin/reports' && pendingCount
+      ? { ...item, badge: { count: pendingCount, spoken: `처리 전 ${pendingCount}건` } }
+      : item,
+  )
 
   // 남색 사이드바 위 포커스 링은 노란색으로
   const onSidebarFocus = 'focus-visible:bg-navy-deep focus-visible:outline-yellow'
@@ -33,19 +42,21 @@ export function AdminLayout() {
     <>
       <SkipLink />
       <div className="flex min-h-svh">
-        <aside className="flex w-72 shrink-0 flex-col bg-sidebar px-5 py-8 text-on-sidebar">
-          <p className="px-3 text-2xl font-bold">
-            AudiSay <span className="block text-sm font-normal opacity-80">운영 관리</span>
+        {/* 치수는 Figma 관리자 프레임 기준 (관리자 글자 크기 15px = 1rem) */}
+        <aside className="sticky top-0 flex h-svh w-[15.4667rem] shrink-0 flex-col bg-sidebar px-[1.0667rem] pt-[1.5rem] pb-[2.2rem] text-on-sidebar">
+          <p className="px-[0.4rem] text-[1.6rem] leading-tight font-bold">
+            AudiSay{' '}
+            <span className="mt-1 block text-[0.8667rem] font-normal opacity-80">운영 관리</span>
           </p>
 
-          <nav aria-label="운영 관리 메뉴" className="mt-8">
-            <ul className="space-y-2">
-              {ADMIN_NAV.map((item) => (
+          <nav aria-label="운영 관리 메뉴" className="mt-[1.4rem]">
+            <ul className="space-y-[0.2667rem]">
+              {nav.map((item) => (
                 <li key={item.to}>
                   <NavLink
                     to={item.to}
                     className={({ isActive }) =>
-                      `flex min-h-touch items-center justify-between rounded-md px-4 text-lg ${onSidebarFocus} ${
+                      `flex h-[2.9333rem] items-center justify-between rounded-sm px-[0.9333rem] text-[0.9333rem] ${onSidebarFocus} ${
                         isActive ? 'bg-yellow font-bold text-navy' : 'text-on-sidebar'
                       }`
                     }
@@ -53,7 +64,9 @@ export function AdminLayout() {
                     {item.label}
                     {item.badge && (
                       <>
-                        <span aria-hidden="true">{item.badge.count}</span>
+                        <span aria-hidden="true" className="text-[0.8667rem]">
+                          {item.badge.count}
+                        </span>
                         <span className="sr-only">, {item.badge.spoken}</span>
                       </>
                     )}
@@ -63,12 +76,12 @@ export function AdminLayout() {
             </ul>
           </nav>
 
-          <div className="mt-auto border-t border-on-sidebar/20 px-3 pt-5">
+          <div className="mt-auto border-t border-on-sidebar/20 px-[0.4rem] pt-[1rem] text-[0.9333rem]">
             <p>{user?.name} · 운영자</p>
             <button
               type="button"
               onClick={logout}
-              className={`mt-2 rounded-sm font-bold text-on-sidebar ${onSidebarFocus}`}
+              className={`mt-1 min-h-0 rounded-sm font-bold text-on-sidebar ${onSidebarFocus}`}
             >
               로그아웃
             </button>
@@ -76,9 +89,17 @@ export function AdminLayout() {
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col bg-cream">
-          <AdminBreadcrumb />
+          <div className="relative h-[3.2rem] shrink-0 border-b border-line bg-paper">
+            <AdminBreadcrumb />
+            <div
+              ref={setTopbar}
+              className="absolute inset-y-0 left-1/2 flex -translate-x-1/2 items-center"
+            />
+          </div>
           <main id="main" tabIndex={-1} className="flex-1 px-8 py-8 outline-none">
-            <Outlet />
+            <AdminTopbarContext.Provider value={topbar}>
+              <Outlet />
+            </AdminTopbarContext.Provider>
           </main>
         </div>
       </div>

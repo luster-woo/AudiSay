@@ -256,6 +256,125 @@ export interface FavoriteResult {
   isFavorite: boolean
 }
 
+/** 신고 처리 상태 · 사유 */
+export type ReportStatus = 'PENDING' | 'RESOLVED' | 'REJECTED'
+export type ReportReason = 'WRONG' | 'MISSING' | 'OVERLAP' | 'OTHER'
+
+/** GET /admin/reports 항목. 신고 당시 문장과 지금 문장을 함께 준다 */
+export interface AdminReport {
+  reportId: number
+  status: ReportStatus
+  reason: ReportReason
+  reasonDetail: string | null
+  videoId: number
+  videoTitle: string
+  descriptionId: number
+  lineId: number
+  detailLevel: 1 | 2 | 3
+  lineStartMs: number
+  reportedAtMs: number
+  lineTextSnapshot: string
+  currentText: string
+  /** 같은 문장에 들어온 신고 수 (이 신고 포함) */
+  sameLineReportCount: number
+  reporterId: number
+  createdAt: string
+  handledAt: string | null
+}
+
+/** PATCH /admin/reports/{reportId} */
+export interface ReportHandleResult {
+  reportId: number
+  status: Exclude<ReportStatus, 'PENDING'>
+  handledAt: string
+  /** applyToSameLine 이면 같은 문장의 다른 신고 ID 도 들어온다 */
+  updatedReportIds: number[]
+}
+
+/** 해설 버전 상태 */
+export type DescriptionVersionStatus = 'GENERATING' | 'PUBLISHED' | 'FAILED' | 'ARCHIVED'
+
+/** GET /admin/videos/{videoId}/description — 검수용 해설 (장면·문장·대사·화면 글자) */
+export interface ReviewDescription {
+  descriptionId: number
+  videoId: number
+  status: DescriptionVersionStatus
+  versions: { descriptionId: number; status: DescriptionVersionStatus; createdAt: string }[]
+  scenes: ReviewScene[]
+  lines: ReviewLine[]
+  dialogues: ReviewDialogue[]
+  screenTexts: ReviewScreenText[]
+}
+export interface ReviewScene {
+  sceneId: number
+  sceneIndex: number
+  title: string
+  startMs: number
+  endMs: number
+  sceneDescription: string
+  /** 대표 프레임. 유튜브 영상은 null */
+  keyframeUrl: string | null
+}
+export interface ReviewLine {
+  lineId: number
+  lineIndex: number
+  detailLevel: 1 | 2 | 3
+  startMs: number
+  /** 이 문장을 읽을 수 있는 빈 구간의 끝 */
+  gapEndMs: number
+  importance: 1 | 2 | 3
+  text: string
+  /** 음성을 다시 만드는 중이거나 실패하면 null */
+  audioUrl: string | null
+  audioDurationMs: number | null
+  reportCount: number
+  pendingReportCount: number
+  updatedAt: string
+}
+export interface ReviewDialogue {
+  startMs: number
+  endMs: number
+  text: string
+  characterName: string | null
+}
+export interface ReviewScreenText {
+  screenTextId: number
+  startMs: number
+  endMs: number
+  textType: string
+  importance: string
+  headline: string | null
+  fullText: string
+  summaryText: string | null
+  sameAsDialogue: boolean
+}
+
+/** PATCH /admin/lines/{lineId} */
+export interface LineUpdateResult {
+  lineId: number
+  descriptionId: number
+  detailLevel: 1 | 2 | 3
+  startMs: number
+  importance: 1 | 2 | 3
+  text: string
+  audioUrl: string | null
+  updatedAt: string
+}
+
+/** POST /admin/lines/{lineId}/audio (202) */
+export interface LineAudioResult {
+  lineId: number
+  queued: boolean
+}
+
+/** POST /admin/videos/{videoId}/regenerate (202) */
+export interface RegenerateResult {
+  videoId: number
+  jobId: number
+  jobType: 'REGENERATE'
+  currentDescriptionId: number | null
+}
+
 /** 영상 공개 범위 */
 export type Visibility = 'PRIVATE' | 'PUBLIC'
 

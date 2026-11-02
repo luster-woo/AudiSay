@@ -7,7 +7,7 @@ export interface StatusDialogProps {
   open: boolean
   /** 머리말 ('업로드 불가', '확인', '업로드 멈춤') */
   kicker: string
-  tone: 'danger' | 'info'
+  tone: 'danger' | 'info' | 'success'
   title: string
   children?: ReactNode
   primaryLabel: string
@@ -48,7 +48,7 @@ export function StatusDialog({
         <p
           className={cn(
             'flex items-center gap-2 text-2xl font-bold',
-            tone === 'danger' ? 'text-danger' : 'text-navy',
+            tone === 'danger' ? 'text-danger' : tone === 'success' ? 'text-success' : 'text-navy',
           )}
         >
           <span aria-hidden="true">●</span>

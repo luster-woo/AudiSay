@@ -17,6 +17,7 @@ import HomePage from '@/pages/home/HomePage'
 import SearchPage from '@/pages/home/SearchPage'
 import YoutubeCheckPage from '@/pages/home/YoutubeCheckPage'
 import RegisterPage from '@/pages/register/RegisterPage'
+import JobPage from '@/pages/jobs/JobPage'
 import NotFoundPage from '@/pages/errors/NotFoundPage'
 import RouteError from '@/pages/errors/RouteError'
 import RootError from '@/pages/errors/RootError'
@@ -55,7 +56,7 @@ const userRoutes: RouteObject[] = [
       // 업로드 단계는 한 화면(/register) 안에서 바뀐다. 예전 주소는 처음 단계로 보낸다
       { path: 'register/*', element: <Navigate to="/register" replace /> },
       { path: 'upload/*', element: <Navigate to="/register" replace /> },
-      page('jobs/:jobId', { title: '해설 만들기' }),
+      { path: 'jobs/:jobId', element: <JobPage /> },
       page('watch/:videoId', { title: '영상 보기' }),
       { path: 'tutorial/:step', element: <TutorialPage /> },
       { path: 'verify', element: <VerifyPage /> },

@@ -120,7 +120,7 @@ test('제목은 파일 이름으로 채워지고, 권리 동의 없이 올리면
   expect(uploadsApi.start).not.toHaveBeenCalled()
 })
 
-test('다 올리면 해설 만들기 화면으로 간다', async () => {
+test('다 올리면 완료 창이 뜨고, 해설 만들기 보기를 누르면 해설 만들기 화면으로 간다', async () => {
   vi.mocked(uploadParts).mockResolvedValue([{ partNumber: 1, eTag: '"a"' }])
   vi.mocked(uploadsApi.complete).mockResolvedValue({
     videoId: 15,
@@ -144,8 +144,31 @@ test('다 올리면 해설 만들기 화면으로 간다', async () => {
     visibility: 'PUBLIC',
     copyrightAgreed: true,
   })
-  await waitFor(() => expect(router.state.location.pathname).toBe('/jobs/31'))
   expect(uploadsApi.complete).toHaveBeenCalledWith(15, [{ partNumber: 1, eTag: '"a"' }])
+  const dialog = await screen.findByRole('dialog', { name: '업로드가 완료되었어요' })
+  expect(within(dialog).getByText('해설 만들기를 시작했어요.')).toBeInTheDocument()
+  const go = within(dialog).getByRole('button', { name: '해설 만들기 보기' })
+  expect(go).toHaveFocus()
+  expect(router.state.location.pathname).toBe('/register')
+  await user.click(go)
+  await waitFor(() => expect(router.state.location.pathname).toBe('/jobs/31'))
+})
+
+test('완료 창에서 홈으로 돌아가기를 고르면 묻지 않고 홈으로 간다', async () => {
+  vi.mocked(uploadParts).mockResolvedValue([{ partNumber: 1, eTag: '"a"' }])
+  vi.mocked(uploadsApi.complete).mockResolvedValue({
+    videoId: 15,
+    jobId: 31,
+    result: 'NEW_JOB',
+    remaining: 2,
+  })
+  const user = userEvent.setup()
+  const { router } = renderRoute('/register')
+  await startUpload(user)
+  const dialog = await screen.findByRole('dialog', { name: '업로드가 완료되었어요' })
+  await user.click(within(dialog).getByRole('button', { name: '홈으로 돌아가기' }))
+  await waitFor(() => expect(router.state.location.pathname).toBe('/'))
+  expect(uploadsApi.abort).not.toHaveBeenCalled()
 })
 
 test('업로드 멈추기 → 확인 → 멈추기: 올린 조각을 지우고 처음 단계로', async () => {

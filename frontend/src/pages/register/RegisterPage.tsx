@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { usersApi } from '@/api/users'
 import { queryKeys } from '@/api/queryKeys'
 import { toUserMessage } from '@/api/errors'
-import type { Visibility } from '@/api/types'
+import type { UploadCompleteResult, Visibility } from '@/api/types'
 import { useAnnouncer } from '@/features/announcer/context'
 import { titleFromFileName } from '@/features/upload/fileRules'
 import { StatusDialog } from '@/features/upload/StatusDialog'
@@ -34,10 +34,14 @@ export default function RegisterPage() {
     queryFn: usersApi.quota,
   })
 
+  // 업로드 완료 = 서버가 해설 만들기를 이미 시작한 상태 (POST /uploads/{id}/complete).
+  // 바로 넘어가지 않고 완료 창에서 '해설 만들기 보기' / '홈으로 돌아가기'를 고르게 한다
+  const [completed, setCompleted] = useState<UploadCompleteResult | null>(null)
   const upload = useVideoUpload((result) => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.quota })
     void queryClient.invalidateQueries({ queryKey: ['me', 'videos'] })
-    navigate(`/jobs/${result.jobId}`, { replace: true })
+    setCompleted(result)
+    announce('업로드가 완료되었어요. 해설 만들기를 시작했어요. 해설 만들기 보기 버튼에 있어요.')
   })
 
   // 올리는 중에 다른 메뉴로 가려 하면 먼저 묻는다 (원칙 8장). 새로고침·창 닫기는 useVideoUpload 가 막는다
@@ -72,6 +76,24 @@ export default function RegisterPage() {
     maxDurationSec: quota?.upload.maxDurationSec ?? null,
     maxSizeBytes: quota?.upload.maxSizeBytes ?? null,
   }
+
+  const doneDialog = (
+    <StatusDialog
+      open={completed != null}
+      kicker="업로드 완료"
+      tone="success"
+      title="업로드가 완료되었어요"
+      primaryLabel="해설 만들기 보기"
+      onPrimary={() => completed && navigate(`/jobs/${completed.jobId}`, { replace: true })}
+      secondaryLabel="홈으로 돌아가기"
+      onSecondary={() => navigate('/', { replace: true })}
+      // 고를 때까지 닫지 않는다 (닫으면 이 화면에서 할 일이 없음)
+      onEscape={() => undefined}
+    >
+      <p>해설 만들기를 시작했어요.</p>
+      <p>홈으로 가도 해설은 계속 만들어지고, 끝나면 알려 드려요.</p>
+    </StatusDialog>
+  )
 
   const leaveDialog = (
     <StatusDialog
@@ -127,6 +149,7 @@ export default function RegisterPage() {
       return picked ? (
         <>
           {leaveDialog}
+          {doneDialog}
           <UploadingStep
             title={title}
             totalBytes={picked.file.size}

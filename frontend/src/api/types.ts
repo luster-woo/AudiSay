@@ -100,6 +100,18 @@ export interface VideoSummary {
   isFavorite: boolean
 }
 
+/** GET /videos/{id} — 영상 정보와 해설 상태 */
+export interface VideoDetail extends VideoSummary {
+  youtubeVideoId: string | null
+  visibility: Visibility
+  status: 'REGISTERED' | 'UPLOADING' | 'UNAVAILABLE'
+  isOwner: boolean
+  /** 지금 공개 중인 해설. null 이면 아직 없음 */
+  descriptionId: number | null
+  /** 만드는 중인 작업. 다시 만드는 중이면 descriptionId 와 함께 온다 */
+  activeJobId: number | null
+}
+
 /** 해설 생성 작업 (GET /jobs/{id} 와 SSE 공용) */
 export type JobStatus = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'PARTIAL' | 'FAILED'
 export type JobStage = 'PREPARE' | 'DESCRIBE' | 'MERGE' | 'TTS'

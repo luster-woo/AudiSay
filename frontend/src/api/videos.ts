@@ -3,6 +3,7 @@ import type {
   Paged,
   RetryResult,
   VideoCategory,
+  VideoDetail,
   VideoSummary,
   YoutubeCheck,
   YoutubeRequestResult,
@@ -19,6 +20,8 @@ export interface VideoListParams {
 export const videosApi = {
   /** 해설이 준비된 공개 영상 (최신순) */
   list: (params: VideoListParams) => request<Paged<VideoSummary>>({ url: '/videos', params }),
+  /** 영상 정보와 해설 상태 (플레이어·해설 만들기 화면) */
+  get: (videoId: number) => request<VideoDetail>({ url: `/videos/${videoId}` }),
   /** 유튜브 검색. 해설 있는 영상이 먼저 온다. 한 번에 10개 */
   youtubeSearch: (q: string, pageToken?: string) =>
     request<YoutubeSearchResult>({ url: '/videos/youtube/search', params: { q, pageToken } }),

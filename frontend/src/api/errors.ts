@@ -65,6 +65,7 @@ export const ERROR_MESSAGES: Record<string, string> = {
   CHAT_004: '없는 질문 기록이에요.',
   REPORT_001: '이미 신고한 문장이에요.',
   REPORT_002: '없는 신고예요.',
+  REPORT_003: '이미 처리된 신고예요.',
 }
 
 /** 작업 실패 원인 코드 */

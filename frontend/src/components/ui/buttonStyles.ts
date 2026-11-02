@@ -1,8 +1,8 @@
 import { cn } from './cn'
 
 export type ButtonVariant = 'primary' | 'secondary' | 'accent' | 'danger' | 'ghost' | 'on' | 'muted'
-/** md 기본 · lg 폼 제출 · xl 홈·영상 화면의 큰 버튼 (Figma 22px) */
-export type ButtonSize = 'md' | 'lg' | 'xl'
+/** sm 관리자 화면 (길잡이: 관리자 40px) · md 기본 · lg 폼 제출 · xl 홈·영상 화면의 큰 버튼 (Figma 22px) */
+export type ButtonSize = 'sm' | 'md' | 'lg' | 'xl'
 
 const VARIANT: Record<ButtonVariant, string> = {
   // 남색 버튼은 전역 포커스 배경(연노랑)이 글자를 가리므로 배경을 유지한다
@@ -17,6 +17,7 @@ const VARIANT: Record<ButtonVariant, string> = {
   muted: 'border-line bg-cream text-ink',
 }
 const SIZE: Record<ButtonSize, string> = {
+  sm: 'min-h-[2.6rem] px-4 text-[0.9333rem]',
   md: 'min-h-touch px-5 text-base',
   lg: 'min-h-14 px-8 text-lg',
   xl: 'min-h-touch px-6 text-[1.375rem]',

@@ -7,8 +7,8 @@ export function AdminBreadcrumb() {
   if (!label) return null
 
   return (
-    <nav aria-label="현재 위치" className="border-b border-line bg-paper px-8 py-3">
-      <ol className="flex items-center gap-2 text-ink-muted">
+    <nav aria-label="현재 위치" className="flex h-full items-center px-[1.6rem]">
+      <ol className="flex items-center gap-[1.2rem] text-[0.8667rem] text-ink-muted">
         <li>운영 관리</li>
         <li aria-hidden="true">/</li>
         <li aria-current="page" className="font-bold text-ink">

@@ -1,3 +1,4 @@
+import type { ComponentType } from 'react'
 import { createBrowserRouter, Navigate, type RouteObject } from 'react-router-dom'
 import { RootProviders } from './providers'
 import type { RouteHandle } from './routeHandle'
@@ -26,6 +27,18 @@ const page = (path: string, handle: RouteHandle): RouteObject => ({
   element: <PlaceholderPage />,
   handle,
 })
+
+/** 관리자 페이지 라우트. 페이지도 lazy 로 불러와 일반 사용자 번들에 섞이지 않게 한다 */
+const adminPage = (
+  path: string,
+  handle: RouteHandle,
+  load: () => Promise<{ default: ComponentType }>,
+): RouteObject => ({
+  path,
+  handle,
+  lazy: async () => ({ Component: (await load()).default }),
+})
+const reportsPage = () => import('@/pages/admin/ReportsPage')
 
 /** 로그인 전에만 보는 화면 (로그인 상태면 RedirectIfAuthed 가 돌려보낸다) */
 const publicRoutes: RouteObject[] = [
@@ -80,8 +93,8 @@ const adminRoutes: RouteObject[] = [
         },
         children: [
           { index: true, element: <Navigate to="reports" replace /> },
-          page('reports', { title: '신고 처리', crumb: '신고 처리' }),
-          page('reports/:reportId', { title: '신고 처리', crumb: '신고 처리' }),
+          adminPage('reports', { title: '신고 처리', crumb: '신고 처리' }, reportsPage),
+          adminPage('reports/:reportId', { title: '신고 처리', crumb: '신고 처리' }, reportsPage),
           page('videos', { title: '해설 검수', crumb: '해설 검수' }),
           page('videos/:videoId', { title: '해설 검수', crumb: '해설 검수' }),
           page('users', { title: '회원' }),

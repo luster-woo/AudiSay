@@ -19,6 +19,7 @@ import SearchPage from '@/pages/home/SearchPage'
 import YoutubeCheckPage from '@/pages/home/YoutubeCheckPage'
 import RegisterPage from '@/pages/register/RegisterPage'
 import JobPage from '@/pages/jobs/JobPage'
+import WatchPage from '@/pages/watch/WatchPage'
 import NotFoundPage from '@/pages/errors/NotFoundPage'
 import RouteError from '@/pages/errors/RouteError'
 import RootError from '@/pages/errors/RootError'
@@ -70,7 +71,7 @@ const userRoutes: RouteObject[] = [
       { path: 'register/*', element: <Navigate to="/register" replace /> },
       { path: 'upload/*', element: <Navigate to="/register" replace /> },
       { path: 'jobs/:jobId', element: <JobPage /> },
-      page('watch/:videoId', { title: '영상 보기' }),
+      { path: 'watch/:videoId', element: <WatchPage /> },
       { path: 'tutorial/:step', element: <TutorialPage /> },
       { path: 'verify', element: <VerifyPage /> },
       page('me', { title: '내 정보' }),

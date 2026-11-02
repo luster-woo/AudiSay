@@ -409,3 +409,208 @@ export interface UploadCompleteResult {
   result: 'NEW_JOB'
   remaining: number | null
 }
+
+/* ───────────── 시청 화면 ───────────── */
+
+/** GET /videos/{id}/playback 의 data */
+export interface Playback {
+  sourceType: 'UPLOAD' | 'YOUTUBE'
+  /** 업로드 영상: 1시간 유효한 S3 주소 */
+  playbackUrl: string | null
+  playbackFormat: 'MP4' | null
+  expiresAt: string | null
+  /** 유튜브 영상: IFrame 플레이어에 넣을 ID */
+  youtubeVideoId: string | null
+}
+
+/** 해설 문장 한 줄. 상세도별로 같은 lineIndex 가 여러 줄 온다 */
+export interface NarrationLine {
+  lineId: number
+  lineIndex: number
+  detailLevel: 1 | 2 | 3
+  startMs: number
+  /** 이 문장 뒤 다음 대사가 시작되기 전까지의 빈 구간 끝. 없으면 null */
+  gapEndMs: number | null
+  /** 1(낮음) ~ 3(높음). 시간이 모자라면 높은 것부터 남긴다 */
+  importance: number
+  text: string
+  /** S3 주소(6시간 유효). null 이면 브라우저 음성으로 읽는다 */
+  audioUrl: string | null
+  audioDurationMs: number | null
+}
+
+export interface Scene {
+  sceneId: number
+  sceneIndex: number
+  title: string
+  startMs: number
+  endMs: number
+}
+
+export interface Dialogue {
+  startMs: number
+  endMs: number
+  text: string
+  characterName: string | null
+}
+
+export type ScreenTextImportance = 'HIGH' | 'MEDIUM' | 'LOW'
+export interface ScreenText {
+  screenTextId: number
+  startMs: number
+  endMs: number
+  textType: string
+  importance: ScreenTextImportance
+  headline: string | null
+  fullText: string
+  summaryText: string | null
+  sameAsDialogue: boolean
+}
+
+/** GET /videos/{id}/description 의 data — 재생에 필요한 해설 전체 */
+export interface Description {
+  descriptionId: number
+  videoId: number
+  status: 'PUBLISHED'
+  /** 일부 구간만 해설이 있으면 그 끝. 전부 있으면 null */
+  coveredUntilMs: number | null
+  createdAt: string
+  lines: NarrationLine[]
+  scenes: Scene[]
+  dialogues: Dialogue[]
+  screenTexts: ScreenText[]
+}
+
+export interface Chapter {
+  chapterId: number
+  chapterIndex: number
+  title: string
+  startMs: number
+  endMs: number
+  summary: string
+}
+
+/** GET /videos/{id}/chapters 의 data */
+export interface Chapters {
+  descriptionId: number
+  chapters: Chapter[]
+}
+
+/** GET /videos/{id}/summary 의 data */
+export interface VideoSummary30 {
+  descriptionId: number
+  summary: { text: string; audioUrl: string | null; durationMs: number | null }
+  /** 대사가 많아 요약을 먼저 듣는 게 좋은 영상 */
+  recommendSummary: boolean
+}
+
+/** GET /videos/{id}/scenes/at 의 data */
+export interface SceneAt {
+  sceneId: number
+  title: string
+  startMs: number
+  endMs: number
+  sceneDescription: string
+}
+
+/* ───────────── 챗봇 ───────────── */
+
+export type ChatIntent =
+  'QUESTION' | 'SCENE_NOW' | 'SEEK_TIME' | 'SEEK_SCENE' | 'SETTING' | 'ACTION' | 'UNKNOWN'
+
+export type ChatActionCode =
+  | 'PLAY'
+  | 'PAUSE'
+  | 'CURRENT_POSITION'
+  | 'NEXT_SCENE'
+  | 'PREV_SCENE'
+  | 'PLAY_SUMMARY'
+  | 'READ_DETAIL'
+  | 'HELP'
+  | 'OPEN_CHAPTERS'
+  | 'OPEN_SCRIPT'
+  | 'OPEN_HISTORY'
+  | 'FAVORITE_ADD'
+  | 'FAVORITE_REMOVE'
+  | 'REPORT'
+  | 'REPLAY_TUTORIAL'
+
+export interface SceneCandidate {
+  chapterId: number
+  title: string
+  startMs: number
+  summary: string
+}
+
+/** POST /chat/messages 의 body */
+export interface ChatMessageBody {
+  videoId: number | null
+  descriptionId: number | null
+  videoTimeMs: number | null
+  utterance: string
+  inputMode: 'TEXT' | 'VOICE'
+}
+
+/** POST /chat/messages 의 data — intent 에 따라 result 모양이 다르다 */
+export type ChatMessageResult = {
+  chatLogId: number
+  inputMode: 'TEXT' | 'VOICE'
+  utterance: string
+} & (
+  | { intent: 'QUESTION' | 'SCENE_NOW'; result: { answerStreamUrl: string } }
+  | { intent: 'SEEK_TIME'; result: { targetMs: number } }
+  | {
+      intent: 'SEEK_SCENE'
+      result: { targetMs: number | null; chapterId: number | null; candidates: SceneCandidate[] }
+    }
+  | { intent: 'SETTING'; result: { settingKey: keyof UserSettings; settingValue: string } }
+  | { intent: 'ACTION'; result: { actionCode: ChatActionCode } }
+  | { intent: 'UNKNOWN'; result: { message: string } }
+)
+
+/** GET /chat/messages/{id}/stream 의 SSE 이벤트 */
+export type ChatStreamEvent =
+  | { event: 'delta'; data: { text: string } }
+  | { event: 'sentence'; data: { text: string; audioUrl: string | null } }
+  | {
+      event: 'done'
+      data: {
+        answerText: string
+        answerSource: 'STORED' | 'UNANSWERABLE' | string
+        firstAudioMs: number | null
+        totalLatencyMs: number | null
+      }
+    }
+  | { event: 'error'; data: { errorCode: string; message: string } }
+
+/** GET /videos/{id}/chat/messages 의 기록 한 건 */
+export interface ChatHistoryItem {
+  chatLogId: number
+  inputMode: 'TEXT' | 'VOICE'
+  utterance: string
+  intent: ChatIntent
+  videoTimeMs: number | null
+  targetMs: number | null
+  answerText: string | null
+  createdAt: string
+}
+
+export interface ChatHistory {
+  messages: ChatHistoryItem[]
+  nextCursor: number | null
+  hasNext: boolean
+}
+
+/* ───────────── 신고 ───────────── */
+
+/** 신고 사유(ReportReason)는 위 관리자 신고 타입과 같은 것을 쓴다 */
+export interface ReportBody {
+  reportedAtMs: number
+  reason: ReportReason
+  reasonDetail?: string
+}
+
+export interface ReportResult {
+  reportId: number
+  status: 'PENDING'
+}

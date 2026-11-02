@@ -28,8 +28,9 @@ import httpx
 
 from app.config import Settings
 
-CHAT_TIMEOUT = 90  # 재생 중 기능은 오래 기다리지 않고 GMS로 넘어간다
-STT_TIMEOUT = 15  # 질문 녹음(60초 이하) 받아쓰기. H200 실측 1~2초 → 이보다 늦으면 GMS whisper로(BE 요청, 2026-11-02)
+CHAT_TIMEOUT = 3  # 질문 답변(H200 첫 문장 실측 0.4초). 다른 사람의 해설 만들기로 GPU가 막혀 늦으면 바로 GMS로(명세: 첫 이벤트 10초)
+STT_TIMEOUT = 4  # 질문 녹음 받아쓰기. H200 실측 1~2초. 늦으면 GMS whisper(5초)로 → 합쳐서 Spring 제한 10초 안(명세)
+INTENT_TIMEOUT = 2  # 발화 분석. 늦으면 GMS lite로 → Spring 제한 5초 안(명세)
 JOB_TIMEOUT = 600
 TTS_TIMEOUT = 5  # 안내 목소리 한 문장(H200 실측 0.04초). 이보다 늦으면 브라우저 음성으로 읽는 편이 빠르다
 CHAT_FEATURES = ("stt", "intent", "answer", "tts")
@@ -48,7 +49,7 @@ class MockInference:
     async def transcribe(self, wav: Path | None) -> dict:
         return {"segments": [], "model": "mock"}
 
-    async def transcribe_bytes(self, wav: bytes) -> dict:
+    async def transcribe_bytes(self, wav: bytes, hint: str = "") -> dict:
         return {"segments": [{"startMs": 0, "endMs": 1000, "text": "시험용 받아쓰기"}], "model": "mock"}
 
     async def ocr(self, images: list[Path]) -> dict:
@@ -107,9 +108,9 @@ class RemoteInference:
         # 업로드 영상은 외국어일 수 있어 언어 자동 감지
         return await self._post("/stt", files={"audio": (wav.name, wav.read_bytes(), "audio/wav")}, data={"language": "auto"})
 
-    async def transcribe_bytes(self, wav: bytes) -> dict:
-        """녹음 한 토막(16kHz mono wav). 질문 녹음은 짧으니 오래 기다리지 않는다."""
-        return await self._post("/stt", timeout=STT_TIMEOUT, files={"audio": ("q.wav", wav, "audio/wav")})
+    async def transcribe_bytes(self, wav: bytes, hint: str = "") -> dict:
+        """녹음 한 토막(16kHz mono wav). 질문 녹음은 짧으니 오래 기다리지 않는다. hint는 받아쓰기 힌트(서버 버전 13, 옛 서버는 무시)."""
+        return await self._post("/stt", timeout=STT_TIMEOUT, files={"audio": ("q.wav", wav, "audio/wav")}, data={"prompt": hint})
 
     async def ocr(self, images: list[Path]) -> dict:
         files = [("images", (p.name, p.read_bytes(), "image/jpeg")) for p in images]
@@ -152,7 +153,7 @@ class RemoteInference:
             raise InferenceError("INFER_FAILED", "추론 서버 스트리밍 응답을 읽지 못했어요") from None
 
     async def intent(self, utterance: str) -> dict:
-        return await self._post("/chat/intent", timeout=CHAT_TIMEOUT, json={"utterance": utterance})
+        return await self._post("/chat/intent", timeout=INTENT_TIMEOUT, json={"utterance": utterance})
 
     async def tts(self, text: str, voice: str) -> tuple[bytes, int]:
         """안내 목소리 한 문장(서버 버전 12) → (mp3 바이트, 길이 ms). 늦으면 브라우저 음성이 낫기 때문에 오래 기다리지 않는다."""

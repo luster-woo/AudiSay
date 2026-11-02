@@ -1,27 +1,29 @@
-"""Spring → AI 서버 내부 API (API 명세서 > AI 서버 내부 API). **제안 구현** — 데모 backend/app/api/chat.py의 흐름을 옮겼다.
+"""Spring → AI 서버 내부 API (명세서 > AI 서버 내부 명세서). 재생 중 챗봇은 RabbitMQ 없이 Spring이 HTTP로 바로 부른다.
 
-FE는 부르지 않고, nginx에도 연결하지 않는다. X-Internal-Token 헤더로 확인한다(팀 require_token 그대로).
+FE는 부르지 않고, nginx에도 연결하지 않는다. X-Internal-Token 헤더로 확인한다(없거나 틀리면 401). 응답은 본문만,
+실패하면 HTTP 상태와 {"code","message"}(HTTPException detail). chat_logs는 Spring이 저장하고 AI는 읽기만 한다.
 
-===== BE와 합의 필요 =====
-1. /internal/chat/intent 응답 형식(데모와 같음):
-   {intent, targetMs, sceneQuery, setting{detailLevel|speechRate|subtitleReading}, action(PLAY|PAUSE|WHERE|SUMMARY),
-    by(RULE|AI), relativeMs, needsAnswer(bool), latencyMs}
-   - SEEK_SCENE이면 BE가 이어서 /internal/chat/seek을 부른다(여기서는 장면을 찾지 않는다). 데모는 한 번에 했다.
-   - BE가 chat_logs.intent·intent_latency_ms를 쓴다(AI는 chat_logs를 읽기만 — 요청에 chatLogId가 없기 때문).
-2. /internal/chat/seek 응답: {chapter{chapterId,title,startMs}|null, targetMs|null, candidates[{chapterId,title,startMs}], by(KEYWORD|AI|NONE)}
-   - chapter가 null이고 candidates가 2개 이상이면 FE가 후보를 읽어 주고 고르게 한다(데모 동작). BE가 chat_logs.target_ms·target_chapter_id를 쓴다.
-3. /internal/chat/answer: 202로 바로 응답 {chatLogId, redisKey, status:"STARTED"}. 답변은 Redis 리스트 chat:answer:{chatLogId}에
-   문장 하나가 완성될 때마다 RPUSH(JSON 한 줄). BE가 BLPOP/LRANGE로 읽어 SSE로 FE에 보낸다(architecture.md 4장).
-   - 원소: {"event":"sentence","index":0,"text":"...","audioUrl":null,"source":"STORED|GEMINI"}
-            {"event":"done","answerText":"...","answerSource":"STORED|GEMINI_REQUERY|UNANSWERABLE"}
-            {"event":"error","code":"...","message":"..."}
-   - 키 TTL 10분(ANSWER_KEY_TTL_SEC). BLPOP으로 읽으면 리스트가 비므로 다시 열 수 없다 → 다시 열기가 필요하면 LRANGE로 바꾼다.
-   - 답변 음성(audioUrl)은 지금 null(FE 브라우저 음성). 데모는 Supertonic(로컬 TTS)을 썼는데 팀 결정 전(README '못 정한 것').
-   - chat_logs.answer_text·answer_source·first_audio_ms·total_latency_ms는 AI가 쓴다(데모와 같음). BE가 쓰기로 하면 _finish_log를 뺀다.
-4. /internal/stt: multipart `audio`(webm/ogg/wav, 60초·10MB 이하) + 선택 `videoId`(보던 영상, 지금은 기록용)
-   → ffmpeg 16kHz wav → H200 faster-whisper(크레딧 0, STT_TIMEOUT 안에 못 받으면 바로) → GMS whisper-1.
-   응답 {text, engine:"H200"|"GMS", latencyMs, videoId}.
-   오류: 400 STT_001(빈 녹음)·STT_002(10MB 초과)·STT_005(디코딩 실패), 422 STT_004(알아듣지 못함), 503 STT_003(둘 다 꺼짐)·STT_006(둘 다 실패).
+1. /internal/chat/intent(명세 2번) 응답 {intent, slots}
+   - intent: QUESTION / SCENE_NOW / SEEK_TIME / SEEK_SCENE / SETTING / ACTION / UNKNOWN
+   - slots: SEEK_TIME {targetMs}, SEEK_SCENE {query}, SETTING {settingKey(detailLevel|speechRate|subtitleReading), settingValue},
+     ACTION {actionCode(PLAY|PAUSE|WHERE|SUMMARY)}, 나머지 {}
+   - 규칙 → H200(INTENT_TIMEOUT초) → gemini-3.1-flash-lite. Spring 제한 5초. chat_logs는 Spring이 저장한다.
+2. /internal/chat/seek(명세 3번): Spring이 chapters.keywords로 못 찾았을 때만 부른다. {descriptionId, query}
+   → gemini-3.8-flash가 목차 제목·요약·키워드를 보고 0~3개 → {candidates:[{chapterId, title, startMs, summary}]}.
+   GMS가 없으면(개발) 키워드 점수 상위 3개. 목차가 없으면 빈 배열.
+3. /internal/chat/answer(명세 4번): text/event-stream. Spring은 이벤트를 바꾸지 않고 FE로 넘기고 done 값으로 chat_logs를 저장한다.
+   - event: delta    {text}                      새로 나온 글(지금은 문장 단위)
+   - event: sentence {index, text, audioUrl}     문장마다 gemini-3.8-flash-tts(Kore) → S3 tts/chat/{chatLogId}/{n}.mp3 →
+                                                 presigned 6시간. TTS가 실패하면 audioUrl null(FE 브라우저 음성)
+   - event: done     {answerText, answerSource(STORED|UNANSWERABLE), firstAudioMs, totalLatencyMs}
+   - event: error    {code, message}
+   - Spring이 연결을 끊으면 거기까지로 끝낸다. 같은 chatLogId가 처리 중이면 409 CHAT_IN_PROGRESS(Redis 잠금 120초).
+   - 자료: 앞 장면·지금 장면(제목·해설 문장), 입력 시각 앞 60초 대사, 화면 글자, 30초 요약. 뒤 대사는 넣지 않는다.
+4. /internal/stt(명세 1번): multipart `audio`(webm/ogg/mp4/wav, 60초·10MB 이하) + 선택 `videoId`
+   → ffmpeg 16kHz wav → H200 faster-whisper(크레딧 0, STT_TIMEOUT초) → 못 받으면 GMS whisper-1(language=ko).
+   videoId가 있으면 영상 제목·인물 이름·목차 단어를 받아쓰기 힌트(prompt)로 넣는다. Spring 제한 10초 안에 끝나게 시간을 나눈다.
+   응답 {text, latencyMs, engine:"H200"|"GMS"}. 오류: 422 STT_EMPTY(아무 말도 인식 안 됨), 400 STT_FORMAT(빈 녹음·10MB 초과·
+   디코딩 실패), 502 GMS_ERROR(둘 다 꺼짐·실패).
 5. 오류 응답 형식: HTTPException detail={code, message} (팀 require_token과 같은 모양).
 6. /internal/tts(3차, 2026-10-30): 안내·답변 목소리 한 문장 {text, voice(F1~F5·M1~M5, 기본 F1)}
    → H200 Supertonic 3(크레딧 0, 문장당 약 0.04초) → S3 audio/guide/{voice}/{해시}.mp3. 같은 문장은 저장본을 돌려준다.
@@ -29,8 +31,8 @@ FE는 부르지 않고, nginx에도 연결하지 않는다. X-Internal-Token 헤
    오류: 400 TTS_001(빈 문장), 503 TTS_002(H200 꺼짐)·TTS_003(H200 실패) → FE는 브라우저 음성으로 읽는다(데모와 같음).
    숫자·영어는 한국어 읽기로 바꾸고 ▶·🅰 같은 기호·이모지는 지운 뒤 만든다(app/tts_text.py).
 
-AI 순서(데모와 같음, 크레딧 0을 먼저): 규칙·저장된 자료 → H200 오픈소스(INFERENCE_MODE=remote, H200_CHAT에 든 기능만) → GMS.
-answer의 source는 STORED|H200|GEMINI, chat_logs.answer_source는 H200·GEMINI 둘 다 GEMINI_REQUERY(팀 ERD 값).
+AI 순서(크레딧 0을 먼저): 규칙·저장된 자료 → H200 오픈소스(INFERENCE_MODE=remote, H200_CHAT에 든 기능만) → GMS.
+명세의 Spring 제한 시간(stt 10초, intent 5초, seek 10초, answer 첫 이벤트 10초·전체 60초) 안에 끝나게 H200은 짧게 기다린다.
 
 필요한 것: app.state.db(Db), app.state.gms(GmsClient), app.state.redis — main.py에서 넣는다.
 의존성 추가: python-multipart(파일 업로드), httpx(whisper 호출). Dockerfile에 ffmpeg.
@@ -42,9 +44,9 @@ import json
 import logging
 import re
 import time
-from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app import inference
@@ -57,11 +59,14 @@ from app.tts_text import normalize_ko
 
 log = logging.getLogger(__name__)
 
-ANSWER_KEY_TTL_SEC = 600
+ANSWER_LOCK_SEC = 120  # 같은 chatLogId 답변 중복 막기(Spring 전체 제한 60초보다 넉넉히)
+ANSWER_AUDIO_URL_SEC = 6 * 3600  # 답변 음성 presigned 주소 6시간(명세)
 TTS_VOICES = {f"{g}{i}" for g in "FM" for i in range(1, 6)}  # Supertonic 3 목소리(gpu_server와 같음)
 TTS_MAX_CHARS = 500
 STT_MAX_BYTES = 10 * 1024 * 1024
-_background: set[asyncio.Task] = set()  # 답변 작업이 GC로 사라지지 않게 붙들어 둔다
+WHISPER_TIMEOUT = 5  # GMS whisper-1(PoC 1.0~2.6초). H200 STT_TIMEOUT과 합쳐 Spring 제한 10초 안
+STT_HINT_CHARS = 400  # whisper prompt는 224토큰까지
+_answering: set[int] = set()  # Redis가 없을 때(개발) 처리 중인 chatLogId
 
 
 def require_token(x_internal_token: str = Header(default="")) -> None:
@@ -118,8 +123,12 @@ def _gms(request: Request):
     return getattr(request.app.state, "gms", None)
 
 
-def answer_key(chat_log_id: int) -> str:
-    return f"chat:answer:{chat_log_id}"
+def answer_lock_key(chat_log_id: int) -> str:
+    return f"chat:answer:lock:{chat_log_id}"
+
+
+def chat_audio_key(chat_log_id: int, n: int) -> str:
+    return f"tts/chat/{chat_log_id}/{n}.mp3"
 
 
 # ---------- 발화 분석 ----------
@@ -140,87 +149,138 @@ async def intent(req: IntentRequest, request: Request) -> dict:
     if p is None:
         gms = _gms(request)
         p = await it.by_ai(gms, req.utterance) if gms else it.Parsed("QUESTION", by="RULE")
-    return {**p.dict(), "needsAnswer": p.intent in ("QUESTION", "SCENE_NOW"),
-            "latencyMs": int((time.monotonic() - t0) * 1000)}
+    log.info("발화 분석 %s by=%s %dms", p.intent, p.by, int((time.monotonic() - t0) * 1000))
+    return {"intent": p.intent, "slots": slots_of(p)}
+
+
+def slots_of(p: "it.Parsed") -> dict:
+    """명세의 intent별 slots. 규칙·AI 결과(Parsed)를 옮긴다."""
+    if p.intent == "SEEK_TIME":
+        return {"targetMs": p.targetMs}
+    if p.intent == "SEEK_SCENE":
+        return {"query": p.sceneQuery}
+    if p.intent == "SETTING" and p.setting:
+        key, value = next(iter(p.setting.items()))
+        return {"settingKey": key, "settingValue": value}
+    if p.intent == "ACTION":
+        return {"actionCode": p.action}
+    return {}
 
 
 # ---------- 말로 장면 찾기 ----------
 
 @router.post("/chat/seek")
 async def seek(req: SeekRequest, request: Request) -> dict:
+    """Spring이 키워드로 못 찾은 장면을 AI가 0~3개 고른다. GMS가 없으면(개발) 키워드 점수 상위 3개."""
     chapters = await sk.chapters_of(_pool(request), req.descriptionId)
     if not chapters:
-        raise _err(404, "SEEK_001", "이 해설에는 장면 목차가 없습니다")
-    candidates = sk.by_keywords(req.query, chapters)
-    chapter, by = sk.pick(candidates), "KEYWORD"
-    if chapter is None and not candidates:
-        gms = _gms(request)
-        if gms:
-            chapter, by = await sk.by_ai(gms, req.query, chapters, req.chatLogId), "AI"
-    brief = lambda c: {k: c[k] for k in ("chapterId", "title", "startMs")}  # noqa: E731
-    return {"chapter": brief(chapter) if chapter else None, "targetMs": chapter["startMs"] if chapter else None,
-            "candidates": [brief(c) for c in candidates] if not chapter else [], "by": by if chapter else "NONE"}
+        return {"candidates": []}
+    gms = _gms(request)
+    picked = await sk.by_ai(gms, req.query, chapters, req.chatLogId) if gms else sk.by_keywords(req.query, chapters)[:3]
+    return {"candidates": [{k: c[k] for k in ("chapterId", "title", "startMs", "summary")} for c in picked]}
 
 
 # ---------- 질문 답변 ----------
 
-@router.post("/chat/answer", status_code=202)
-async def answer(req: AnswerRequest, request: Request) -> dict:
-    """바로 202를 돌려주고, 답변은 Redis 리스트 chat:answer:{chatLogId}에 문장마다 밀어 넣는다."""
+@router.post("/chat/answer")
+async def answer(req: AnswerRequest, request: Request) -> StreamingResponse:
+    """질문 답변을 SSE로 흘려보낸다(명세 4번). Spring은 이벤트를 바꾸지 않고 FE로 넘기고 done으로 chat_logs를 저장한다."""
     if req.intent not in ("QUESTION", "SCENE_NOW"):
         raise _err(400, "CHAT_002", "답변할 질문이 아닙니다")
     pool = _pool(request)
-    redis = request.app.state.redis
-    task = asyncio.create_task(_run_answer(pool, redis, _gms(request), req, inference.for_chat(settings(), "answer"),
-                                           getattr(request.app.state, "db", None)))
-    _background.add(task)
-    task.add_done_callback(_background.discard)
-    return {"chatLogId": req.chatLogId, "redisKey": answer_key(req.chatLogId), "status": "STARTED"}
+    if not await _lock_answer(request, req.chatLogId):
+        raise _err(409, "CHAT_IN_PROGRESS", "같은 질문의 답변을 만들고 있어요")
+    gms, inf = _gms(request), inference.for_chat(settings(), "answer")
+    db, storage = getattr(request.app.state, "db", None), request.app.state.storage
+    return StreamingResponse(_answer_events(request, pool, gms, inf, db, storage, req), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
-async def _run_answer(pool, redis, gms, req: AnswerRequest, inf=None, db=None) -> None:
-    key, t0 = answer_key(req.chatLogId), time.monotonic()
+def sse(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
-    async def push(obj: dict[str, Any]) -> None:
-        await redis.rpush(key, json.dumps(obj, ensure_ascii=False))
-        await redis.expire(key, ANSWER_KEY_TTL_SEC)
 
+async def _lock_answer(request: Request, chat_log_id: int) -> bool:
+    """같은 chatLogId가 처리 중이면 False(409). Redis가 없으면(개발) 이 프로세스 안에서만 막는다."""
+    redis = getattr(request.app.state, "redis", None)
+    if redis is not None:
+        return bool(await redis.set(answer_lock_key(chat_log_id), "1", nx=True, ex=ANSWER_LOCK_SEC))
+    if chat_log_id in _answering:
+        return False
+    _answering.add(chat_log_id)
+    return True
+
+
+async def _unlock_answer(request: Request, chat_log_id: int) -> None:
+    redis = getattr(request.app.state, "redis", None)
+    if redis is not None:
+        await redis.delete(answer_lock_key(chat_log_id))
+    _answering.discard(chat_log_id)
+
+
+async def _answer_events(request: Request, pool, gms, inf, db, storage, req: AnswerRequest):
+    """delta(새로 나온 글) → sentence(문장 하나, 음성 주소) … → done. 실패하면 error. Spring이 끊으면 거기까지로 끝낸다."""
+    t0 = time.monotonic()
     texts: list[str] = []
-    first_ms: int | None = None
+    first_audio_ms: int | None = None
     try:
         ctx = await ans.context(pool, req.descriptionId, req.videoTimeMs)
         chapters = await sk.chapters_of(pool, req.descriptionId)
-        sentences, source = await _pick_answer(gms, req, ctx, inf, db)
-        async for s in _with_hint(sentences, texts, req, chapters):
+        sentences = await _pick_answer(gms, req, ctx, inf, db)
+        async for s in _with_hint(sentences, req, chapters):
+            if await request.is_disconnected():
+                log.info("답변 중 연결 끊김 chatLog=%s(%d문장까지)", req.chatLogId, len(texts))
+                break
+            yield sse("delta", {"text": s})
+            audio_url = await _sentence_audio(gms, storage, req.chatLogId, len(texts), s)
+            if audio_url and first_audio_ms is None:
+                first_audio_ms = int((time.monotonic() - t0) * 1000)
+            yield sse("sentence", {"index": len(texts), "text": s, "audioUrl": audio_url})
             texts.append(s)
-            if first_ms is None:
-                first_ms = int((time.monotonic() - t0) * 1000)
-            await push({"event": "sentence", "index": len(texts) - 1, "text": s, "audioUrl": None, "source": source})
         answer_text = " ".join(texts)
-        db_source = "UNANSWERABLE" if ans.UNANSWERABLE in answer_text else (
-            "GEMINI_REQUERY" if source in ("GEMINI", "H200") else "STORED")
-        await _finish_log(pool, req.chatLogId, answer_text, db_source, first_ms, t0)
-        await push({"event": "done", "answerText": answer_text, "answerSource": db_source})
+        source = "UNANSWERABLE" if ans.UNANSWERABLE in answer_text else "STORED"
+        yield sse("done", {"answerText": answer_text, "answerSource": source, "firstAudioMs": first_audio_ms,
+                           "totalLatencyMs": int((time.monotonic() - t0) * 1000)})
     except Exception as e:  # noqa: BLE001
         log.exception("답변 실패 chatLog=%s", req.chatLogId)
-        await push({"event": "error", "code": getattr(e, "code", "UNKNOWN"),
-                    "message": "답변을 만들지 못했어요. 잠시 뒤 다시 물어봐 주세요."})
+        yield sse("error", {"code": getattr(e, "code", "UNKNOWN"), "message": "답변을 만들지 못했어요. 잠시 뒤 다시 물어봐 주세요."})
+    finally:
+        await _unlock_answer(request, req.chatLogId)
+
+
+async def _sentence_audio(gms, storage, chat_log_id: int, n: int, text: str) -> str | None:
+    """문장 음성: gemini-3.8-flash-tts(Kore) → S3 tts/chat/{chatLogId}/{n}.mp3 → presigned 6시간. 실패하면 None(브라우저 음성)."""
+    if gms is None:
+        return None
+    from app.gms.client import CallContext
+    from app.pipeline import tts as tts_pipe
+
+    try:
+        made = await tts_pipe.synthesize(gms, text, CallContext("TTS", chat_log_id=chat_log_id))
+        if not made:
+            return None
+        key = chat_audio_key(chat_log_id, n)
+        await storage.put_bytes(key, made[0], "audio/mpeg")
+        return await storage.presign(key, ANSWER_AUDIO_URL_SEC)
+    except Exception as e:  # noqa: BLE001 — 음성이 없어도 글로 답한다
+        log.warning("답변 음성 실패 chatLog=%s #%s: %s", chat_log_id, n, str(e)[:200])
+        return None
 
 
 async def _pick_answer(gms, req: AnswerRequest, ctx: dict, inf=None, db=None):
-    """(문장 비동기 반복자, 어디서 답했나). 저장된 자료 → H200 → GMS → AI 없음 순서."""
+    """문장 비동기 반복자. 저장된 자료 → H200 → GMS(gemini-3.1-flash-lite) → AI 없음 순서."""
     if req.intent == "SCENE_NOW":
-        return _aiter(ans.scene_now(ctx)), "STORED"
+        return _aiter(ans.scene_now(ctx))
     direct = ans.character_answer(req.utterance, ctx)
     if direct:
-        return _aiter(direct), "STORED"
+        return _aiter(direct)
     if inf:
         remote = await ans.remote_answer(inf, req.utterance, ctx, db, req.chatLogId)
         if remote:
-            return remote, "H200"
+            return remote
     if gms:
-        return ans.answer_sentences(gms, req.utterance, ctx, req.chatLogId), "GEMINI"
-    return _aiter(ans.no_ai_answer(req.utterance, ctx)), "STORED"
+        return ans.answer_sentences(gms, req.utterance, ctx, req.chatLogId)
+    return _aiter(ans.no_ai_answer(req.utterance, ctx))
 
 
 async def _aiter(items):
@@ -228,7 +288,7 @@ async def _aiter(items):
         yield x
 
 
-async def _with_hint(sentences, texts: list[str], req: AnswerRequest, chapters: list[dict]):
+async def _with_hint(sentences, req: AnswerRequest, chapters: list[dict]):
     """'자료에 없어요'로 끝나면 다른 장면에 있는 내용인지 보고 그 장면으로 안내하는 문장을 덧붙인다."""
     last = None
     async for s in sentences:
@@ -240,40 +300,32 @@ async def _with_hint(sentences, texts: list[str], req: AnswerRequest, chapters: 
             yield hint
 
 
-async def _finish_log(pool, chat_log_id: int, answer_text: str, source: str, first_ms: int | None, t0: float) -> None:
-    try:
-        await pool.execute("UPDATE chat_logs SET answer_text = $1, answer_source = $2, first_audio_ms = $3, total_latency_ms = $4"
-                           " WHERE id = $5", answer_text, source, first_ms, int((time.monotonic() - t0) * 1000), chat_log_id)
-    except Exception as e:  # noqa: BLE001 — 기록 실패로 답변을 막지 않는다
-        log.warning("chat_logs 갱신 실패 %s: %s", chat_log_id, e)
-
-
 # ---------- 받아쓰기 ----------
 
 @router.post("/stt")
 async def stt(request: Request, audio: UploadFile = File(...), videoId: int | None = Form(None)) -> dict:
-    """브라우저 녹음 → ffmpeg 16kHz mono wav → H200 faster-whisper → 실패하면 GMS whisper-1(language=ko).
-    videoId: 질문할 때 보던 영상(BE 요청, 2026-11-02). 지금은 기록·응답에만 쓴다."""
+    """브라우저 녹음 → ffmpeg 16kHz mono wav → H200 faster-whisper → 못 받으면 GMS whisper-1(language=ko)."""
     raw = await audio.read()
     if not raw:
-        raise _err(400, "STT_001", "녹음된 소리가 없어요.")
+        raise _err(400, "STT_FORMAT", "녹음된 소리가 없어요.")
     if len(raw) > STT_MAX_BYTES:
-        raise _err(400, "STT_002", "녹음이 너무 길어요. 60초 안으로 말해 주세요.")
+        raise _err(400, "STT_FORMAT", "녹음이 너무 길어요. 60초 안으로 말해 주세요.")
     cfg = settings()
     has_gms = bool(cfg.gms_api_key and cfg.gms_gemini_base_url)
     inf = inference.for_chat(cfg, "stt")
     if not has_gms and not inf:
-        raise _err(503, "STT_003", "음성 인식이 꺼져 있어요. 글자로 입력해 주세요.")
+        raise _err(502, "GMS_ERROR", "음성 인식이 꺼져 있어요. 글자로 입력해 주세요.")
     try:
         wav = await _to_wav16k(raw)
     except Exception:  # noqa: BLE001
-        raise _err(400, "STT_005", "녹음 파일을 읽지 못했어요. 다시 말해 주세요.") from None
+        raise _err(400, "STT_FORMAT", "녹음 파일을 읽지 못했어요. 다시 말해 주세요.") from None
     t0 = time.monotonic()
     db = getattr(request.app.state, "db", None)
+    hint = await _stt_hint(request, videoId)
     text, engine = None, None
     if inf:  # H200 faster-whisper(크레딧 0)
         try:
-            r = await inf.transcribe_bytes(wav)
+            r = await inf.transcribe_bytes(wav, hint)
             text, engine = " ".join(s["text"] for s in r.get("segments", []) if s.get("text")).strip(), "H200"
             await inference.log_remote(db, "STT", str(r.get("model", "")), t0)
         except inference.InferenceError as e:
@@ -281,7 +333,7 @@ async def stt(request: Request, audio: UploadFile = File(...), videoId: int | No
             text = None
     if text is None and has_gms:
         try:
-            text, engine = await _whisper(cfg, wav), "GMS"
+            text, engine = await _whisper(cfg, wav, hint), "GMS"
         except Exception as e:  # noqa: BLE001
             if db:
                 await db.log_call(CallLog(purpose="STT", model="whisper-1", latency_ms=int((time.monotonic() - t0) * 1000),
@@ -291,10 +343,33 @@ async def stt(request: Request, audio: UploadFile = File(...), videoId: int | No
             if db:
                 await db.log_call(CallLog(purpose="STT", model="whisper-1", latency_ms=int((time.monotonic() - t0) * 1000)))
     if text is None:
-        raise _err(503, "STT_006", "음성 인식 서버에 연결하지 못했어요. 글자로 입력해 주세요.")
+        raise _err(502, "GMS_ERROR", "음성 인식 서버에 연결하지 못했어요. 글자로 입력해 주세요.")
     if not text:
-        raise _err(422, "STT_004", "말을 알아듣지 못했어요. 다시 말해 주세요.")
-    return {"text": text, "engine": engine, "latencyMs": int((time.monotonic() - t0) * 1000), "videoId": videoId}
+        raise _err(422, "STT_EMPTY", "말을 알아듣지 못했어요. 다시 말해 주세요.")
+    return {"text": text, "latencyMs": int((time.monotonic() - t0) * 1000), "engine": engine}
+
+
+async def _stt_hint(request: Request, video_id: int | None) -> str:
+    """받아쓰기 힌트: 영상 제목·인물 이름·목차 단어(공개된 해설 기준). 고유명사 인식을 높인다. DB가 없으면 빈 글."""
+    db = getattr(request.app.state, "db", None)
+    if video_id is None or db is None or db.pool is None:
+        return ""
+    try:
+        row = await db.pool.fetchrow("SELECT v.title, d.id AS did FROM videos v LEFT JOIN descriptions d ON d.video_id = v.id"
+                                     " AND d.status = 'PUBLISHED' WHERE v.id = $1 ORDER BY d.id DESC LIMIT 1", video_id)
+        if not row:
+            return ""
+        parts = [row["title"] or ""]
+        if row["did"]:
+            names = await db.pool.fetch("SELECT name FROM characters WHERE description_id = $1 AND name IS NOT NULL", row["did"])
+            words = await db.pool.fetch("SELECT title, keywords FROM chapters WHERE description_id = $1 ORDER BY chapter_index",
+                                        row["did"])
+            parts.append(", ".join(r["name"] for r in names))
+            parts.append(", ".join(w for r in words for w in [r["title"], *(r["keywords"] or [])] if w))
+        return ". ".join(p for p in parts if p)[:STT_HINT_CHARS]
+    except Exception as e:  # noqa: BLE001 — 힌트가 없어도 받아쓰기는 한다
+        log.warning("받아쓰기 힌트 실패 video=%s: %s", video_id, e)
+        return ""
 
 
 async def _to_wav16k(raw: bytes) -> bytes:
@@ -312,13 +387,14 @@ def openai_base(gemini_base_url: str) -> str:
     return gemini_base_url.split("/gmsapi/")[0] + "/gmsapi/api.openai.com/v1"
 
 
-async def _whisper(cfg, wav: bytes) -> str:
+async def _whisper(cfg, wav: bytes, hint: str = "") -> str:
     import httpx
 
-    async with httpx.AsyncClient(timeout=60) as client:
+    data = {"model": "whisper-1", "language": "ko", **({"prompt": hint} if hint else {})}
+    async with httpx.AsyncClient(timeout=WHISPER_TIMEOUT) as client:
         r = await client.post(f"{openai_base(cfg.gms_gemini_base_url)}/audio/transcriptions",
                               headers={"Authorization": f"Bearer {cfg.gms_api_key}"},
-                              data={"model": "whisper-1", "language": "ko"}, files={"file": ("q.wav", wav, "audio/wav")})
+                              data=data, files={"file": ("q.wav", wav, "audio/wav")})
         r.raise_for_status()
     return (r.json().get("text") or "").strip()
 

@@ -85,7 +85,17 @@ def test_internal_api_requires_token(monkeypatch):
     # 규칙으로 분류되는 말은 DB·GMS 없이도 답한다(크레딧 0)
     r = c.post("/internal/chat/intent", json={"utterance": "3분 20초로 가줘"}, headers={"X-Internal-Token": "secret"})
     assert r.status_code == 200
-    assert (r.json()["intent"], r.json()["targetMs"], r.json()["needsAnswer"]) == ("SEEK_TIME", 200_000, False)
+    assert r.json() == {"intent": "SEEK_TIME", "slots": {"targetMs": 200_000}}  # 명세 2번 {intent, slots}
     # GMS 키가 없으면 애매한 말은 질문으로 본다
     r = c.post("/internal/chat/intent", json={"utterance": "안녕"}, headers={"X-Internal-Token": "secret"})
-    assert r.status_code == 200 and r.json()["intent"] == "QUESTION"
+    assert r.status_code == 200 and r.json() == {"intent": "QUESTION", "slots": {}}
+
+
+def test_intent_slots_per_spec():
+    from app.chat.intent import Parsed
+    from app.internal_api import slots_of
+
+    assert slots_of(Parsed("SEEK_SCENE", sceneQuery="골 넣는 장면")) == {"query": "골 넣는 장면"}
+    assert slots_of(Parsed("SETTING", setting={"detailLevel": 3})) == {"settingKey": "detailLevel", "settingValue": 3}
+    assert slots_of(Parsed("ACTION", action="PAUSE")) == {"actionCode": "PAUSE"}
+    assert slots_of(Parsed("SCENE_NOW")) == {}

@@ -31,8 +31,6 @@ public class RabbitConfig {
     public static final String RETRY_30S_EXCHANGE = "audisay.retry.30s";
 
     public static final String PREPARE_QUEUE = "job.prepare";
-    public static final String TRANSCRIBE_QUEUE = "job.transcribe";
-    public static final String SCENE_QUEUE = "job.scene";
     public static final String DESCRIBE_QUEUE = "job.describe";
     public static final String MERGE_QUEUE = "job.merge";
     public static final String TTS_QUEUE = "job.tts";
@@ -43,8 +41,7 @@ public class RabbitConfig {
     public static final String DLQ = "job.dlq";
 
     public static final List<String> JOB_EXCHANGE_QUEUES = List.of(
-            PREPARE_QUEUE, TRANSCRIBE_QUEUE, SCENE_QUEUE, DESCRIBE_QUEUE,
-            MERGE_QUEUE, TTS_QUEUE, LINE_TTS_QUEUE, EVENTS_QUEUE);
+            PREPARE_QUEUE, DESCRIBE_QUEUE, MERGE_QUEUE, TTS_QUEUE, LINE_TTS_QUEUE, EVENTS_QUEUE);
 
     // long이면 AI(signedint)와 타입이 달라 inequivalent arg 에러
     private static final int RETRY_10S_TTL_MS = 10_000;

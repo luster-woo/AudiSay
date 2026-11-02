@@ -9,12 +9,9 @@ public record MergePayload(
         Pipeline pipeline,
         List<Integer> succeededChunks,
         Integer coveredUntilMs,
-        String transcriptKey,
         String modelName
 ) {
-    public static MergePayload of(Long jobId, Long videoId, Pipeline pipeline,
-                                  List<Integer> succeededChunks, Integer coveredUntilMs) {
-        return new MergePayload(videoId, pipeline, succeededChunks, coveredUntilMs,
-                JobKeys.transcript(jobId, pipeline), null);
+    public static MergePayload of(Long videoId, Pipeline pipeline, List<Integer> succeededChunks, Integer coveredUntilMs) {
+        return new MergePayload(videoId, pipeline, succeededChunks, coveredUntilMs, null);
     }
 }

@@ -185,6 +185,18 @@ public class UploadService {
         videoRepository.delete(video);
     }
 
+    /** 워커가 재생용 파일을 만들었다(LOCAL prepare 완료) */
+    @Transactional
+    public void finishTranscode(Long videoId, String playbackKey) {
+        videoUploadRepository.findById(videoId).ifPresent(upload -> upload.finishTranscode(playbackKey));
+    }
+
+    /** 해설 작업이 실패했다. 재생용 파일을 이미 만들었으면 그대로 둔다 */
+    @Transactional
+    public void failTranscode(Long videoId) {
+        videoUploadRepository.findById(videoId).ifPresent(VideoUpload::failTranscode);
+    }
+
     private void checkLimit(Long userId, UploadStartRequest request, UploadLimit limit) {
         if (request.sizeBytes() > limit.maxSize().toBytes()) {
             throw new BusinessException(ErrorCode.FILE_SIZE_EXCEEDED);

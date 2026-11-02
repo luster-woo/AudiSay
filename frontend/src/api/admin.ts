@@ -1,6 +1,7 @@
 import { request } from './client'
 import type {
   AdminReport,
+  AdminUser,
   LineAudioResult,
   LineUpdateResult,
   Paged,
@@ -9,6 +10,7 @@ import type {
   ReportReason,
   ReportStatus,
   ReviewDescription,
+  Role,
 } from './types'
 
 export interface AdminReportListParams {
@@ -25,6 +27,18 @@ export interface ReviewDescriptionParams {
   descriptionId?: number
   /** 처리 전 신고가 있는 문장만 */
   reportedOnly?: boolean
+}
+
+export interface AdminUserListParams {
+  /** 없으면 전체 역할 */
+  role?: Role
+  /** 이메일 또는 이름 일부 */
+  keyword?: string
+  /** 기본 false (탈퇴 회원 제외) */
+  includeWithdrawn?: boolean
+  page?: number
+  /** 기본 20, 최대 50 */
+  size?: number
 }
 
 /** 관리자 API. ADMIN 역할만 호출할 수 있다 (아니면 403 COMMON_003) */
@@ -55,4 +69,7 @@ export const adminApi = {
   /** 영상 해설 전체를 다시 만든다. 이미 만드는 중이면 409 JOB_002 */
   regenerate: (videoId: number) =>
     request<RegenerateResult>({ method: 'POST', url: `/admin/videos/${videoId}/regenerate` }),
+  /** 회원 목록 (가입 최신순). 보기만 하고 바꾸는 API 는 없다 */
+  users: (params: AdminUserListParams) =>
+    request<Paged<AdminUser>>({ url: '/admin/users', params }),
 }

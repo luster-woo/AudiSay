@@ -39,7 +39,7 @@ export function StatusSwitch({ value, onChange, pendingCount }: StatusSwitchProp
           />
           {STATUS_LABELS[s]}
           {s === 'PENDING' && pendingCount !== undefined && (
-            <span className="rounded-full bg-yellow-soft px-[0.4rem] text-[0.8rem] text-navy">
+            <span className="font-bold text-navy">
               {pendingCount}
               <span className="sr-only">건</span>
             </span>

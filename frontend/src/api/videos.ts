@@ -11,6 +11,8 @@ import type {
   VideoDetail,
   VideoSummary30,
   VideoSummary,
+  Visibility,
+  VisibilityResult,
   YoutubeCheck,
   YoutubeRequestResult,
   YoutubeSearchResult,
@@ -28,6 +30,13 @@ export const videosApi = {
   list: (params: VideoListParams) => request<Paged<VideoSummary>>({ url: '/videos', params }),
   /** 영상 정보와 해설 상태 (플레이어·해설 만들기 화면) */
   get: (videoId: number) => request<VideoDetail>({ url: `/videos/${videoId}` }),
+  /** 업로드한 회원만 공개 범위를 변경할 수 있다 */
+  updateVisibility: (videoId: number, visibility: Visibility) =>
+    request<VisibilityResult>({
+      method: 'PATCH',
+      url: `/videos/${videoId}/visibility`,
+      data: { visibility },
+    }),
   /** 유튜브 검색. 해설 있는 영상이 먼저 온다. 한 번에 10개 */
   youtubeSearch: (q: string, pageToken?: string) =>
     request<YoutubeSearchResult>({ url: '/videos/youtube/search', params: { q, pageToken } }),

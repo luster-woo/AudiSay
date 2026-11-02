@@ -30,11 +30,17 @@ function Row({ label, item }: { label: string; item: QuotaItem }) {
 }
 
 /** 오른쪽 '오늘 남은 횟수'. GET /users/me/quota */
-export function QuotaAside({ showLeftNote = true }: { showLeftNote?: boolean }) {
+export function QuotaAside({
+  showLeftNote = true,
+  className,
+}: {
+  showLeftNote?: boolean
+  className?: string
+}) {
   const { data } = useQuery({ queryKey: queryKeys.quota, queryFn: usersApi.quota })
 
   return (
-    <aside aria-labelledby="quota-title" className="border-t-2 border-line pt-5">
+    <aside aria-labelledby="quota-title" className={cn('border-t-2 border-line pt-5', className)}>
       <h2 id="quota-title" className="text-[1.75rem] font-bold">
         오늘 남은 횟수
       </h2>

@@ -20,6 +20,7 @@ import YoutubeCheckPage from '@/pages/home/YoutubeCheckPage'
 import RegisterPage from '@/pages/register/RegisterPage'
 import JobPage from '@/pages/jobs/JobPage'
 import WatchPage from '@/pages/watch/WatchPage'
+import MyVideosPage from '@/pages/my-videos/MyVideosPage'
 import NotFoundPage from '@/pages/errors/NotFoundPage'
 import RouteError from '@/pages/errors/RouteError'
 import RootError from '@/pages/errors/RootError'
@@ -77,7 +78,7 @@ const userRoutes: RouteObject[] = [
       { path: 'tutorial/:step', element: <TutorialPage /> },
       { path: 'verify', element: <VerifyPage /> },
       page('me', { title: '내 정보' }),
-      page('me/videos', { title: '내 영상' }),
+      { path: 'me/videos', element: <MyVideosPage /> },
       page('help', { title: '도움말' }),
     ],
   },

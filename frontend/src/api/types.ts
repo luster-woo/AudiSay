@@ -85,8 +85,15 @@ export const DEFAULT_SETTINGS: UserSettings = {
 
 /** 영상 카테고리 */
 export type VideoCategory =
-  | 'EDUCATION' | 'COOKING' | 'GAME' | 'MUSIC' | 'SCIENCE_IT'
-  | 'NEWS' | 'ENTERTAINMENT' | 'SPORTS' | 'ETC'
+  | 'EDUCATION'
+  | 'COOKING'
+  | 'GAME'
+  | 'MUSIC'
+  | 'SCIENCE_IT'
+  | 'NEWS'
+  | 'ENTERTAINMENT'
+  | 'SPORTS'
+  | 'ETC'
 
 /** GET /videos 목록 항목 */
 export interface VideoSummary {
@@ -116,8 +123,12 @@ export interface VideoDetail extends VideoSummary {
 export type JobStatus = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'PARTIAL' | 'FAILED'
 export type JobStage = 'PREPARE' | 'DESCRIBE' | 'MERGE' | 'TTS'
 export type JobErrorCode =
-  | 'VIDEO_UNAVAILABLE' | 'DURATION_MISMATCH' | 'TRANSCODE_FAILED'
-  | 'AI_LIMIT' | 'AI_TIMEOUT' | 'UNKNOWN'
+  | 'VIDEO_UNAVAILABLE'
+  | 'DURATION_MISMATCH'
+  | 'TRANSCODE_FAILED'
+  | 'AI_LIMIT'
+  | 'AI_TIMEOUT'
+  | 'UNKNOWN'
 
 export interface Job {
   jobId: number
@@ -138,7 +149,10 @@ export interface Job {
 
 /** SSE 이벤트 3종 */
 export type JobEvent =
-  | { event: 'progress'; data: Pick<Job, 'status' | 'currentStage' | 'progress' | 'estimatedRemainingSec'> }
+  | {
+      event: 'progress'
+      data: Pick<Job, 'status' | 'currentStage' | 'progress' | 'estimatedRemainingSec'>
+    }
   | { event: 'completed'; data: Pick<Job, 'status' | 'descriptionId' | 'coveredUntilMs'> }
   | { event: 'failed'; data: Pick<Job, 'status' | 'errorCode' | 'retryable'> & { message: string } }
 
@@ -267,6 +281,25 @@ export interface AdminUser {
   /** 탈퇴일. includeWithdrawn=true 일 때만 값이 있을 수 있다 */
   withdrawnAt: string | null
   createdAt: string
+}
+
+/** GET /favorites — 볼 수 없는 영상도 해제할 수 있도록 목록에 남는다 */
+export interface FavoriteVideo {
+  videoId: number
+  sourceType: 'YOUTUBE' | 'UPLOAD'
+  title: string
+  thumbnailUrl: string | null
+  durationSec: number
+  category: VideoCategory | null
+  hasDescription: boolean
+  available: boolean
+  favoritedAt: string
+}
+
+/** PATCH /videos/{id}/visibility */
+export interface VisibilityResult {
+  videoId: number
+  visibility: Visibility
 }
 
 /** 신고 처리 상태 · 사유 */

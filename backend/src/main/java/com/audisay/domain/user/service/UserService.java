@@ -67,6 +67,7 @@ public class UserService {
 
     /**
      * 시각장애인 인증(형식상 자동 승인). 서류는 형식·용량만 검사하고 어디에도 저장하지 않는다.
+     * 일반 회원만 신청할 수 있다. 관리자가 신청하면 역할이 바뀌어 관리자 권한을 잃으므로 함께 막는다.
      */
     @Transactional
     public VerificationResponse verifyVisuallyImpaired(AuthUser authUser, MultipartFile document, Boolean sensitiveAgreed) {
@@ -74,7 +75,7 @@ public class UserService {
             throw new BusinessException(ErrorCode.SENSITIVE_INFO_NOT_AGREED);
         }
         User user = getActiveUser(authUser.userId());
-        if (user.getRole() == Role.VISUALLY_IMPAIRED) {
+        if (user.getRole() != Role.GENERAL) {
             throw new BusinessException(ErrorCode.ALREADY_VERIFIED);
         }
         verificationDocumentValidator.validate(document);

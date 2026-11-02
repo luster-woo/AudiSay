@@ -15,6 +15,7 @@ from app.config import Settings
 class Storage(Protocol):
     async def exists(self, key: str) -> bool: ...
     async def get_json(self, key: str) -> Any: ...
+    async def get_bytes(self, key: str) -> bytes: ...
     async def put_json(self, key: str, obj: Any) -> None: ...
     async def put_bytes(self, key: str, data: bytes, content_type: str) -> None: ...
     # 업로드 영상(LOCAL): 원본을 임시 폴더로 받고, 재생용 MP4를 올린다(큰 파일이라 메모리에 다 올리지 않음)
@@ -38,6 +39,9 @@ class LocalStorage:
 
     async def get_json(self, key: str) -> Any:
         return json.loads(self._p(key).read_text(encoding="utf-8"))
+
+    async def get_bytes(self, key: str) -> bytes:
+        return self._p(key).read_bytes()
 
     async def put_json(self, key: str, obj: Any) -> None:
         await self.put_bytes(key, _dumps(obj), "application/json")
@@ -82,6 +86,9 @@ class S3Storage:
         def get():
             return json.loads(self.s3.get_object(Bucket=self.bucket, Key=key)["Body"].read())
         return await asyncio.to_thread(get)
+
+    async def get_bytes(self, key: str) -> bytes:
+        return await asyncio.to_thread(lambda: self.s3.get_object(Bucket=self.bucket, Key=key)["Body"].read())
 
     async def put_json(self, key: str, obj: Any) -> None:
         await self.put_bytes(key, _dumps(obj), "application/json")

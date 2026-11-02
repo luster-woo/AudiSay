@@ -12,11 +12,16 @@
 - clean_tail: SDK 응답 끝에 붙는 0.1~0.3초 최대 음량 잡음("칙")을 잘라 낸다(데모 troubleshooting 6번).
 
 데모 backend/app/pipeline/tts.py(synthesize_many·clean_tail)를 비동기·S3로 옮겼다. voice_code 칼럼은 V3에서 지워져 쓰지 않는다.
+
+같은 문장은 음성을 다시 만들지 않는다(크레딧 재사용, 2026-11-02): 문장 글의 해시로 S3 cache/tts/kore/{해시}.mp3 →
+레포에 넣어 둔 데모 음성 ai/data/tts/{해시}.mp3(index.json에 길이) 순서로 찾고, 없을 때만 Gemini TTS를 부른 뒤 캐시에 남긴다.
+데모와 같은 모델·목소리(gemini-3.8-flash-tts, Kore)·형식(mp3)이고, 팀 merge도 문장 글을 바꾸지 않아 글이 같으면 그대로 쓴다.
 """
 import asyncio
 import logging
 from array import array
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 
 from google.genai import types
 
@@ -36,6 +41,8 @@ PRE_TTS_LEVEL = 2  # job.tts가 미리 만드는 상세도. 3은 line.tts
 STAGE_START_PROGRESS, STAGE_END_PROGRESS = 80, 100
 PROGRESS_STEP = 10  # PROGRESS 이벤트는 10% 단위로(노션 워커 메시지 명세 7·9장)
 MP3_BITRATE = "64k"
+TTS_SEED_DIR = Path(__file__).resolve().parents[2] / "data" / "tts"  # 데모에서 만든 음성(이미지에 함께 들어감)
+_seed_index: dict[str, int] | None = None
 
 SR = 24000  # Gemini TTS PCM: 24kHz 16bit mono
 WIN = SR // 50  # 20ms 창
@@ -128,6 +135,44 @@ async def synthesize(gms: GmsClient, text: str, ctx: CallContext) -> tuple[bytes
     return None
 
 
+def text_hash(text: str) -> str:
+    import hashlib
+
+    return hashlib.sha1(text.strip().encode()).hexdigest()[:16]
+
+
+def tts_cache_key(h: str) -> str:
+    return f"cache/tts/kore/{h}.mp3"
+
+
+def _seed(h: str) -> tuple[bytes, int] | None:
+    global _seed_index
+    if _seed_index is None:
+        idx = TTS_SEED_DIR / "index.json"
+        import json
+
+        _seed_index = json.loads(idx.read_text(encoding="utf-8")) if idx.exists() else {}
+    p = TTS_SEED_DIR / f"{h}.mp3"
+    return (p.read_bytes(), int(_seed_index.get(h) or 0)) if h in _seed_index and p.exists() else None
+
+
+async def reuse(storage: Storage, text: str) -> tuple[bytes, int] | None:
+    """같은 문장의 음성(mp3, 길이 ms): S3 캐시 → 레포의 데모 음성. 없으면 None."""
+    h = text_hash(text)
+    key = tts_cache_key(h)
+    if await storage.exists(key):
+        meta_key = key.removesuffix(".mp3") + ".json"
+        meta = await storage.get_json(meta_key) if await storage.exists(meta_key) else {}
+        return await storage.get_bytes(key), int(meta.get("durationMs") or 0)
+    return _seed(h)
+
+
+async def remember(storage: Storage, text: str, mp3: bytes, ms: int) -> None:
+    key = tts_cache_key(text_hash(text))
+    await storage.put_bytes(key, mp3, "audio/mpeg")
+    await storage.put_json(key.removesuffix(".mp3") + ".json", {"durationMs": ms})
+
+
 OnDone = Callable[[int, int], Awaitable[None]]
 
 
@@ -139,7 +184,11 @@ async def synthesize_many(gms: GmsClient, storage: Storage, items: list[tuple[st
 
     async def one(key: str, text: str) -> None:
         async with sem:
-            made = await synthesize(gms, text, ctx)
+            made = await reuse(storage, text)  # 같은 문장이면 크레딧 0
+            if made is None:
+                made = await synthesize(gms, text, ctx)
+                if made:
+                    await remember(storage, text, *made)
             if made:
                 await storage.put_bytes(key, made[0], "audio/mpeg")
             out[key] = made[1] if made else None

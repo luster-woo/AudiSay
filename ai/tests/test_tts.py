@@ -29,17 +29,17 @@ def test_tts_saves_once_and_reuses(monkeypatch, tmp_path):
     assert c.post("/internal/tts", json={"text": "🅰🅲"}, headers=h).status_code == 400  # 지우고 나면 빈 문장
 
 
-def test_tts_off_or_failed_is_503(monkeypatch, tmp_path):
+def test_tts_off_or_failed_gives_empty_audio_url(monkeypatch, tmp_path):
     h = {"X-Internal-Token": "secret"}
     off = _client(monkeypatch, tmp_path, None).post("/internal/tts", json={"text": "안녕하세요"}, headers=h)
-    assert off.status_code == 503 and off.json()["detail"]["code"] == "TTS_002"  # FE는 브라우저 음성으로
+    assert off.status_code == 200 and off.json()["audioUrl"] is None and off.json()["reason"] == "TTS_002"  # FE는 브라우저 음성으로
 
     class Broken(inference.MockInference):
         async def tts(self, text, voice):
             raise inference.InferenceError("INFER_FAILED", "x")
 
     bad = _client(monkeypatch, tmp_path, Broken()).post("/internal/tts", json={"text": "안녕하세요"}, headers=h)
-    assert bad.status_code == 503 and bad.json()["detail"]["code"] == "TTS_003"
+    assert bad.status_code == 200 and bad.json()["audioUrl"] is None and bad.json()["reason"] == "TTS_003"
 
 
 def test_normalize_reads_numbers_and_drops_symbols():

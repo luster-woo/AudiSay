@@ -6,7 +6,7 @@ GEMINI_URL(유튜브): 영상을 내려받지 않고 Gemini에 유튜브 주소�
 제목에 따라 장르 지침(시리즈 등장인물 사전·요리)을 프롬프트에 붙인다(pipeline/prompts.py, 데모 검증).
 
 LOCAL(업로드): S3 원본을 받아 H200 오픈소스 모델로 나눠 분석하고(pipeline/local.py), 유튜브와 같은 full.json을 만든다.
-재생용 MP4는 uploads/{videoId}/playback.mp4에 올리고 결과 playbackKey로 알린다. 그 뒤 describe·merge·tts는 유튜브와 같다.
+재생용 MP4는 playback/{videoId}.mp4에 올리고 결과 playbackKey로 알린다. 그 뒤 describe·merge·tts는 유튜브와 같다.
 """
 import asyncio
 import json

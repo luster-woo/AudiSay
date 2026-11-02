@@ -34,8 +34,9 @@ def test_loud_ending_without_silence_is_untouched():
 
 def test_duration_and_keys():
     assert duration_ms(pcm((1.0, 0))) == 1000
-    assert line_key(7, 42) == "audio/lines/7/42.mp3"
-    assert summary_key(7) == "audio/summary/7.mp3"
+    assert line_key(7, 42, "골을 넣는다.").startswith("tts/7/42-") and line_key(7, 42, "골을 넣는다.").endswith(".mp3")
+    assert line_key(7, 42, "골을 넣는다.") != line_key(7, 42, "골을 넣었다.")  # 문장이 고쳐지면 새 이름
+    assert summary_key(7) == "tts/summary/7.mp3"
 
 
 def test_progress_in_ten_percent_steps():

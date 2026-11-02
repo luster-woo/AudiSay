@@ -6,7 +6,7 @@ inference.RemoteInference), 결과는 SQLite 대신 full.json/prepare.json(그 �
 
 흐름(오픈소스 엔진, 기본)
 1. S3 원본(uploads/{videoId}/original.*) → 임시 폴더. ffprobe로 길이·코덱 확인
-2. 재생용 MP4(H.264면 재포장, 아니면 변환) → S3 uploads/{videoId}/playback.mp4, 받아쓰기용 16kHz wav, 썸네일 → uploads/{videoId}/thumb.jpg
+2. 재생용 MP4(H.264면 재포장, 아니면 변환) → S3 playback/{videoId}.mp4, 받아쓰기용 16kHz wav, 썸네일 → uploads/{videoId}/thumb.jpg
 3. 동시에: 장면 나누기(PySceneDetect, 이 서버 CPU) + 장면별 대표 사진 / H200 받아쓰기(faster-whisper, 언어 자동) → 외국어면 번역
 4. H200 화면 글자(PaddleOCR) → H200 장면 해설(Qwen3-VL, 사진+대사+글자) → 개조식 끝 고치기·문장 수 줄이기 → H200 요약
 5. Gemini 응답과 같은 모양(raw)으로 모아 prepare.normalize → full.json
@@ -37,7 +37,7 @@ MAX_SEC = 60 * 60  # 팀 명세: 시각장애인 60분. H200 분석은 영상 �
 
 
 def playback_key(video_id: int) -> str:
-    return f"uploads/{video_id}/playback.mp4"
+    return f"playback/{video_id}.mp4"  # 워커 메시지 명세 1장 "오래 두는 파일"
 
 
 def thumb_key(video_id: int) -> str:

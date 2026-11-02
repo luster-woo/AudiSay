@@ -11,7 +11,7 @@ RabbitMQ로 해설 생성 단계를 처리하는 워커와, Spring이 부르는 
 | job.tts | 상세도 1·2 문장 + 요약 → Gemini TTS → mp3 → S3 `audio/lines/{descriptionId}/{lineId}.mp3` | 구현 |
 | line.tts | 상세도 3 문장 음성(사용자가 처음 고를 때) | 구현 |
 
-내부 API(`/internal/stt`, `/internal/chat/intent·seek·answer`)는 제안 구현. 답변은 Redis 리스트 `chat:answer:{chatLogId}`에 문장마다 넣는다. BE와 맞출 것은 `app/internal_api.py` 맨 위 주석 참고.
+내부 API(`/internal/stt`, `/internal/chat/intent·seek·answer`)는 "AI 서버 내부 명세서"를 따른다. 답변은 SSE(`delta`·`sentence`·`done`·`error`)로 바로 흘려보내고, 문장 음성은 S3 `tts/chat/{chatLogId}/{n}.mp3`(presigned 6시간). 형식은 `app/internal_api.py` 맨 위 주석 참고.
 
 ## 로컬 실행
 

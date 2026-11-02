@@ -12,7 +12,7 @@ JOB_EXCHANGE = "audisay.job"
 DLX_EXCHANGE = "audisay.dlx"
 RETRY_EXCHANGES = {1: ("audisay.retry.10s", "job.retry.10s", 10_000), 2: ("audisay.retry.30s", "job.retry.30s", 30_000)}
 
-WORK_QUEUES = ["job.prepare", "job.transcribe", "job.scene", "job.describe", "job.merge", "job.tts", "line.tts"]
+WORK_QUEUES = ["job.prepare", "job.describe", "job.merge", "job.tts", "line.tts"]
 EVENTS_QUEUE = "job.events"
 DLQ = "job.dlq"
 DLQ_TTL_MS = 7 * 24 * 3600 * 1000  # DLQ 메시지는 7일 보관

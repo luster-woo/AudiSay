@@ -1,8 +1,8 @@
 import { cn } from './cn'
 
 export type ButtonVariant = 'primary' | 'secondary' | 'accent' | 'danger' | 'ghost' | 'on' | 'muted'
-/** md 기본 · lg 폼 제출 · xl 홈·영상 화면의 큰 버튼 (Figma 22px) */
-export type ButtonSize = 'md' | 'lg' | 'xl'
+/** md 기본 · lg 폼 제출 · xl 홈·영상 화면 (22px) · 2xl 업로드·알림창 (26px) · hero 단계 진행 (36px) */
+export type ButtonSize = 'md' | 'lg' | 'xl' | '2xl' | 'hero'
 
 const VARIANT: Record<ButtonVariant, string> = {
   // 남색 버튼은 전역 포커스 배경(연노랑)이 글자를 가리므로 배경을 유지한다
@@ -20,6 +20,8 @@ const SIZE: Record<ButtonSize, string> = {
   md: 'min-h-touch px-5 text-base',
   lg: 'min-h-14 px-8 text-lg',
   xl: 'min-h-touch px-6 text-[1.375rem]',
+  '2xl': 'min-h-[4.5rem] px-10 text-[1.625rem]',
+  hero: 'min-h-24 px-10 text-[2.25rem]',
 }
 
 /** Button 과 ButtonLink 가 같은 모양을 쓰도록 클래스를 한 곳에서 만든다 */

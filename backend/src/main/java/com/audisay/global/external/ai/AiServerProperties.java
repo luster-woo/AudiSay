@@ -10,5 +10,6 @@ import java.time.Duration;
  * @param internalToken 모든 요청의 X-Internal-Token 헤더. AI 서버와 같은 AI_INTERNAL_TOKEN 값
  */
 @ConfigurationProperties("audisay.ai")
-public record AiServerProperties(String baseUrl, String internalToken, Duration connectTimeout, Duration sttTimeout) {
+public record AiServerProperties(String baseUrl, String internalToken, Duration connectTimeout,
+                                 Duration sttTimeout, Duration ttsTimeout) {
 }

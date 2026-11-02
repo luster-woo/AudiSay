@@ -96,6 +96,7 @@ audisay:
     internal-token: ${AI_INTERNAL_TOKEN:}
     connect-timeout: 2s
     stt-timeout: 10s
+    tts-timeout: 5s
 
   # S3. 버킷이 비어 있으면 음성 주소(audioUrl)를 만들지 않는다 → FE가 브라우저 음성으로 읽음
   s3:

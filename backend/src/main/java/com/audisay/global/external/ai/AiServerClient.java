@@ -18,6 +18,7 @@ import java.net.http.HttpConnectTimeoutException;
 import java.net.http.HttpClient;
 import java.net.http.HttpTimeoutException;
 import java.time.Duration;
+import java.util.Map;
 import java.util.function.Supplier;
 
 /**
@@ -29,11 +30,13 @@ public class AiServerClient {
     private static final String TOKEN_HEADER = "X-Internal-Token";
 
     private final RestClient sttClient;
+    private final RestClient ttsClient;
     private final String internalToken;
     private final ObjectMapper objectMapper;
 
     public AiServerClient(AiServerProperties properties, ObjectMapper objectMapper) {
         this.sttClient = restClient(properties, properties.sttTimeout());
+        this.ttsClient = restClient(properties, properties.ttsTimeout());
         this.internalToken = properties.internalToken();
         this.objectMapper = objectMapper;
     }
@@ -57,6 +60,17 @@ public class AiServerClient {
                 .body(body.build())
                 .retrieve()
                 .body(SttResult.class));
+    }
+
+    /** 안내 문구 → 음성(H200 Supertonic). 만들지 못하면 AI가 오류 대신 audioUrl null로 준다 */
+    public TtsResult synthesize(String text, String voice) {
+        return call("tts", () -> ttsClient.post()
+                .uri("/internal/tts")
+                .header(TOKEN_HEADER, requireToken())
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("text", text, "voice", voice))
+                .retrieve()
+                .body(TtsResult.class));
     }
 
     private <T> T call(String operation, Supplier<T> request) {
@@ -102,7 +116,11 @@ public class AiServerClient {
     }
 
     private static RestClient restClient(AiServerProperties properties, Duration readTimeout) {
-        HttpClient httpClient = HttpClient.newBuilder().connectTimeout(properties.connectTimeout()).build();
+        // JDK 클라이언트는 http://에서 HTTP/2 업그레이드를 시도하는데 uvicorn이 거부해 요청이 깨진다
+        HttpClient httpClient = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(properties.connectTimeout())
+                .build();
         JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
         requestFactory.setReadTimeout(readTimeout);
         return RestClient.builder()

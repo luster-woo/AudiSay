@@ -47,12 +47,12 @@ def test_stt_uses_video_hint(monkeypatch):
 
 def test_stt_error_codes_per_spec(monkeypatch):
     c = _client(monkeypatch, HintSpy(text=""))
-    assert c.post("/internal/stt", files=AUDIO, headers=H).json()["detail"]["code"] == "STT_EMPTY"  # 422
+    assert c.post("/internal/stt", files=AUDIO, headers=H).json()["code"] == "STT_EMPTY"  # 422
     big = {"audio": ("q.webm", b"0" * (internal_api.STT_MAX_BYTES + 1), "audio/webm")}
     r = c.post("/internal/stt", files=big, headers=H)
-    assert r.status_code == 400 and r.json()["detail"] == {"code": "STT_FORMAT", "message": "녹음이 너무 길어요. 60초 안으로 말해 주세요."}
+    assert r.status_code == 400 and r.json() == {"code": "STT_FORMAT", "message": "녹음이 너무 길어요. 60초 안으로 말해 주세요."}
     off = _client(monkeypatch, None).post("/internal/stt", files=AUDIO, headers=H)  # H200·GMS 둘 다 없음
-    assert off.status_code == 502 and off.json()["detail"]["code"] == "GMS_ERROR"
+    assert off.status_code == 502 and off.json()["code"] == "GMS_ERROR"
 
 
 def test_timeouts_fit_spring_limits():

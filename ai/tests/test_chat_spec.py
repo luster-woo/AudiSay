@@ -89,7 +89,7 @@ def test_answer_unanswerable_and_conflict(monkeypatch, tmp_path):
     internal_api._answering.add(88)  # 같은 chatLogId가 처리 중
     try:
         r = c.post("/internal/chat/answer", json=REQ, headers=H)
-        assert r.status_code == 409 and r.json()["detail"]["code"] == "CHAT_IN_PROGRESS"
+        assert r.status_code == 409 and r.json()["code"] == "CHAT_IN_PROGRESS"
     finally:
         internal_api._answering.discard(88)
 
@@ -109,3 +109,12 @@ async def test_sentence_audio_goes_to_s3_with_presigned_url(monkeypatch, tmp_pat
     monkeypatch.setattr(tts_pipe, "synthesize", synth)
     url = await internal_api._sentence_audio(object(), Store(str(tmp_path)), 88, 1, "왼발 슛이었어요.")
     assert url == "https://s3/tts/chat/88/1.mp3?sig" and (tmp_path / "tts/chat/88/1.mp3").read_bytes() == b"ID3mp3"
+
+
+def test_errors_are_code_message_without_wrapper(monkeypatch, tmp_path):
+    """내부 API 오류는 detail·공통 봉투 없이 HTTP 상태와 {"code","message"}만(명세 "공통")."""
+    c = _client(monkeypatch, tmp_path)
+    r = c.post("/internal/chat/seek", json={"descriptionId": 20, "query": "골"})  # 토큰 없음
+    assert r.status_code == 401 and set(r.json()) == {"code", "message"}
+    bad = c.post("/internal/chat/seek", json={"query": "골"}, headers=H)  # descriptionId 빠짐
+    assert bad.status_code == 400 and bad.json()["code"] == "INVALID_REQUEST" and "descriptionId" in bad.json()["message"]

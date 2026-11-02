@@ -1,7 +1,7 @@
 """Spring → AI 서버 내부 API (명세서 > AI 서버 내부 명세서). 재생 중 챗봇은 RabbitMQ 없이 Spring이 HTTP로 바로 부른다.
 
 FE는 부르지 않고, nginx에도 연결하지 않는다. X-Internal-Token 헤더로 확인한다(없거나 틀리면 401). 응답은 본문만,
-실패하면 HTTP 상태와 {"code","message"}(HTTPException detail). chat_logs는 Spring이 저장하고 AI는 읽기만 한다.
+실패하면 HTTP 상태와 {"code","message"}(main.py 오류 처리기가 detail을 벗겨 냄). chat_logs는 Spring이 저장하고 AI는 읽기만 한다.
 
 1. /internal/chat/intent(명세 2번) 응답 {intent, slots}
    - intent: QUESTION / SCENE_NOW / SEEK_TIME / SEEK_SCENE / SETTING / ACTION / UNKNOWN
@@ -24,7 +24,7 @@ FE는 부르지 않고, nginx에도 연결하지 않는다. X-Internal-Token 헤
    videoId가 있으면 영상 제목·인물 이름·목차 단어를 받아쓰기 힌트(prompt)로 넣는다. Spring 제한 10초 안에 끝나게 시간을 나눈다.
    응답 {text, latencyMs, engine:"H200"|"GMS"}. 오류: 422 STT_EMPTY(아무 말도 인식 안 됨), 400 STT_FORMAT(빈 녹음·10MB 초과·
    디코딩 실패), 502 GMS_ERROR(둘 다 꺼짐·실패).
-5. 오류 응답 형식: HTTPException detail={code, message} (팀 require_token과 같은 모양).
+5. 오류 응답 형식: 본문 {code, message}만(공통 응답 봉투·detail 없음). 요청 형식 오류는 400 INVALID_REQUEST.
 6. /internal/tts(3차, 2026-10-30): 안내·답변 목소리 한 문장 {text, voice(F1~F5·M1~M5, 기본 F1)}
    → H200 Supertonic 3(크레딧 0, 문장당 약 0.04초) → S3 audio/guide/{voice}/{해시}.mp3. 같은 문장은 저장본을 돌려준다.
    응답 {audioKey, durationMs, cached, latencyMs}. BE가 audioKey로 재생 주소를 만들어 FE에 준다.

@@ -55,6 +55,10 @@ public enum ErrorCode {
     INVALID_AUDIO_FILE(HttpStatus.BAD_REQUEST, "CHAT_002", "음성 파일 형식·길이가 맞지 않습니다."),
     NOT_ANSWERABLE_INPUT(HttpStatus.CONFLICT, "CHAT_003", "답변이 필요한 입력이 아닙니다."),
     CHAT_LOG_NOT_FOUND(HttpStatus.NOT_FOUND, "CHAT_004", "존재하지 않는 챗봇 기록입니다."),
+    CHAT_AI_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "CHAT_005", "지금은 처리할 수 없어요. 잠시 후 다시 시도해 주세요."),
+    CHAT_AI_TIMEOUT(HttpStatus.GATEWAY_TIMEOUT, "CHAT_006", "응답이 늦어지고 있어요. 다시 시도해 주세요."),
+    CHAT_AI_LIMIT(HttpStatus.TOO_MANY_REQUESTS, "CHAT_007", "지금은 이용할 수 없어요. 나중에 다시 시도해 주세요."),
+    ANSWER_IN_PROGRESS(HttpStatus.CONFLICT, "CHAT_008", "이미 답변을 만드는 중입니다."),
 
     ALREADY_REPORTED(HttpStatus.CONFLICT, "REPORT_001", "이미 신고한 문장입니다."),
     REPORT_NOT_FOUND(HttpStatus.NOT_FOUND, "REPORT_002", "존재하지 않는 신고입니다."),

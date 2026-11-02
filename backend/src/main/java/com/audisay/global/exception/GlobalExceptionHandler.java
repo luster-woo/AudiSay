@@ -24,6 +24,8 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+    private static final String STT_PATH = "/v1/stt";
+
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ApiResponse<Void>> handleBusinessException(BusinessException e, HttpServletRequest request) {
         log.warn("[BusinessException] {} {} - {}: {}",
@@ -59,6 +61,9 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<ApiResponse<Void>> handleMaxUploadSize(MaxUploadSizeExceededException e, HttpServletRequest request) {
         log.warn("[MaxUploadSize] {} {} - {}", request.getMethod(), request.getRequestURI(), e.getMessage());
+        if (request.getRequestURI().endsWith(STT_PATH)) {
+            return fail(ErrorCode.INVALID_AUDIO_FILE, "녹음 파일은 10MB 이하여야 합니다.", request);
+        }
         return fail(ErrorCode.INVALID_INPUT, "파일 용량이 제한을 넘습니다.", request);
     }
 

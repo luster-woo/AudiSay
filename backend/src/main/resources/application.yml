@@ -90,6 +90,13 @@ audisay:
     connect-timeout: 3s
     read-timeout: 5s
 
+  # AI 서버 내부 API(/internal/*). 운영 주소(http://ai:8000)는 docker-compose.prod.yml에서 넣는다
+  ai:
+    base-url: ${AI_SERVER_URL:http://localhost:8000}
+    internal-token: ${AI_INTERNAL_TOKEN:}
+    connect-timeout: 2s
+    stt-timeout: 10s
+
   # S3. 버킷이 비어 있으면 음성 주소(audioUrl)를 만들지 않는다 → FE가 브라우저 음성으로 읽음
   s3:
     region: ${AWS_REGION:ap-northeast-2}

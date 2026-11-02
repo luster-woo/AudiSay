@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Outlet, useMatches } from 'react-router-dom'
+import type { RouteHandle } from '@/app/routeHandle'
 import { useAuth } from '@/features/auth/context'
 import { usePendingReportCount } from '@/features/admin/usePendingReportCount'
 import { useShortcutScope } from '@/features/shortcuts/context'
@@ -29,6 +30,8 @@ export function AdminLayout() {
   useShortcutScope('admin')
   const pendingCount = usePendingReportCount()
   const [topbar, setTopbar] = useState<HTMLDivElement | null>(null)
+  // 위쪽 줄(현재 위치·처리 상태)은 crumb 가 있는 화면만. 회원 화면은 Figma 에 위쪽 줄이 없다
+  const hasTopbar = useMatches().some((m) => (m.handle as RouteHandle | undefined)?.crumb)
   const nav = ADMIN_NAV.map((item) =>
     item.to === '/admin/reports' && pendingCount
       ? { ...item, badge: { count: pendingCount, spoken: `처리 전 ${pendingCount}건` } }
@@ -89,13 +92,15 @@ export function AdminLayout() {
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col bg-cream">
-          <div className="relative h-[3.2rem] shrink-0 border-b border-line bg-paper">
-            <AdminBreadcrumb />
-            <div
-              ref={setTopbar}
-              className="absolute inset-y-0 left-1/2 flex -translate-x-1/2 items-center"
-            />
-          </div>
+          {hasTopbar && (
+            <div className="relative h-[3.2rem] shrink-0 border-b border-line bg-paper">
+              <AdminBreadcrumb />
+              <div
+                ref={setTopbar}
+                className="absolute inset-y-0 left-1/2 flex -translate-x-1/2 items-center"
+              />
+            </div>
+          )}
           <main id="main" tabIndex={-1} className="flex-1 px-8 py-8 outline-none">
             <AdminTopbarContext.Provider value={topbar}>
               <Outlet />

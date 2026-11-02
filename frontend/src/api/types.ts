@@ -256,6 +256,19 @@ export interface FavoriteResult {
   isFavorite: boolean
 }
 
+/** GET /admin/users 항목 (가입 최신순) */
+export interface AdminUser {
+  userId: number
+  email: string
+  name: string
+  role: Role
+  /** 시각장애인 인증일. 인증 안 했으면 null */
+  verifiedAt: string | null
+  /** 탈퇴일. includeWithdrawn=true 일 때만 값이 있을 수 있다 */
+  withdrawnAt: string | null
+  createdAt: string
+}
+
 /** 신고 처리 상태 · 사유 */
 export type ReportStatus = 'PENDING' | 'RESOLVED' | 'REJECTED'
 export type ReportReason = 'WRONG' | 'MISSING' | 'OVERLAP' | 'OTHER'

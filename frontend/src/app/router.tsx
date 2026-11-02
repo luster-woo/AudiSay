@@ -41,6 +41,7 @@ const adminPage = (
   lazy: async () => ({ Component: (await load()).default }),
 })
 const reportsPage = () => import('@/pages/admin/ReportsPage')
+const usersPage = () => import('@/pages/admin/UsersPage')
 
 /** 로그인 전에만 보는 화면 (로그인 상태면 RedirectIfAuthed 가 돌려보낸다) */
 const publicRoutes: RouteObject[] = [
@@ -97,7 +98,7 @@ const adminRoutes: RouteObject[] = [
           adminPage('reports/:reportId', { title: '신고 처리', crumb: '신고 처리' }, reportsPage),
           page('videos', { title: '해설 검수', crumb: '해설 검수' }),
           page('videos/:videoId', { title: '해설 검수', crumb: '해설 검수' }),
-          page('users', { title: '회원' }),
+          adminPage('users', { title: '회원' }, usersPage),
         ],
       },
     ],

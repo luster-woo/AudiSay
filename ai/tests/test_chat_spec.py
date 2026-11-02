@@ -77,7 +77,7 @@ def test_answer_streams_sse_per_spec(monkeypatch, tmp_path):
     assert r.status_code == 200 and r.headers["content-type"].startswith("text/event-stream")
     ev = _events(r.text)
     assert [e for e, _ in ev] == ["delta", "sentence", "delta", "sentence", "done"]
-    assert ev[1][1] == {"index": 0, "text": "손흥민 선수가 넣었어요.", "audioUrl": None}  # GMS 없으면 음성 없음 → 브라우저 음성
+    assert ev[1][1] == {"text": "손흥민 선수가 넣었어요.", "audioUrl": None}  # GMS 없으면 음성 없음 → 브라우저 음성
     done = ev[-1][1]
     assert done["answerText"] == "손흥민 선수가 넣었어요. 왼발 슛이었어요." and done["answerSource"] == "STORED"
     assert set(done) == {"answerText", "answerSource", "firstAudioMs", "totalLatencyMs"}
@@ -118,3 +118,14 @@ def test_errors_are_code_message_without_wrapper(monkeypatch, tmp_path):
     assert r.status_code == 401 and set(r.json()) == {"code", "message"}
     bad = c.post("/internal/chat/seek", json={"query": "골"}, headers=H)  # descriptionId 빠짐
     assert bad.status_code == 400 and bad.json()["code"] == "INVALID_REQUEST" and "descriptionId" in bad.json()["message"]
+
+
+def test_answer_error_event_uses_error_code(monkeypatch, tmp_path):
+    c = _answer_client(monkeypatch, tmp_path, [])
+
+    async def broken(pool, description_id, t_ms):
+        raise RuntimeError("DB 끊김")
+
+    monkeypatch.setattr(internal_api.ans, "context", broken)
+    ev = _events(c.post("/internal/chat/answer", json=REQ, headers=H).text)
+    assert ev[-1][0] == "error" and set(ev[-1][1]) == {"errorCode", "message"}  # 공개 API 명세 이름

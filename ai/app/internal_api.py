@@ -13,10 +13,10 @@ FE는 부르지 않고, nginx에도 연결하지 않는다. X-Internal-Token 헤
    GMS가 없으면(개발) 키워드 점수 상위 3개. 목차가 없으면 빈 배열.
 3. /internal/chat/answer(명세 4번): text/event-stream. Spring은 이벤트를 바꾸지 않고 FE로 넘기고 done 값으로 chat_logs를 저장한다.
    - event: delta    {text}                      새로 나온 글(지금은 문장 단위)
-   - event: sentence {index, text, audioUrl}     문장마다 gemini-3.8-flash-tts(Kore) → S3 tts/chat/{chatLogId}/{n}.mp3 →
+   - event: sentence {text, audioUrl}            문장마다 gemini-3.8-flash-tts(Kore) → S3 tts/chat/{chatLogId}/{n}.mp3(1번부터) →
                                                  presigned 6시간. TTS가 실패하면 audioUrl null(FE 브라우저 음성)
    - event: done     {answerText, answerSource(STORED|UNANSWERABLE), firstAudioMs, totalLatencyMs}
-   - event: error    {code, message}
+   - event: error    {errorCode, message}         (공개 API 명세와 같은 이름)
    - Spring이 연결을 끊으면 거기까지로 끝낸다. 같은 chatLogId가 처리 중이면 409 CHAT_IN_PROGRESS(Redis 잠금 120초).
    - 자료: 앞 장면·지금 장면(제목·해설 문장), 입력 시각 앞 60초 대사, 화면 글자, 30초 요약. 뒤 대사는 넣지 않는다.
 4. /internal/stt(명세 1번): multipart `audio`(webm/ogg/mp4/wav, 60초·10MB 이하) + 선택 `videoId`
@@ -25,10 +25,10 @@ FE는 부르지 않고, nginx에도 연결하지 않는다. X-Internal-Token 헤
    응답 {text, latencyMs, engine:"H200"|"GMS"}. 오류: 422 STT_EMPTY(아무 말도 인식 안 됨), 400 STT_FORMAT(빈 녹음·10MB 초과·
    디코딩 실패), 502 GMS_ERROR(둘 다 꺼짐·실패).
 5. 오류 응답 형식: 본문 {code, message}만(공통 응답 봉투·detail 없음). 요청 형식 오류는 400 INVALID_REQUEST.
-6. /internal/tts(3차, 2026-10-30): 안내·답변 목소리 한 문장 {text, voice(F1~F5·M1~M5, 기본 F1)}
-   → H200 Supertonic 3(크레딧 0, 문장당 약 0.04초) → S3 audio/guide/{voice}/{해시}.mp3. 같은 문장은 저장본을 돌려준다.
-   응답 {audioKey, durationMs, cached, latencyMs}. BE가 audioKey로 재생 주소를 만들어 FE에 준다.
-   오류: 400 TTS_001(빈 문장), 503 TTS_002(H200 꺼짐)·TTS_003(H200 실패) → FE는 브라우저 음성으로 읽는다(데모와 같음).
+6. /internal/tts(공개 /api/v1/tts용, 명세 밖 추가): 안내 목소리 한 문장 {text, voice(F1~F5·M1~M5, 기본 F1)}
+   → H200 Supertonic 3(크레딧 0, 문장당 약 0.04초) → S3 audio/guide/{voice}/{해시}.mp3(같은 문장은 저장본) → presigned 6시간.
+   응답 {audioUrl, audioKey, durationMs, cached, latencyMs}. 만들지 못하면 200 + audioUrl null·reason(TTS_002 H200 꺼짐,
+   TTS_003 실패) → Spring은 그대로 넘기고 FE는 브라우저 음성으로 읽는다. 빈 문장만 400 TTS_001.
    숫자·영어는 한국어 읽기로 바꾸고 ▶·🅰 같은 기호·이모지는 지운 뒤 만든다(app/tts_text.py).
 
 AI 순서(크레딧 0을 먼저): 규칙·저장된 자료 → H200 오픈소스(INFERENCE_MODE=remote, H200_CHAT에 든 기능만) → GMS.
@@ -63,6 +63,7 @@ ANSWER_LOCK_SEC = 120  # 같은 chatLogId 답변 중복 막기(Spring 전체 제
 ANSWER_AUDIO_URL_SEC = 6 * 3600  # 답변 음성 presigned 주소 6시간(명세)
 TTS_VOICES = {f"{g}{i}" for g in "FM" for i in range(1, 6)}  # Supertonic 3 목소리(gpu_server와 같음)
 TTS_MAX_CHARS = 500
+TTS_AUDIO_URL_SEC = 6 * 3600  # 안내 음성 presigned 주소(답변 음성과 같게 6시간)
 STT_MAX_BYTES = 10 * 1024 * 1024
 WHISPER_TIMEOUT = 5  # GMS whisper-1(PoC 1.0~2.6초). H200 STT_TIMEOUT과 합쳐 Spring 제한 10초 안
 STT_HINT_CHARS = 400  # whisper prompt는 224토큰까지
@@ -232,10 +233,10 @@ async def _answer_events(request: Request, pool, gms, inf, db, storage, req: Ans
                 log.info("답변 중 연결 끊김 chatLog=%s(%d문장까지)", req.chatLogId, len(texts))
                 break
             yield sse("delta", {"text": s})
-            audio_url = await _sentence_audio(gms, storage, req.chatLogId, len(texts), s)
+            audio_url = await _sentence_audio(gms, storage, req.chatLogId, len(texts) + 1, s)  # 1번부터(명세 예시 tts/chat/88/1.mp3)
             if audio_url and first_audio_ms is None:
                 first_audio_ms = int((time.monotonic() - t0) * 1000)
-            yield sse("sentence", {"index": len(texts), "text": s, "audioUrl": audio_url})
+            yield sse("sentence", {"text": s, "audioUrl": audio_url})
             texts.append(s)
         answer_text = " ".join(texts)
         source = "UNANSWERABLE" if ans.UNANSWERABLE in answer_text else "STORED"
@@ -243,7 +244,7 @@ async def _answer_events(request: Request, pool, gms, inf, db, storage, req: Ans
                            "totalLatencyMs": int((time.monotonic() - t0) * 1000)})
     except Exception as e:  # noqa: BLE001
         log.exception("답변 실패 chatLog=%s", req.chatLogId)
-        yield sse("error", {"code": getattr(e, "code", "UNKNOWN"), "message": "답변을 만들지 못했어요. 잠시 뒤 다시 물어봐 주세요."})
+        yield sse("error", {"errorCode": getattr(e, "code", "UNKNOWN"), "message": "답변을 만들지 못했어요. 잠시 뒤 다시 물어봐 주세요."})
     finally:
         await _unlock_answer(request, req.chatLogId)
 
@@ -407,7 +408,8 @@ def tts_key(text: str, voice: str) -> str:
 
 @router.post("/tts")
 async def tts(req: TtsRequest, request: Request) -> dict:
-    """안내·답변 목소리 한 문장 → H200 Supertonic → S3 mp3. 같은 문장·목소리는 저장본(해시 키)을 돌려준다."""
+    """안내 목소리 한 문장 → H200 Supertonic → S3 mp3 → presigned 주소. 같은 문장·목소리는 저장본(해시 키)을 다시 쓴다.
+    공개 API(/api/v1/tts)처럼 만들지 못하면 오류 대신 audioUrl null(FE 브라우저 음성). 빈 문장만 400."""
     text = normalize_ko(req.text)[:TTS_MAX_CHARS]
     if not text:
         raise _err(400, "TTS_001", "읽을 문장이 없어요.")
@@ -416,19 +418,28 @@ async def tts(req: TtsRequest, request: Request) -> dict:
     meta_key = key.removesuffix(".mp3") + ".json"
     storage = request.app.state.storage
     t0 = time.monotonic()
+
+    async def made(duration_ms: int | None, cached: bool) -> dict:
+        return {"audioUrl": await storage.presign(key, TTS_AUDIO_URL_SEC), "audioKey": key, "durationMs": duration_ms,
+                "cached": cached, "latencyMs": int((time.monotonic() - t0) * 1000)}
+
+    def missing(reason: str) -> dict:
+        return {"audioUrl": None, "audioKey": None, "durationMs": None, "cached": False, "reason": reason,
+                "latencyMs": int((time.monotonic() - t0) * 1000)}
+
     if await storage.exists(key):
         meta = await storage.get_json(meta_key) if await storage.exists(meta_key) else {}
-        return {"audioKey": key, "durationMs": meta.get("durationMs"), "cached": True, "latencyMs": int((time.monotonic() - t0) * 1000)}
+        return await made(meta.get("durationMs"), True)
     inf = inference.for_chat(settings(), "tts")
     if not inf:
-        raise _err(503, "TTS_002", "안내 목소리 서버가 꺼져 있어요.")
+        return missing("TTS_002")  # H200 꺼짐
     db = getattr(request.app.state, "db", None)
     try:
         audio, ms = await inf.tts(text, voice)
     except inference.InferenceError as e:
         await inference.log_remote(db, "TTS", "supertonic", t0, error=e.code)
-        raise _err(503, "TTS_003", "안내 목소리를 만들지 못했어요.") from None
+        return missing("TTS_003")  # H200 실패
     await storage.put_bytes(key, audio, "audio/mpeg")
     await storage.put_json(meta_key, {"durationMs": ms, "voice": voice, "text": text})
     await inference.log_remote(db, "TTS", "supertonic", t0)
-    return {"audioKey": key, "durationMs": ms, "cached": False, "latencyMs": int((time.monotonic() - t0) * 1000)}
+    return await made(ms, False)

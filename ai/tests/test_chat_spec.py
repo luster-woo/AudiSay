@@ -94,21 +94,48 @@ def test_answer_unanswerable_and_conflict(monkeypatch, tmp_path):
         internal_api._answering.discard(88)
 
 
-async def test_sentence_audio_goes_to_s3_with_presigned_url(monkeypatch, tmp_path):
+async def test_sentence_audio_uses_supertonic_first(monkeypatch, tmp_path):
+    """답변 음성은 H200 Supertonic(크레딧 0)이 먼저. 요청한 목소리로 만들고 Gemini는 부르지 않는다."""
+    from app import inference
     from app.pipeline import tts as tts_pipe
 
+    class H200:
+        async def tts(self, text, voice):
+            assert voice == "M2"
+            return b"ID3super", 700
+
     async def synth(gms, text, ctx):
-        assert ctx.purpose == "TTS" and ctx.chat_log_id == 88
-        return b"ID3mp3", 900
+        raise AssertionError("Gemini TTS를 부르면 안 됨")
 
     class Store(LocalStorage):
         async def presign(self, key, expires_sec):
-            assert expires_sec == 6 * 3600
             return f"https://s3/{key}?sig"
 
+    monkeypatch.setattr(inference, "for_chat", lambda cfg, feature: H200())
     monkeypatch.setattr(tts_pipe, "synthesize", synth)
-    url = await internal_api._sentence_audio(object(), Store(str(tmp_path)), 88, 1, "왼발 슛이었어요.")
-    assert url == "https://s3/tts/chat/88/1.mp3?sig" and (tmp_path / "tts/chat/88/1.mp3").read_bytes() == b"ID3mp3"
+    url = await internal_api._sentence_audio(object(), Store(str(tmp_path)), 88, 2, "왼발 슛이었어요.", "M2")
+    assert url == "https://s3/tts/chat/88/2.mp3?sig" and (tmp_path / "tts/chat/88/2.mp3").read_bytes() == b"ID3super"
+
+
+async def test_sentence_audio_is_browser_voice_without_h200(monkeypatch, tmp_path):
+    """H200이 없거나 실패하면 audioUrl None(브라우저 음성). 다른 목소리(Gemini Kore)로 바꾸지 않는다."""
+    from app import inference
+    from app.pipeline import tts as tts_pipe
+
+    async def synth(gms, text, ctx):
+        raise AssertionError("답변 음성에 Gemini TTS를 쓰면 안 됨")
+
+    class Down:
+        async def tts(self, text, voice):
+            raise inference.InferenceError("INFER_UNREACHABLE", "꺼짐")
+
+    monkeypatch.setattr(tts_pipe, "synthesize", synth)
+    store = LocalStorage(str(tmp_path))
+    monkeypatch.setattr(inference, "for_chat", lambda cfg, feature: None)
+    assert await internal_api._sentence_audio(object(), store, 88, 1, "왼발 슛이었어요.") is None
+    monkeypatch.setattr(inference, "for_chat", lambda cfg, feature: Down())
+    assert await internal_api._sentence_audio(object(), store, 88, 1, "왼발 슛이었어요.") is None
+    assert not (tmp_path / "tts/chat/88/1.mp3").exists()
 
 
 def test_errors_are_code_message_without_wrapper(monkeypatch, tmp_path):

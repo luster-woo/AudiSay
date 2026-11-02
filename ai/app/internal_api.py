@@ -13,8 +13,9 @@ FE는 부르지 않고, nginx에도 연결하지 않는다. X-Internal-Token 헤
    GMS가 없으면(개발) 키워드 점수 상위 3개. 목차가 없으면 빈 배열.
 3. /internal/chat/answer(명세 4번): text/event-stream. Spring은 이벤트를 바꾸지 않고 FE로 넘기고 done 값으로 chat_logs를 저장한다.
    - event: delta    {text}                      새로 나온 글(지금은 문장 단위)
-   - event: sentence {text, audioUrl}            문장마다 gemini-3.8-flash-tts(Kore) → S3 tts/chat/{chatLogId}/{n}.mp3(1번부터) →
-                                                 presigned 6시간. TTS가 실패하면 audioUrl null(FE 브라우저 음성)
+   - event: sentence {text, audioUrl}            문장마다 H200 Supertonic 3(안내 목소리와 같은 voice, 기본 F1, 크레딧 0) →
+                                                 S3 tts/chat/{chatLogId}/{n}.mp3(1번부터) → presigned 6시간. H200이 안 되면
+                                                 audioUrl null(FE 브라우저 음성). 해설 음성(Kore)과 섞지 않는다
    - event: done     {answerText, answerSource(STORED|UNANSWERABLE), firstAudioMs, totalLatencyMs}
    - event: error    {errorCode, message}         (공개 API 명세와 같은 이름)
    - Spring이 연결을 끊으면 거기까지로 끝낸다. 같은 chatLogId가 처리 중이면 409 CHAT_IN_PROGRESS(Redis 잠금 120초).
@@ -98,6 +99,7 @@ class AnswerRequest(BaseModel):
     videoTimeMs: int
     utterance: str
     intent: str  # QUESTION | SCENE_NOW
+    voice: str = "F1"  # 답변 목소리(Supertonic F1~F5·M1~M5). 명세 밖 선택 필드, 안내 목소리와 맞출 때
 
 
 class TtsRequest(BaseModel):
@@ -233,7 +235,7 @@ async def _answer_events(request: Request, pool, gms, inf, db, storage, req: Ans
                 log.info("답변 중 연결 끊김 chatLog=%s(%d문장까지)", req.chatLogId, len(texts))
                 break
             yield sse("delta", {"text": s})
-            audio_url = await _sentence_audio(gms, storage, req.chatLogId, len(texts) + 1, s)  # 1번부터(명세 예시 tts/chat/88/1.mp3)
+            audio_url = await _sentence_audio(gms, storage, req.chatLogId, len(texts) + 1, s, req.voice, db)  # 1번부터
             if audio_url and first_audio_ms is None:
                 first_audio_ms = int((time.monotonic() - t0) * 1000)
             yield sse("sentence", {"text": s, "audioUrl": audio_url})
@@ -249,21 +251,23 @@ async def _answer_events(request: Request, pool, gms, inf, db, storage, req: Ans
         await _unlock_answer(request, req.chatLogId)
 
 
-async def _sentence_audio(gms, storage, chat_log_id: int, n: int, text: str) -> str | None:
-    """문장 음성: gemini-3.8-flash-tts(Kore) → S3 tts/chat/{chatLogId}/{n}.mp3 → presigned 6시간. 실패하면 None(브라우저 음성)."""
-    if gms is None:
+async def _sentence_audio(gms, storage, chat_log_id: int, n: int, text: str, voice: str = "F1", db=None) -> str | None:
+    """문장 음성: H200 Supertonic(크레딧 0, 문장당 약 0.04초) → S3 tts/chat/{chatLogId}/{n}.mp3 → presigned 6시간.
+    안내 문구·답변 등 화면에서 읽어 주는 소리는 모두 Supertonic 한 목소리다(Gemini Kore는 해설 음성만).
+    H200이 없거나 실패하면 None → FE가 브라우저 음성으로 읽는다."""
+    inf = inference.for_chat(settings(), "tts")
+    if inf is None:
         return None
-    from app.gms.client import CallContext
-    from app.pipeline import tts as tts_pipe
-
+    t0 = time.monotonic()
     try:
-        made = await tts_pipe.synthesize(gms, text, CallContext("TTS", chat_log_id=chat_log_id))
-        if not made:
-            return None
+        made = await inf.tts(text, voice if voice in TTS_VOICES else "F1")
+        await inference.log_remote(db, "TTS", "supertonic", t0, chat_log_id=chat_log_id)
         key = chat_audio_key(chat_log_id, n)
         await storage.put_bytes(key, made[0], "audio/mpeg")
         return await storage.presign(key, ANSWER_AUDIO_URL_SEC)
     except Exception as e:  # noqa: BLE001 — 음성이 없어도 글로 답한다
+        if isinstance(e, inference.InferenceError):
+            await inference.log_remote(db, "TTS", "supertonic", t0, chat_log_id=chat_log_id, error=e.code)
         log.warning("답변 음성 실패 chatLog=%s #%s: %s", chat_log_id, n, str(e)[:200])
         return None
 

@@ -1,6 +1,7 @@
 import { request } from './client'
 import type {
   AdminReport,
+  AiUsageStats,
   AdminUser,
   LineAudioResult,
   LineUpdateResult,
@@ -72,4 +73,7 @@ export const adminApi = {
   /** 회원 목록 (가입 최신순). 보기만 하고 바꾸는 API 는 없다 */
   users: (params: AdminUserListParams) =>
     request<Paged<AdminUser>>({ url: '/admin/users', params }),
+  /** 기간(KST 날짜, 양끝 포함, 최대 92일) 안의 AI 호출·토큰·크레딧 통계 */
+  aiUsage: (from: string, to: string) =>
+    request<AiUsageStats>({ url: '/admin/stats/ai-usage', params: { from, to } }),
 }

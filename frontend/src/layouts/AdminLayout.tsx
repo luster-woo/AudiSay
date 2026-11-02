@@ -17,7 +17,7 @@ interface AdminNavItem {
 
 const ADMIN_NAV: AdminNavItem[] = [
   { to: '/admin/reports', label: '신고 처리' },
-  { to: '/admin/videos', label: '해설 검수' },
+  { to: '/admin/stats', label: '통계' },
   { to: '/admin/users', label: '회원' },
 ]
 
@@ -46,7 +46,7 @@ export function AdminLayout() {
       <SkipLink />
       <div className="flex min-h-svh">
         {/* 치수는 Figma 관리자 프레임 기준 (관리자 글자 크기 15px = 1rem) */}
-        <aside className="sticky top-0 flex h-svh w-[15.4667rem] shrink-0 flex-col bg-sidebar px-[1.0667rem] pt-[1.5rem] pb-[2.2rem] text-on-sidebar">
+        <aside className="sticky top-0 flex h-svh w-[15.4667rem] shrink-0 flex-col bg-sidebar px-[1.0667rem] pt-[1.5rem] pb-[1.3667rem] text-on-sidebar">
           <p className="px-[0.4rem] text-[1.6rem] leading-tight font-bold">
             AudiSay{' '}
             <span className="mt-1 block text-[0.8667rem] font-normal opacity-80">운영 관리</span>
@@ -79,12 +79,13 @@ export function AdminLayout() {
             </ul>
           </nav>
 
-          <div className="mt-auto border-t border-on-sidebar/20 px-[0.4rem] pt-[1rem] text-[0.9333rem]">
+          {/* 사용자·로그아웃은 사이드바 맨 아래 (사이드바는 화면 높이에 고정) */}
+          <div className="mt-auto border-t border-on-sidebar/20 px-[0.4rem] pt-[0.8867rem] text-[0.9333rem]">
             <p>{user?.name} · 운영자</p>
             <button
               type="button"
               onClick={logout}
-              className={`mt-1 min-h-0 rounded-sm font-bold text-on-sidebar ${onSidebarFocus}`}
+              className={`mt-[0.7rem] min-h-0 rounded-sm font-bold text-on-sidebar ${onSidebarFocus}`}
             >
               로그아웃
             </button>
@@ -110,4 +111,4 @@ export function AdminLayout() {
       </div>
     </>
   )
-}
+}

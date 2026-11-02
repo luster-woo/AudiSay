@@ -17,6 +17,7 @@ export const queryKeys = {
     all: ['admin'] as const,
     reports: (params: Record<string, unknown>) => ['admin', 'reports', params] as const,
     users: (params: Record<string, unknown>) => ['admin', 'users', params] as const,
+    aiUsage: (from: string, to: string) => ['admin', 'stats', 'ai-usage', from, to] as const,
     review: (videoId: number, descriptionId?: number) =>
       ['admin', 'videos', videoId, 'description', descriptionId ?? 'current'] as const,
   },

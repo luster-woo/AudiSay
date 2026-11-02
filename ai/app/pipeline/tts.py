@@ -14,6 +14,7 @@
 데모 backend/app/pipeline/tts.py(synthesize_many·clean_tail)를 비동기·S3로 옮겼다. voice_code 칼럼은 V3에서 지워져 쓰지 않는다.
 """
 import asyncio
+import hashlib
 import logging
 from array import array
 from collections.abc import Awaitable, Callable
@@ -42,12 +43,13 @@ WIN = SR // 50  # 20ms 창
 QUIET, LOUD = 300, 8000
 
 
-def line_key(description_id: int, line_id: int) -> str:
-    return f"audio/lines/{description_id}/{line_id}.mp3"
+def line_key(description_id: int, line_id: int, text: str) -> str:
+    """워커 메시지 명세 7장: tts/{descriptionId}/{lineId}-{짧은 해시}.mp3. 문장이 고쳐지면 새 이름이라 옛 음성이 새 문장을 덮지 않는다."""
+    return f"tts/{description_id}/{line_id}-{hashlib.sha1(text.encode()).hexdigest()[:8]}.mp3"
 
 
 def summary_key(description_id: int) -> str:
-    return f"audio/summary/{description_id}.mp3"
+    return f"tts/summary/{description_id}.mp3"
 
 
 def clean_tail(pcm: bytes) -> bytes:
@@ -164,7 +166,7 @@ class Tts:
         rows = await pool.fetch("SELECT id, text FROM description_lines WHERE description_id = $1 AND detail_level <= $2"
                                 " AND audio_key IS NULL ORDER BY line_index", desc_id, PRE_TTS_LEVEL)
         await events.started()
-        items = [(line_key(desc_id, r["id"]), r["text"]) for r in rows]
+        items = [(line_key(desc_id, r["id"], r["text"]), r["text"]) for r in rows]
         if d["summary_text"] and not d["summary_audio_key"]:
             items.append((summary_key(desc_id), d["summary_text"]))
 
@@ -180,10 +182,11 @@ class Tts:
         done = await synthesize_many(self.gms, self.storage, items, CallContext("TTS", job_id=job_id), progress) if items else {}
         async with pool.acquire() as con, con.transaction():
             for r in rows:
-                key = line_key(desc_id, r["id"])
+                key = line_key(desc_id, r["id"], r["text"])
                 if done.get(key):
+                    # 그 사이 관리자가 문장을 고쳤으면 옛 음성으로 덮지 않는다(명세 7·8장 WHERE id = ? AND text = ?)
                     await con.execute("UPDATE description_lines SET audio_key = $1, audio_duration_ms = $2, updated_at = NOW()"
-                                      " WHERE id = $3", key, done[key], r["id"])
+                                      " WHERE id = $3 AND text = $4", key, done[key], r["id"], r["text"])
             skey = summary_key(desc_id)
             if done.get(skey):
                 await con.execute("UPDATE descriptions SET summary_audio_key = $1, summary_duration_ms = $2 WHERE id = $3",
@@ -210,14 +213,15 @@ class LineTts:
         else:
             rows = await pool.fetch("SELECT id, text FROM description_lines WHERE description_id = $1 AND detail_level = $2"
                                     " AND audio_key IS NULL ORDER BY line_index", desc_id, int(p.get("detailLevel") or 3))
-        items = [(line_key(desc_id, r["id"]), r["text"]) for r in rows]
+        items = [(line_key(desc_id, r["id"], r["text"]), r["text"]) for r in rows]
         done = await synthesize_many(self.gms, self.storage, items, CallContext("TTS", job_id=env.jobId)) if items else {}
         async with pool.acquire() as con, con.transaction():
             for r in rows:
-                key = line_key(desc_id, r["id"])
+                key = line_key(desc_id, r["id"], r["text"])
                 if done.get(key):
+                    # 그 사이 관리자가 문장을 고쳤으면 옛 음성으로 덮지 않는다(명세 7·8장 WHERE id = ? AND text = ?)
                     await con.execute("UPDATE description_lines SET audio_key = $1, audio_duration_ms = $2, updated_at = NOW()"
-                                      " WHERE id = $3", key, done[key], r["id"])
+                                      " WHERE id = $3 AND text = $4", key, done[key], r["id"], r["text"])
         ok = sum(1 for v in done.values() if v)
         log.info("line.tts 완료 description=%s 음성 %s/%s", desc_id, ok, len(items))
         if env.jobId is not None:  # 작업에 묶인 메시지일 때만 job.events로 알린다

@@ -362,3 +362,38 @@ export interface RegenerateResult {
   jobType: 'REGENERATE'
   currentDescriptionId: number | null
 }
+
+/** 영상 공개 범위 */
+export type Visibility = 'PRIVATE' | 'PUBLIC'
+
+/** POST /uploads 의 body */
+export interface UploadStartBody {
+  title: string
+  originalFilename: string
+  contentType: 'video/mp4' | 'video/quicktime' | 'video/webm'
+  sizeBytes: number
+  durationSec: number
+  visibility: Visibility
+  copyrightAgreed: true
+}
+
+/** POST /uploads 의 data — 조각 크기와 개수는 서버가 정한다 */
+export interface UploadStartResult {
+  videoId: number
+  partSizeBytes: number
+  partCount: number
+}
+
+/** POST /uploads/{id}/parts 의 data */
+export interface UploadPartUrls {
+  parts: { partNumber: number; url: string }[]
+  expiresAt: string
+}
+
+/** POST /uploads/{id}/complete 의 data */
+export interface UploadCompleteResult {
+  videoId: number
+  jobId: number
+  result: 'NEW_JOB'
+  remaining: number | null
+}

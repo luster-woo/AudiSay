@@ -13,6 +13,10 @@ export interface DialogProps {
   /** 열릴 때 포커스를 줄 요소. 없으면 브라우저 기본(첫 번째 포커스 가능한 요소) */
   initialFocusRef?: RefObject<HTMLElement | null>
   hideCloseButton?: boolean
+  /** 제목 위 작은 머리말 ('● 업로드 불가'). 제목과 함께 창 이름으로 읽히지 않게 따로 둔다 */
+  kicker?: ReactNode
+  /** 제목 크기를 바꿀 때 (기본 text-2xl) */
+  titleClassName?: string
   className?: string
 }
 
@@ -31,6 +35,8 @@ export function Dialog({
   alert = false,
   initialFocusRef,
   hideCloseButton = false,
+  kicker,
+  titleClassName,
   className,
 }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null)
@@ -76,7 +82,8 @@ export function Dialog({
     >
       <div className="flex items-start justify-between gap-6">
         <div>
-          <h2 id={titleId} className="text-2xl font-bold">
+          {kicker && <div className="mb-3">{kicker}</div>}
+          <h2 id={titleId} className={cn('text-2xl font-bold', titleClassName)}>
             {title}
           </h2>
           {description && (

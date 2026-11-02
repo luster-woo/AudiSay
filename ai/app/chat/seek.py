@@ -57,18 +57,24 @@ def pick(candidates: list[dict]) -> dict | None:
     return None
 
 
-async def by_ai(gms, query: str, chapters: list[dict], chat_log_id: int | None = None) -> dict | None:
+async def by_ai(gms, query: str, chapters: list[dict], chat_log_id: int | None = None, limit: int = 3) -> list[dict]:
+    """목차 제목·요약·키워드를 보고 요청과 맞는 장면을 0~limit개, 잘 맞는 순서로 고른다(명세 3번, gemini-3.8-flash)."""
     from app.gms.client import CallContext
 
-    toc = "\n".join(f"{i + 1}. {c['title']} / {c['summary'] or ''}" for i, c in enumerate(chapters))
+    toc = "\n".join(f"{i + 1}. {c['title']} / {c['summary'] or ''} / {', '.join(c.get('keywords') or [])}"
+                    for i, c in enumerate(chapters))
     cfg = types.GenerateContentConfig(temperature=0, thinking_config=types.ThinkingConfig(thinking_budget=0),
-                                      system_instruction="장면 목차를 보고 사용자의 요청과 가장 잘 맞는 장면 번호를 고르세요. "
-                                                         "반드시 JSON 한 줄: {\"n\": 번호} 맞는 장면이 없으면 {\"n\": 0}")
+                                      system_instruction="장면 목차를 보고 사용자의 요청과 맞는 장면 번호를 잘 맞는 순서로 "
+                                                         f"최대 {limit}개 고르세요. 반드시 JSON 한 줄: {{\"n\": [번호, ...]}} "
+                                                         "맞는 장면이 없으면 {\"n\": []}")
     r = await gms.generate(SEEK_MODEL, f"[장면 목차]\n{toc}\n\n사용자 요청: {query}", cfg,
                            CallContext("INTENT", chat_log_id=chat_log_id))
-    m = re.search(r'"n"\s*:\s*(\d+)', r.text or "")
-    n = int(m.group(1)) if m else 0
-    return chapters[n - 1] if 0 < n <= len(chapters) else None
+    m = re.search(r'"n"\s*:\s*\[([\d,\s]*)\]', r.text or "")
+    picked: list[dict] = []
+    for n in (int(x) for x in re.findall(r"\d+", m.group(1))) if m else []:
+        if 0 < n <= len(chapters) and chapters[n - 1] not in picked:
+            picked.append(chapters[n - 1])
+    return picked[:limit]
 
 
 async def chapters_of(pool, description_id: int) -> list[dict]:

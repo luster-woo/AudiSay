@@ -61,6 +61,16 @@ spring:
       max-request-size: 11MB
 
 audisay:
+  chat:
+    rate-limit:                       # 회원당 1분(고정 창) 챗봇 입력 제한. 넘으면 CHAT_009(429)
+      requests-per-minute: 30         # 전체 입력(규칙으로 처리되는 재생 조작 포함)
+      llm-calls-per-minute: 10        # LLM을 부른 횟수(발화 분류·장면 선택·후보 거르기)
+    tuning:                           # 단계별 켜고 끄기(평가 285에서 하나씩 끄고 비교, 운영은 모두 true)
+      intent-rules: true              # 발화 분류 규칙(끄면 모두 LLM)
+      seek-keyword: true              # 장면 찾기 키워드 검색(끄면 모두 LLM)
+      seek-negation-filter: true      # 부정 문장 빼기·요약하는 말 점수 낮추기
+      seek-evidence-bonus: true       # 15초 안에 대사·해설·화면 글자가 함께 말하면 점수 올리기
+      seek-llm-verify: true           # 대사 한 줄에서만 찾은 후보가 섞이면 LLM이 거르기
   job:
     partial-on-chunk-failure: true    # 조각 하나 실패 시 작업 전체 FAILED 대신 나머지로 PARTIAL
 

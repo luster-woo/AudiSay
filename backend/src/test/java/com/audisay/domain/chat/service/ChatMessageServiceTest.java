@@ -2,6 +2,7 @@ package com.audisay.domain.chat.service;
 
 import com.audisay.domain.chat.dto.request.ChatMessageRequest;
 import com.audisay.domain.chat.dto.response.ChatMessageResponse;
+import com.audisay.domain.chat.dto.response.ChatResult;
 import com.audisay.domain.chat.entity.ChatIntent;
 import com.audisay.domain.chat.entity.ChatLog;
 import com.audisay.domain.chat.entity.InputMode;
@@ -10,7 +11,13 @@ import com.audisay.domain.chat.intent.ClassifiedIntent;
 import com.audisay.domain.chat.intent.LlmIntentClassifier;
 import com.audisay.domain.chat.intent.RuleIntentClassifier;
 import com.audisay.domain.chat.intent.SettingStepResolver;
+import com.audisay.domain.chat.entity.SeekSource;
+import com.audisay.domain.chat.ratelimit.ChatRateLimiter;
 import com.audisay.domain.chat.repository.ChatLogRepository;
+import com.audisay.domain.chat.seek.KeywordSceneScorer.Hit;
+import com.audisay.domain.chat.seek.SceneSeeker;
+import com.audisay.domain.chat.tuning.ChatTuningProperties;
+import com.audisay.domain.description.service.SceneText;
 import com.audisay.domain.description.service.DescriptionService;
 import com.audisay.domain.description.service.VideoAccessValidator;
 import com.audisay.domain.user.entity.Role;
@@ -27,6 +34,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -34,6 +42,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -47,6 +56,8 @@ class ChatMessageServiceTest {
     private ChatLogRepository chatLogRepository;
     private LlmIntentClassifier llmClassifier;
     private SettingStepResolver settingStepResolver;
+    private SceneSeeker sceneSeeker;
+    private ChatRateLimiter rateLimiter;
     private VideoAccessValidator videoAccessValidator;
     private DescriptionService descriptionService;
     private SimpleMeterRegistry meterRegistry;
@@ -58,11 +69,14 @@ class ChatMessageServiceTest {
         chatLogRepository = mock(ChatLogRepository.class);
         llmClassifier = mock(LlmIntentClassifier.class);
         settingStepResolver = mock(SettingStepResolver.class);
+        sceneSeeker = mock(SceneSeeker.class);
+        rateLimiter = mock(ChatRateLimiter.class);
         videoAccessValidator = mock(VideoAccessValidator.class);
         descriptionService = mock(DescriptionService.class);
         meterRegistry = new SimpleMeterRegistry();
         service = new ChatMessageService(chatLogRepository, new RuleIntentClassifier(), llmClassifier,
-                settingStepResolver, videoAccessValidator, descriptionService,
+                settingStepResolver, sceneSeeker, rateLimiter, ChatTuningProperties.DEFAULT, videoAccessValidator,
+                descriptionService,
                 new TransactionTemplate(mock(PlatformTransactionManager.class)), meterRegistry);
 
         when(chatLogRepository.save(any())).thenAnswer(invocation -> {
@@ -76,7 +90,8 @@ class ChatMessageServiceTest {
         when(video.getId()).thenReturn(VIDEO_ID);
         when(video.getDurationSec()).thenReturn(300);
         when(videoAccessValidator.getAccessibleVideo(USER, VIDEO_ID)).thenReturn(video);
-        when(descriptionService.findPublishedId(VIDEO_ID)).thenReturn(Optional.of(500L));
+        when(descriptionService.resolveForChat(eq(VIDEO_ID), any())).thenReturn(Optional.of(500L));
+        when(sceneSeeker.seek(any(), any(), any(), any(), any())).thenReturn(new SceneSeeker.Outcome(List.of(), null));
     }
 
     @Test
@@ -103,6 +118,81 @@ class ChatMessageServiceTest {
         assertThat(response.intent()).isEqualTo(ChatIntent.SEEK_SCENE);
         assertThat(saved.getIntent()).isEqualTo(ChatIntent.SEEK_SCENE);
         assertThat(meterRegistry.get("audisay.chat.intent").tag("source", "LLM").timer().count()).isEqualTo(1);
+    }
+
+    @Test
+    void 장면이_하나면_그곳으로_가고_이동_시각과_찾은_방법을_기록한다() {
+        when(sceneSeeker.seek(2L, 500L, "홈런", CHAT_LOG_ID, 1000))
+                .thenReturn(new SceneSeeker.Outcome(List.of(hit(3, 1_298_000, "넘어갑니다! 홈런!")), SeekSource.KEYWORD));
+
+        ChatMessageResponse response = service.receive(USER, inVideo("홈런 장면으로 가 줘", 1000));
+
+        assertThat(response.result().targetMs()).isEqualTo(1_298_000);
+        assertThat(response.result().chapterId()).isEqualTo(3L);
+        assertThat(response.result().candidates()).hasSize(1);
+        assertThat(saved.getTargetMs()).isEqualTo(1_298_000);
+        assertThat(saved.getTargetChapterId()).isEqualTo(3L);
+        assertThat(saved.getSeekSource()).isEqualTo(SeekSource.KEYWORD);
+    }
+
+    @Test
+    void 장면이_여럿이면_후보를_전부_주고_찾은_방법만_기록한다() {
+        when(sceneSeeker.seek(eq(2L), eq(500L), eq("안타 친"), eq(CHAT_LOG_ID), eq(950_000))).thenReturn(new SceneSeeker.Outcome(
+                List.of(hit(3, 1_498_000, "우전 안타로 출루합니다"), hit(1, 93_000, "쳤습니다! 중견수 앞 안타!")),
+                SeekSource.LLM));
+
+        ChatMessageResponse response = service.receive(USER, inVideo("안타 친 장면으로 가 줘", 950_000));
+
+        assertThat(response.result().targetMs()).isNull();
+        assertThat(response.result().candidates()).extracting(ChatResult.SceneCandidate::startMs)
+                .containsExactly(1_498_000, 93_000);
+        assertThat(response.result().candidates().get(0).summary()).isEqualTo("우전 안타로 출루합니다");
+        assertThat(saved.getTargetMs()).isNull();
+        assertThat(saved.getSeekSource()).isEqualTo(SeekSource.LLM);
+    }
+
+    @Test
+    void 장면을_못_찾으면_안내한다() {
+        ChatMessageResponse response = service.receive(USER, inVideo("도루하는 장면으로 가 줘", 1000));
+
+        assertThat(response.result().candidates()).isEmpty();
+        assertThat(response.result().message()).isEqualTo(ChatMessageService.SCENE_NOT_FOUND_MESSAGE);
+        assertThat(saved.getSeekSource()).isNull();
+    }
+
+    @Test
+    void 요청한_해설이_이_영상_것인지_확인해서_기록한다() {
+        when(descriptionService.resolveForChat(VIDEO_ID, 777L)).thenReturn(Optional.of(500L));
+
+        service.receive(USER, new ChatMessageRequest(VIDEO_ID, 777L, 1000, "멈춰", InputMode.TEXT));
+
+        assertThat(saved.getDescriptionId()).isEqualTo(500L);
+    }
+
+    @Test
+    void 입력이_너무_잦으면_CHAT_009이고_기록하지_않는다() {
+        org.mockito.Mockito.doThrow(new BusinessException(ErrorCode.CHAT_RATE_LIMIT)).when(rateLimiter).acquireRequest(2L);
+
+        assertThatThrownBy(() -> service.receive(USER, inVideo("멈춰", 1000)))
+                .extracting("errorCode").isEqualTo(ErrorCode.CHAT_RATE_LIMIT);
+        verify(chatLogRepository, never()).save(any());
+    }
+
+    @Test
+    void LLM_호출이_너무_잦으면_LLM을_부르지_않고_CHAT_009() {
+        org.mockito.Mockito.doThrow(new BusinessException(ErrorCode.CHAT_RATE_LIMIT)).when(rateLimiter).acquireLlm(2L);
+
+        assertThatThrownBy(() -> service.receive(USER, inVideo("음 아 아니에요 됐어요", 1000)))
+                .extracting("errorCode").isEqualTo(ErrorCode.CHAT_RATE_LIMIT);
+        verify(llmClassifier, never()).classify(anyString(), any());
+    }
+
+    @Test
+    void 규칙으로_분류되면_LLM_호출_횟수를_세지_않는다() {
+        service.receive(USER, inVideo("멈춰", 1000));
+
+        verify(rateLimiter).acquireRequest(2L);
+        verify(rateLimiter, never()).acquireLlm(any());
     }
 
     @Test
@@ -152,7 +242,7 @@ class ChatMessageServiceTest {
 
     @Test
     void 해설이_없는_영상에서_질문하면_DESC_001() {
-        when(descriptionService.findPublishedId(VIDEO_ID)).thenReturn(Optional.empty());
+        when(descriptionService.resolveForChat(eq(VIDEO_ID), any())).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.receive(USER, inVideo("저 사람 누구야", 1000)))
                 .isInstanceOf(BusinessException.class)
@@ -162,7 +252,7 @@ class ChatMessageServiceTest {
 
     @Test
     void 해설이_없어도_재생_조작은_된다() {
-        when(descriptionService.findPublishedId(VIDEO_ID)).thenReturn(Optional.empty());
+        when(descriptionService.resolveForChat(eq(VIDEO_ID), any())).thenReturn(Optional.empty());
 
         assertThat(service.receive(USER, inVideo("멈춰", 1000)).result().actionCode()).isEqualTo(ActionCode.PAUSE);
     }
@@ -183,6 +273,12 @@ class ChatMessageServiceTest {
                 .extracting("errorCode").isEqualTo(ErrorCode.CHAT_AI_LIMIT);
         assertThat(saved.getIntent()).isEqualTo(ChatIntent.UNKNOWN);
         assertThat(saved.getIntentLatencyMs()).isNull();
+    }
+
+    private static Hit hit(int chapter, int targetMs, String snippet) {
+        SceneText scene = new SceneText((long) chapter, chapter, 0, 2_400_000, chapter + "번 장면", "", List.of(), "",
+                List.of());
+        return new Hit(scene, targetMs, 1, 1, null, snippet, 1);
     }
 
     private static ChatMessageRequest inVideo(String utterance, int videoTimeMs) {

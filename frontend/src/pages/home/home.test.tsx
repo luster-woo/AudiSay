@@ -40,7 +40,11 @@ vi.mock('@/api/videos', () => ({
   },
 }))
 vi.mock('@/api/favorites', () => ({ favoritesApi: { add: vi.fn(), remove: vi.fn() } }))
-vi.mock('@/api/jobs', () => ({ jobsApi: { get: vi.fn() } }))
+vi.mock('@/api/jobs', () => ({
+  jobsApi: { get: vi.fn(), streamPath: (id: number) => `/jobs/${id}/stream` },
+}))
+// 검색 결과 → 확인 화면 → 해설 만들기 흐름이 /jobs/:id 까지 가므로 SSE 는 열지 않게 막는다
+vi.mock('@/api/sse', () => ({ subscribeSse: vi.fn() }))
 vi.mock('@/api/stt', () => ({ sttApi: { transcribe: vi.fn() } }))
 
 const video = (id: number, title: string, isFavorite = false): VideoSummary => ({

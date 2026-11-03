@@ -1,7 +1,12 @@
-import { useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { videosApi } from '@/api/videos'
+import { queryKeys } from '@/api/queryKeys'
 import type { ReviewDescription, ReviewLine } from '@/api/types'
 import { cn } from '@/components/ui/cn'
 import { useAudio } from '@/features/audio/useAudio'
+import { usePlayerSource } from '@/features/player/usePlayerSource'
+import { VideoStage } from '@/pages/watch/VideoStage'
 import { formatClock } from '@/utils/time'
 
 export interface SceneTabProps {
@@ -36,7 +41,7 @@ function fitText(line: ReviewLine, changed: boolean) {
   return over > 0
     ? {
         over: true,
-        text: `${sec(over)}초 넘침 · 빈 구간 ${sec(gap)}초, 음성 ${sec(line.audioDurationMs)}초 — 영상이 잠깐 멈춰요`,
+        text: `${sec(over)}초 넘침 · 빈 구간 ${sec(gap)}초, 음성 ${sec(line.audioDurationMs)}초`,
       }
     : {
         over: false,
@@ -44,7 +49,11 @@ function fitText(line: ReviewLine, changed: boolean) {
       }
 }
 
-/** 장면 탭: 장면 그림·설명·앞뒤 대사·화면 글자를 보고 해설 문장을 고친다 */
+/**
+ * 장면 탭: 장면 영상·설명·앞뒤 대사를 보고 해설 문장을 고친다.
+ * 영상은 시청 화면과 같은 플레이어(GET /videos/{id}/playback)로 그 장면 시작에 맞춰 두고,
+ * '구간 재생'은 장면 구간만 틀면서 신고된 문장 시각에 그 문장 음성(audioUrl)을 함께 들려준다.
+ */
 export function SceneTab({
   review,
   line,
@@ -56,6 +65,8 @@ export function SceneTab({
   const textId = useId()
   const fitId = useId()
   const importanceName = useId()
+  const descId = useId()
+  const dialogueId = useId()
   const scenes = review.scenes
   const lineScene = Math.max(
     0,
@@ -63,7 +74,40 @@ export function SceneTab({
   )
   const [index, setIndex] = useState(lineScene)
   const scene = scenes[index]
-  const { play } = useAudio()
+  const { play, stop } = useAudio()
+
+  const playbackQ = useQuery({
+    queryKey: queryKeys.playback(review.videoId),
+    queryFn: () => videosApi.playback(review.videoId),
+    staleTime: 30 * 60_000,
+  })
+  const { videoRef, ytHostRef, state, controls } = usePlayerSource(playbackQ.data, 0)
+
+  // 장면을 바꾸거나 플레이어가 준비되면 그 장면 시작으로 옮겨 둔다
+  const sceneStart = scene?.startMs ?? 0
+  useEffect(() => {
+    if (!state.ready) return
+    controls.pause()
+    controls.seek(sceneStart)
+  }, [state.ready, sceneStart, controls])
+
+  // 구간 재생 중: 장면 끝에서 멈추고, 문장 시각을 지나면 그 문장 음성을 한 번 들려준다
+  const segmentRef = useRef(false)
+  const lineSpokenRef = useRef(false)
+  const segmentEnd = scene?.endMs ?? 0
+  useEffect(() => {
+    if (!segmentRef.current || !state.playing) return
+    if (state.currentMs >= segmentEnd) {
+      segmentRef.current = false
+      controls.pause()
+      return
+    }
+    if (!lineSpokenRef.current && state.currentMs >= line.startMs) {
+      lineSpokenRef.current = true
+      void play(line.audioUrl, { text: line.text })
+    }
+  }, [state.currentMs, state.playing, segmentEnd, line, controls, play])
+  useEffect(() => () => stop(), [stop])
 
   const overlaps = <T extends { startMs: number; endMs: number }>(items: T[], margin: number) =>
     scene
@@ -71,11 +115,28 @@ export function SceneTab({
       : []
   // 대사는 장면 경계를 넘나들어 앞뒤를 조금 더 보여 주고, 화면 글자는 그 장면 것만
   const dialogues = overlaps(review.dialogues, DIALOGUE_MARGIN_MS)
-  const screenTexts = overlaps(review.screenTexts, 0)
 
-  // 구간 재생: 영상 플레이어가 아직 없어 이 구간의 해설 음성을 들려준다.
-  // 음성이 아직 없으면(다시 만드는 중) 플레이어처럼 브라우저 음성으로 읽는다
-  const playLine = () => void play(line.audioUrl, { text: line.text })
+  // 장면 탭에서는 구간 재생으로만 영상을 트므로, 재생 중이면 곧 구간 재생 중이다
+  const playingSegment = state.playing
+  const toggleSegment = () => {
+    if (playingSegment) {
+      segmentRef.current = false
+      controls.pause()
+      stop()
+      return
+    }
+    stop()
+    // 영상을 못 불러오면 문장 음성만 들려준다 (음성이 없으면 브라우저 음성으로 읽는다)
+    if (!state.ready || !scene) {
+      void play(line.audioUrl, { text: line.text })
+      return
+    }
+    segmentRef.current = true
+    // 문장이 이 장면 안에 있을 때만 음성을 겹쳐 들려준다
+    lineSpokenRef.current = !(line.startMs >= scene.startMs && line.startMs < scene.endMs)
+    controls.seek(scene.startMs)
+    controls.play()
+  }
 
   const fit = fitText(line, draft.trim() !== line.text)
 
@@ -83,24 +144,25 @@ export function SceneTab({
   return (
     <div>
       {scene && (
-        <section aria-label="장면" className="flex gap-[1.6rem]">
-          <div className="w-[26.6667rem] shrink-0">
-            {scene.keyframeUrl ? (
-              <img
-                src={scene.keyframeUrl}
-                alt={`${scene.sceneIndex}. ${scene.title} 대표 장면`}
-                className="h-[15rem] w-full rounded-sm bg-ink object-cover"
+        <section aria-label="장면">
+          {/* 영상은 가운데에 크게, 설명·대사는 그 아래 */}
+          <div className="mx-auto w-full max-w-[48rem]">
+            <div className="relative">
+              <VideoStage
+                playback={playbackQ.data}
+                videoRef={videoRef}
+                ytHostRef={ytHostRef}
+                volume={100}
+                className="rounded-sm border-0"
               />
-            ) : (
-              <div
-                role="img"
-                aria-label={`${scene.sceneIndex}. ${scene.title}, ${formatClock(scene.startMs)}부터 ${formatClock(scene.endMs)}까지`}
-                className="flex h-[15rem] w-full items-center justify-center rounded-sm bg-ink font-mono text-[0.8667rem] text-line"
-              >
-                {formatClock(scene.startMs)} – {formatClock(scene.endMs)} 구간
-              </div>
-            )}
-            <div className="mt-[0.8667rem] flex gap-[0.6rem]">
+              {playbackQ.isError && (
+                <p className="absolute inset-0 flex items-center justify-center font-mono text-[0.8667rem] text-line">
+                  영상을 불러오지 못했어요 · {formatClock(scene.startMs)} –{' '}
+                  {formatClock(scene.endMs)} 구간
+                </p>
+              )}
+            </div>
+            <div className="mt-[0.8667rem] flex justify-center gap-[0.6rem]">
               <button
                 type="button"
                 aria-label="앞 장면"
@@ -110,8 +172,8 @@ export function SceneTab({
               >
                 ◀ 앞
               </button>
-              <button type="button" onClick={playLine} className={SMALL_BUTTON}>
-                ▶ 구간 재생
+              <button type="button" onClick={toggleSegment} className={SMALL_BUTTON}>
+                {playingSegment ? '❚❚ 멈춤' : '▶ 구간 재생'}
               </button>
               <button
                 type="button"
@@ -125,28 +187,59 @@ export function SceneTab({
             </div>
           </div>
 
-          <dl className="min-w-0 flex-1 space-y-[0.8rem] text-[0.9333rem] leading-snug">
-            <div>
-              <dt className="text-[0.8rem] text-ink-muted">장면 설명 (AI)</dt>
-              <dd className="mt-0.5">{scene.sceneDescription}</dd>
-            </div>
-            {dialogues.length > 0 && (
-              <div>
-                <dt className="text-[0.8rem] text-ink-muted">앞뒤 대사</dt>
-                {dialogues.map((d) => (
-                  <dd key={`${d.startMs}-${d.text}`} className="mt-0.5">
-                    {formatClock(d.startMs)} “{d.text}”
-                  </dd>
-                ))}
+          {/* 장면 설명과 앞뒤 대사는 칸을 나눠 보여 준다 */}
+          <div className="mt-[1.4667rem] grid gap-[1.0667rem] xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+            <section
+              aria-labelledby={descId}
+              className="rounded-md border border-line bg-paper p-[1.2rem]"
+            >
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                <h3 id={descId} className="text-[1rem] font-bold">
+                  장면 설명 <span className="font-normal text-ink-muted">(AI)</span>
+                </h3>
+                <p className="text-[0.8667rem] text-ink-muted">
+                  {scene.sceneIndex}. {scene.title} ·{' '}
+                  <span className="font-mono">
+                    {formatClock(scene.startMs)} – {formatClock(scene.endMs)}
+                  </span>
+                </p>
               </div>
-            )}
-            {screenTexts.map((t) => (
-              <div key={t.screenTextId}>
-                <dt className="text-[0.8rem] text-ink-muted">화면 글자 · 중요도 {t.importance}</dt>
-                <dd className="mt-0.5">“{t.fullText}”</dd>
-              </div>
-            ))}
-          </dl>
+              <p className="mt-[0.8rem] text-[1.0667rem] leading-relaxed">
+                {scene.sceneDescription}
+              </p>
+            </section>
+
+            <section
+              aria-labelledby={dialogueId}
+              className="rounded-md border border-line bg-paper p-[1.2rem]"
+            >
+              <h3 id={dialogueId} className="text-[1rem] font-bold">
+                앞뒤 대사
+              </h3>
+              {dialogues.length === 0 ? (
+                <p className="mt-[0.8rem] text-[1rem] text-ink-muted">이 장면에는 대사가 없어요.</p>
+              ) : (
+                <ul className="mt-[0.5333rem] divide-y divide-line">
+                  {dialogues.map((d) => (
+                    <li
+                      key={`${d.startMs}-${d.text}`}
+                      className="flex gap-[0.8rem] py-[0.5333rem] text-[1.0667rem] leading-snug"
+                    >
+                      <span className="w-[2.8rem] shrink-0 pt-[0.1333rem] font-mono text-[0.8667rem] text-ink-muted">
+                        {formatClock(d.startMs)}
+                      </span>
+                      <span className="min-w-0">
+                        {d.characterName && (
+                          <span className="mr-1 font-bold">{d.characterName}</span>
+                        )}
+                        {d.text}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </div>
         </section>
       )}
 

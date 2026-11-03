@@ -26,12 +26,14 @@ export function useFavoriteToggle() {
     mutationFn: ({ video }: { video: VideoSummary }) =>
       video.isFavorite ? favoritesApi.remove(video.videoId) : favoritesApi.add(video.videoId),
     onMutate: ({ video }) => setFavorite(video.videoId, !video.isFavorite),
-    onSuccess: (res, { video }) =>
+    onSuccess: (res, { video }) => {
+      void queryClient.invalidateQueries({ queryKey: ['favorites'] })
       announce(
         res.isFavorite
           ? `${video.title}, 즐겨찾기에 넣었어요.`
           : `${video.title}, 즐겨찾기에서 뺐어요.`,
-      ),
+      )
+    },
     onError: (err, { video }) => {
       setFavorite(video.videoId, video.isFavorite)
       announce(`즐겨찾기를 바꾸지 못했어요. ${toUserMessage(err)}`, { politeness: 'assertive' })

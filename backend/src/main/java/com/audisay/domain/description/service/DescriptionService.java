@@ -101,6 +101,11 @@ public class DescriptionService {
         return descriptionRepository.findCoveredUntilMs(description.getJob().getId()).orElse(0);
     }
 
+    /** 지금 공개 중인 해설 ID(챗봇 입력 기록용). 없으면 empty */
+    public Optional<Long> findPublishedId(Long videoId) {
+        return descriptionRepository.findByVideo_IdAndStatus(videoId, DescriptionStatus.PUBLISHED).map(Description::getId);
+    }
+
     public Optional<Long> findIdByJobId(Long jobId) {
         return descriptionRepository.findByJob_Id(jobId).map(Description::getId);
     }

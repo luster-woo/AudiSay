@@ -9,7 +9,7 @@ import { RedirectAdmin } from '@/features/auth/guards/RedirectAdmin'
 import { AppLayout } from '@/layouts/AppLayout'
 import { AuthLayout } from '@/layouts/AuthLayout'
 import { BareLayout } from '@/layouts/BareLayout'
-import PlaceholderPage from '@/pages/PlaceholderPage'
+import HelpPage from '@/pages/help/HelpPage'
 import LandingPage from '@/pages/auth/LandingPage'
 import LoginPage from '@/pages/auth/LoginPage'
 import SignupPage from '@/pages/auth/SignupPage'
@@ -26,13 +26,6 @@ import MyInfoPage from '@/pages/my-info/MyInfoPage'
 import NotFoundPage from '@/pages/errors/NotFoundPage'
 import RouteError from '@/pages/errors/RouteError'
 import RootError from '@/pages/errors/RootError'
-
-/** 임시 페이지 라우트. 실제 페이지를 만들면 element 를 바꾼다 */
-const page = (path: string, handle: RouteHandle): RouteObject => ({
-  path,
-  element: <PlaceholderPage />,
-  handle,
-})
 
 /** 관리자 페이지 라우트. 페이지도 lazy 로 불러와 일반 사용자 번들에 섞이지 않게 한다 */
 const adminPage = (
@@ -84,7 +77,7 @@ const userRoutes: RouteObject[] = [
           { path: 'verify', element: <VerifyPage /> },
           { path: 'me', element: <MyInfoPage /> },
           { path: 'me/videos', element: <MyVideosPage /> },
-          page('help', { title: '도움말' }),
+          { path: 'help', element: <HelpPage /> },
         ],
       },
     ],

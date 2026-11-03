@@ -1,0 +1,209 @@
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { axe } from 'vitest-axe'
+import { reissueAccessToken } from '@/api/client'
+import { usersApi } from '@/api/users'
+import { tokenStore } from '@/api/token'
+import { DEFAULT_SETTINGS } from '@/api/types'
+import { renderRoute } from '@/test/renderWithProviders'
+
+vi.mock('@/api/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/client')>()
+  return { ...actual, reissueAccessToken: vi.fn() }
+})
+vi.mock('@/api/users', () => ({ usersApi: { me: vi.fn(), settings: vi.fn() } }))
+
+beforeEach(() => {
+  vi.resetAllMocks()
+  tokenStore.set('test-session')
+  vi.mocked(reissueAccessToken).mockResolvedValue('test-session')
+  vi.mocked(usersApi.me).mockResolvedValue({
+    userId: 1,
+    name: '테스트',
+    email: 'test@example.com',
+    role: 'GENERAL',
+    verified: false,
+    verifiedAt: null,
+    createdAt: '2026-10-20T00:00:00Z',
+  })
+  vi.mocked(usersApi.settings).mockResolvedValue({ ...DEFAULT_SETTINGS, tutorialCompleted: true })
+})
+
+async function openTab(name: string) {
+  await userEvent.click(await screen.findByRole('tab', { name }))
+}
+
+test('단축키로 진입하고 튜토리얼은 두 탭 뒤의 이동 링크로 제공한다 (axe)', async () => {
+  const { container } = renderRoute('/help')
+  const heading = await screen.findByRole('heading', { level: 1, name: '도움말' })
+  await waitFor(() => expect(heading).toHaveFocus())
+  expect(document.title).toBe('도움말 – AudiSay')
+  const navigation = screen.getByRole('tablist', { name: '도움말 종류' })
+  expect(
+    within(navigation)
+      .getAllByRole('tab')
+      .map((tab) => tab.textContent),
+  ).toEqual(['단축키', '말로 하는 명령'])
+  expect(within(navigation).getByRole('tab', { name: '단축키' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
+  expect(screen.queryByRole('tab', { name: '처음이라면' })).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: '단축키가 작동하지 않을 때' }),
+  ).not.toBeInTheDocument()
+  const tutorial = screen.getByRole('link', { name: '튜토리얼 이동' })
+  expect(tutorial).toHaveAttribute('href', '/tutorial/1')
+  expect(
+    navigation.compareDocumentPosition(tutorial) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy()
+  expect(await axe(container)).toHaveNoViolations()
+})
+
+test('상위 탭과 분류 탭을 화살표로 바꾸어도 초점이 제목으로 튀지 않는다', async () => {
+  renderRoute('/help')
+  const first = await screen.findByRole('tab', { name: '단축키' })
+  await waitFor(() => expect(screen.getByRole('heading', { level: 1 })).toHaveFocus())
+  first.focus()
+  await userEvent.keyboard('{ArrowRight}')
+  expect(screen.getByRole('tab', { name: '말로 하는 명령' })).toHaveFocus()
+  await userEvent.keyboard('{Tab}')
+  expect(screen.getByRole('link', { name: '튜토리얼 이동' })).toHaveFocus()
+  await userEvent.keyboard('{Shift>}{Tab}{/Shift}{ArrowLeft}')
+  expect(screen.getByRole('tab', { name: '단축키' })).toHaveFocus()
+  await userEvent.click(screen.getByRole('tab', { name: '어디서나' }))
+  await userEvent.keyboard('{End}')
+  const last = screen.getByRole('tab', { name: '질문과 설정' })
+  expect(last).toHaveFocus()
+  expect(screen.getByRole('table', { name: '질문과 설정 단축키' })).toBeVisible()
+  await userEvent.keyboard('{Home}')
+  expect(screen.getByRole('tab', { name: '어디서나' })).toHaveFocus()
+})
+
+test('단축키 3개 분류는 확정된 와이어프레임 문구로 표시한다 (axe)', async () => {
+  const { container } = renderRoute('/help')
+  await openTab('단축키')
+  const table = screen.getByRole('table', { name: '어디서나 단축키' })
+  expect(within(table).getAllByRole('row')).toHaveLength(5)
+  expect(within(table).getByText('Alt+Shift+U')).toBeVisible()
+  await userEvent.keyboard('{Alt>}{Shift>}/{/Shift}{/Alt}')
+  const dialog = screen.getByRole('dialog', { name: '단축키 안내' })
+  for (const key of ['Alt+Shift+R', 'Alt+Shift+/', 'Alt+Shift+H']) {
+    expect(within(table).getByText(key)).toBeVisible()
+    expect(within(dialog).getByText(key)).toBeVisible()
+  }
+  fireEvent(dialog, new Event('cancel', { bubbles: true, cancelable: true }))
+  await openTab('재생과 이동')
+  expect(screen.getByRole('table')).toHaveTextContent('Alt+Shift+J / L')
+  expect(within(screen.getByRole('table')).getAllByRole('row')).toHaveLength(5)
+  expect(await axe(container)).toHaveNoViolations()
+  await openTab('질문과 설정')
+  expect(screen.getByRole('table')).toHaveTextContent('Alt+Shift+S')
+  expect(screen.getByRole('table')).toHaveTextContent('재생 설정 열기')
+  expect(screen.getByRole('table')).toHaveTextContent('Alt+Shift+Q / V')
+  expect(within(screen.getByRole('table')).getAllByRole('row')).toHaveLength(6)
+})
+
+test('음성 안내는 와이어프레임의 3단계 설명과 명령 12개를 제공한다 (axe)', async () => {
+  const { container } = renderRoute('/help')
+  await openTab('말로 하는 명령')
+  expect(
+    screen.getByRole('heading', {
+      name: '일 단계. 알트와 시프트를 누른 상태에서 브이 키를 누르세요.',
+    }),
+  ).toBeVisible()
+  expect(screen.getByText('원하는 요청을 말해 주세요.')).toBeVisible()
+  expect(screen.getByText('내용이 틀리면 ‘아니’라고 말해 주세요.')).toBeVisible()
+  expect(screen.queryByRole('button', { name: '말을 알아듣지 못할 때' })).not.toBeInTheDocument()
+  for (const category of ['재생 조절', '장면 찾기', '질문과 해설']) {
+    await openTab(category)
+    const table = screen.getByRole('table', { name: `${category} 음성 명령 예시` })
+    expect(within(table).getAllByRole('row')).toHaveLength(5)
+    expect(
+      within(table)
+        .getAllByRole('columnheader')
+        .map((cell) => cell.textContent),
+    ).toEqual(['음성 명령', '설명'])
+    expect(await axe(container)).toHaveNoViolations()
+  }
+  expect(screen.getByRole('table')).toHaveTextContent('‘여기 신고’')
+  expect(screen.getByRole('table')).toHaveTextContent('현재 재생 위치와 남은 시간')
+})
+
+test('사용법 링크를 키보드로 열면 기존 튜토리얼로 이동한다', async () => {
+  const { router } = renderRoute('/help')
+  const link = await screen.findByRole('link', { name: '튜토리얼 이동' })
+  link.focus()
+  await userEvent.keyboard('{Enter}')
+  await waitFor(() => expect(router.state.location.pathname).toBe('/tutorial/1'))
+})
+
+test('표시는 유지하면서 단축키와 안내를 기호 대신 한국어 문장으로 제공한다', async () => {
+  renderRoute('/help')
+  await openTab('단축키')
+  expect(
+    screen.getByText('Alt+Shift+/를 누르면 현재 화면의 단축키를 읽어 드려요.'),
+  ).toHaveAttribute('aria-hidden', 'true')
+  expect(screen.getByText('키를 함께 누르세요. 예: Alt+Shift+H')).toHaveAttribute(
+    'aria-hidden',
+    'true',
+  )
+
+  const homeCommand = within(screen.getByRole('table')).getByRole('rowheader', {
+    name: '알트와 시프트를 누른 상태에서 에이치 키를 누르세요.',
+  })
+  expect(within(homeCommand).getByText('Alt+Shift+H')).toBeVisible()
+  expect(within(homeCommand).getByText('Alt+Shift+H')).toHaveAttribute('aria-hidden', 'true')
+  expect(
+    within(screen.getByRole('table')).queryByRole('rowheader', {
+      name: 'Alt+Shift+H',
+    }),
+  ).not.toBeInTheDocument()
+
+  for (const category of ['어디서나', '재생과 이동', '질문과 설정']) {
+    await openTab(category)
+    const table = screen.getByRole('table')
+    for (const cell of within(table).getAllByRole('rowheader')) {
+      expect(cell).toHaveAccessibleName(/^알트와 시프트를 누른 상태에서 [가-힣 ]+ 키를 누르세요\.$/)
+    }
+    for (const cell of within(table).getAllByRole('cell')) {
+      expect(cell).not.toHaveAccessibleName(/[+/~·]/)
+    }
+  }
+})
+
+test('음성 입력 단계와 모든 음성 명령 표는 따옴표와 슬래시를 중복 낭독하지 않는다', async () => {
+  renderRoute('/help')
+  await openTab('말로 하는 명령')
+  expect(screen.getByText('① Alt+Shift+V 누르기')).toHaveAttribute('aria-hidden', 'true')
+  expect(screen.getByRole('heading', { name: '이 단계. 띵 소리가 나면 말하세요.' })).toBeVisible()
+  expect(screen.getByRole('heading', { name: '삼 단계. 들은 내용을 확인하세요.' })).toBeVisible()
+  expect(screen.getByText('내용이 틀리면 ‘아니’라고 말해 주세요.')).toHaveAttribute(
+    'aria-hidden',
+    'true',
+  )
+
+  const playback = screen.getByRole('table')
+  expect(
+    within(playback).getByRole('rowheader', {
+      name: '멈춰 또는 다시 틀어라고 말하세요.',
+    }),
+  ).toBeVisible()
+  expect(
+    within(playback).getByRole('cell', {
+      name: '조금 느리게는 영 점 칠오 배속이에요. 보통으로는 기본 속도예요.',
+    }),
+  ).toBeVisible()
+  expect(within(playback).getByText('0.75배속 / 기본 속도')).toBeVisible()
+
+  for (const category of ['재생 조절', '장면 찾기', '질문과 해설']) {
+    await openTab(category)
+    const table = screen.getByRole('table')
+    for (const cell of [
+      ...within(table).getAllByRole('rowheader'),
+      ...within(table).getAllByRole('cell'),
+    ]) {
+      expect(cell).not.toHaveAccessibleName(/[‘’/+·?]/)
+    }
+  }
+})

@@ -1,5 +1,7 @@
+import { guideAudioUrl } from '@/features/audio/guideVoice'
+
 /**
- * 소리 한 채널. 해설 음성(S3)·브라우저 음성(TTS)을 한 번에 하나만 낸다 (원칙 1장).
+ * 소리 한 채널. 해설 음성(S3)·안내 목소리(Supertonic)·브라우저 음성(TTS)을 한 번에 하나만 낸다 (원칙 1장).
  * React 밖의 보통 객체라 재생 루프 안에서 ref 로 들고 쓴다.
  */
 export interface VoiceItem {
@@ -94,6 +96,11 @@ export class Narrator {
       if (fresh && (await this.playUrl(fresh, rate))) return true
       if (gen !== this.generation) return false
     }
+    // 음성 파일이 없거나 재생하지 못하면 안내 목소리(Supertonic) → 그것도 안 되면 브라우저 음성
+    const guide = await guideAudioUrl(item.text)
+    if (gen !== this.generation) return false
+    if (guide && (await this.playUrl(guide, rate))) return true
+    if (gen !== this.generation) return false
     return this.speak(item.text, rate)
   }
 

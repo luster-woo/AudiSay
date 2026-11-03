@@ -76,3 +76,11 @@ def test_tts_long_text_made_in_chunks(monkeypatch, tmp_path):
 def test_normalize_reads_numbers_and_drops_symbols():
     assert normalize_ko("▶ 🅰🅲🅴 라바 시즌3 😂👍🏻") == "라바 시즌삼"
     assert normalize_ko("1½컵, 58% ❤️") == "한 컵 반, 오십팔퍼센트"
+
+
+def test_normalize_reads_english_words_whole():
+    """보통 영어 단어는 한글 발음으로 단어째, 약어만 알파벳으로(2026-11-03 데모: 제목 'Caminandes Llamigos'를 철자로 읽음)."""
+    assert normalize_ko("Caminandes Llamigos") == "카미난데스 라미고스"
+    assert normalize_ko("Shaun the Sheep") == "숀 더 쉽"
+    assert normalize_ko("Pingu와 Larva") == "핑구와 라바"
+    assert normalize_ko("TTS 시험") == "티티에스 시험"

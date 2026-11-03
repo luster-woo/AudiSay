@@ -27,7 +27,7 @@ from app.gms.client import CallContext, GmsClient
 from app.mq.envelope import Envelope
 from app.mq.worker import Events
 from app.pipeline import local, prompts
-from app.pipeline.narration_schema import CATEGORY_CODE, IMPORTANCE_CODE, PROMPT, Narration, to_ms
+from app.pipeline.narration_schema import CATEGORY_CODE, IMPORTANCE_CODE, PROMPT, PROMPT_VERSION, Narration, to_ms
 from app.storage import Storage
 
 log = logging.getLogger(__name__)
@@ -48,14 +48,15 @@ def youtube_id(url: str | None) -> str | None:
 
 
 def gemini_cache_key(yt: str) -> str:
-    return f"cache/gemini/{yt}.json"
+    """프롬프트 버전별로 둔다(버전 1은 예전 이름 그대로). 프롬프트를 고치면 같은 영상도 새로 받는다(2026-11-03)."""
+    return f"cache/gemini/{yt}.json" if PROMPT_VERSION <= 1 else f"cache/gemini/{yt}_p{PROMPT_VERSION}.json"
 
 
 def pick_model(duration_sec: int | None) -> str:
     return MODEL_LONG if (duration_sec or 0) >= LONG_VIDEO_SEC else MODEL_SHORT
 
 
-def normalize(raw: dict, video_id: int | None, model: str, duration_ms: int | None) -> dict:
+def normalize(raw: dict, video_id: int | None, model: str, duration_ms: int | None, title: str | None = None) -> dict:
     """Gemini 응답(MM:SS 문자열)을 밀리초로 바꾸고 정렬한 full.json 형식으로 만든다."""
     dialogues = [{"startMs": to_ms(d["start"]), "endMs": to_ms(d["end"]), "speaker": d.get("speaker"),
                   "text": d["text"], **({"original": d["original"]} if d.get("original") else {})} for d in raw["dialogue"]]
@@ -83,7 +84,9 @@ def normalize(raw: dict, video_id: int | None, model: str, duration_ms: int | No
     lines.sort(key=lambda x: (x["atMs"], x["detailLevel"]))
     return {"version": 1, "videoId": video_id, "model": model, "durationMs": duration_ms,
             "category": CATEGORY_CODE.get(raw["category"], "ETC"), "summary30s": raw["summary_30s"],
-            "dialogues": dialogues, "scenes": scenes, "lines": lines, "dialogueLanguage": raw.get("dialogue_language")}
+            "dialogues": dialogues, "scenes": scenes, "lines": lines, "dialogueLanguage": raw.get("dialogue_language"),
+            # 영상 제목: merge가 인물 이름 근거(제목·대사·화면 글자에 실제로 있는지)를 확인할 때 쓴다
+            "title": title}
 
 
 def _inside_dialogue(t: int, dialogues: list[dict]) -> dict | None:
@@ -177,7 +180,7 @@ class Prepare:
         cached = await self._cached_raw(yt)
         if cached:
             log.info("Gemini 결과 재사용 job=%s 영상=%s(%s, 크레딧 0)", env.jobId, yt, cached["model"])
-            return normalize(cached["result"], p.get("videoId"), cached["model"], (duration_sec or 0) * 1000 or None)
+            return normalize(cached["result"], p.get("videoId"), cached["model"], (duration_sec or 0) * 1000 or None, p.get("title"))
         model = pick_model(duration_sec)
         cfg = types.GenerateContentConfig(response_mime_type="application/json", response_schema=Narration,
                                           temperature=0.2, thinking_config=types.ThinkingConfig(thinking_budget=0))
@@ -199,7 +202,7 @@ class Prepare:
             raise WorkerError("UNKNOWN", f"Gemini 응답 형식 오류: {e}") from e
         if yt:  # 다음에 같은 영상을 요청하면 다시 부르지 않게
             await self.storage.put_json(gemini_cache_key(yt), {"youtubeId": yt, "model": model, "result": raw})
-        full = normalize(raw, p.get("videoId"), model, (duration_sec or 0) * 1000 or None)
+        full = normalize(raw, p.get("videoId"), model, (duration_sec or 0) * 1000 or None, p.get("title"))
         log.info("Gemini 전체 해설 job=%s %s %.0f초", env.jobId, model, time.monotonic() - t0)
         return full
 
@@ -226,7 +229,7 @@ class Prepare:
             t0 = time.monotonic()
             raw, model, errors = await local.analyze(cfg.upload_engine, self.inf, self.gms, has_gms, p.get("title"), files, work,
                                                      duration_ms, progress, job_id, self.db)
-        full = normalize(raw, video_id, model, duration_ms)
+        full = normalize(raw, video_id, model, duration_ms, p.get("title"))
         full["playbackKey"] = local.playback_key(video_id)
         full["thumbnailKey"] = local.thumb_key(video_id)
         full["engineErrors"] = errors

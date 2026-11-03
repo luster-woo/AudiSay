@@ -23,6 +23,10 @@ MIN_GAP_MS = 500  # 이보다 짧은 틈은 빈 구간이 없는 것으로 본�
 REPEAT_WINDOW_MS = 10_000  # 해설 앞뒤 10초 안의 대사와 비교
 REPEAT_RATIO = 0.6
 REFERS_BACK = ("그는", "그녀", "그의", "그가", "그들", "그리고", "그러자", "그때", "이어서", "이어 ", "또한", "그 ")
+# 프롬프트 v4 마지막 점검을 코드로도(2026-11-03): 쓰지 않는 표현, 대명사, 상세도별 글자 수(공백 포함, 모델이 조금 넘기는 건 흔해서 5자 여유)
+BANNED_PHRASES = ("모습이 보", "이 보입니다", "가 보입니다", "화면에", "장면에서", "카메라가", "것 같", "듯하")
+PRONOUNS = ("그녀", "그 남자", "그 여자", "그들")
+LEVEL_MAX_CHARS = {1: 25, 2: 30, 3: 30}
 NAME_SOURCE_HINTS = (("SCREEN_TEXT", ("자막", "제목", "이름표", "화면")), ("DIALOGUE", ("대사", "부름", "호명", "말")))
 
 
@@ -58,12 +62,18 @@ def place(at_ms: int, dialogues: list[dict], duration_ms: int) -> tuple[int, int
     return t, (nxt if nxt - t >= MIN_GAP_MS else None)
 
 
-def check(text: str, start_ms: int, dialogues: list[dict]) -> list[str]:
+def check(text: str, start_ms: int, dialogues: list[dict], level: int | None = None) -> list[str]:
     flags = []
     if len(text) > MAX_CHARS:
         flags.append("TOO_LONG")
+    elif level in LEVEL_MAX_CHARS and len(text) > LEVEL_MAX_CHARS[level] + 5:
+        flags.append("OVER_LEVEL_LENGTH")
     if text.startswith(REFERS_BACK):
         flags.append("REFERS_BACK")
+    if any(p in text for p in BANNED_PHRASES):
+        flags.append("BANNED_PHRASE")
+    if any(p in text for p in PRONOUNS):
+        flags.append("PRONOUN")
     n = _norm(text)
     for d in dialogues:
         if abs(d["startMs"] - start_ms) > REPEAT_WINDOW_MS:
@@ -97,7 +107,7 @@ def build_chunk(full: dict, chunk_index: int, start_ms: int, end_ms: int) -> dic
         start, gap_end = place(x["atMs"], dialogues, duration)
         lines.append({"detailLevel": x["detailLevel"], "startMs": start, "gapEndMs": gap_end,
                       "importance": 4 - x["detailLevel"], "text": x["text"],
-                      "flags": check(x["text"], start, dialogues)})
+                      "flags": check(x["text"], start, dialogues, x["detailLevel"])})
     lines.sort(key=lambda x: (x["startMs"], x["detailLevel"]))
 
     scenes, screen_texts, characters, seen = [], [], [], set()

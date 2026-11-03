@@ -1,0 +1,152 @@
+package com.audisay.domain.description.service;
+
+import com.audisay.domain.description.entity.Character;
+import com.audisay.domain.description.entity.Description;
+import com.audisay.domain.description.entity.DescriptionLine;
+import com.audisay.domain.description.entity.Scene;
+import com.audisay.domain.description.entity.ScreenText;
+import com.audisay.domain.description.entity.TranscriptSegment;
+import com.audisay.domain.description.repository.CharacterRepository;
+import com.audisay.domain.description.repository.DescriptionLineRepository;
+import com.audisay.domain.description.repository.DescriptionRepository;
+import com.audisay.domain.description.repository.SceneRepository;
+import com.audisay.domain.description.repository.ScreenTextRepository;
+import com.audisay.domain.description.repository.TranscriptSegmentRepository;
+import com.audisay.domain.video.entity.Video;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+class AnswerContextReaderTest {
+    private static final long DESC = 9301L;
+
+    private final DescriptionRepository descriptionRepository = mock(DescriptionRepository.class);
+    private final SceneRepository sceneRepository = mock(SceneRepository.class);
+    private final DescriptionLineRepository lineRepository = mock(DescriptionLineRepository.class);
+    private final TranscriptSegmentRepository transcriptRepository = mock(TranscriptSegmentRepository.class);
+    private final ScreenTextRepository screenTextRepository = mock(ScreenTextRepository.class);
+    private final CharacterRepository characterRepository = mock(CharacterRepository.class);
+    private final AnswerContextReader reader = new AnswerContextReader(descriptionRepository, sceneRepository,
+            lineRepository, transcriptRepository, screenTextRepository, characterRepository);
+
+    private final List<Scene> scenes = List.of(scene(0, 60_000, "1회 초"), scene(60_000, 120_000, "1회 말"),
+            scene(120_000, 180_000, "2회 초"));
+
+    @BeforeEach
+    void setUp() {
+        Video video = mock(Video.class);
+        when(video.getTitle()).thenReturn("두산 대 LG");
+        Description description = mock(Description.class);
+        when(description.getVideo()).thenReturn(video);
+        when(description.getSummaryText()).thenReturn("두산이 이겼어요.");
+        when(descriptionRepository.findById(DESC)).thenReturn(Optional.of(description));
+        when(sceneRepository.findByDescription_IdOrderBySceneIndexAsc(DESC)).thenReturn(scenes);
+        when(lineRepository.findInRange(anyLong(), anyInt(), anyInt())).thenReturn(List.of());
+        when(screenTextRepository.findByDescription_IdAndStartMsBetweenOrderByStartMsAsc(anyLong(), anyInt(), anyInt()))
+                .thenReturn(List.of());
+        when(transcriptRepository.findInRangeWithCharacter(anyLong(), anyInt(), anyInt())).thenReturn(List.of());
+        when(characterRepository.findByDescription_IdOrderByIdAsc(DESC)).thenReturn(List.of());
+    }
+
+    @Test
+    void 앞_장면과_지금_장면을_고른다() {
+        assertThat(AnswerContextReader.pick(scenes, 90_000)).extracting(Scene::getTitle).containsExactly("1회 초", "1회 말");
+        assertThat(AnswerContextReader.pick(scenes, 10_000)).extracting(Scene::getTitle).containsExactly("1회 초");
+        assertThat(AnswerContextReader.pick(scenes, 999_000)).extracting(Scene::getTitle).containsExactly("1회 말", "2회 초");
+        assertThat(AnswerContextReader.pick(List.of(), 0)).isEmpty();
+    }
+
+    @Test
+    void 입력_시각까지의_문장_화면_글자와_앞_60초_대사만_모은다() {
+        // 목 객체 만들기(when)를 다른 when(...).thenReturn 안에서 하면 Mockito가 거절해 먼저 만든다
+        List<DescriptionLine> lines = List.of(line(30_000, "타자가 공을 칩니다"), line(70_000, "투수가 공을 던집니다"),
+                line(85_000, "삼진입니다"));
+        List<ScreenText> texts = List.of(screenText(65_000, "1회 말 0:0", null), screenText(66_000, "1회 말 0:0", null),
+                screenText(80_000, null, "스트라이크"));
+        Character kim = character("김현수", "등번호 22");
+        Character crowd = character(null, "관중");
+        List<TranscriptSegment> dialogues = List.of(dialogue(75_000, "삼진!", kim), dialogue(88_000, "좋아요", null));
+        when(lineRepository.findInRange(DESC, 0, 90_000)).thenReturn(lines);
+        when(screenTextRepository.findByDescription_IdAndStartMsBetweenOrderByStartMsAsc(DESC, 0, 90_000)).thenReturn(texts);
+        when(transcriptRepository.findInRangeWithCharacter(DESC, 30_000, 90_000)).thenReturn(dialogues);
+        when(characterRepository.findByDescription_IdOrderByIdAsc(DESC)).thenReturn(List.of(kim, crowd));
+
+        AnswerContext context = reader.read(DESC, 90_000).orElseThrow();
+
+        assertThat(context.videoTitle()).isEqualTo("두산 대 LG");
+        assertThat(context.summary()).isEqualTo("두산이 이겼어요.");
+        assertThat(context.scenes()).hasSize(2);
+        assertThat(context.scenes().get(0).narrations()).containsExactly(new AnswerContext.Narration(30_000, "타자가 공을 칩니다"));
+        assertThat(context.currentScene().title()).isEqualTo("1회 말");
+        assertThat(context.currentScene().narrations()).containsExactly(
+                new AnswerContext.Narration(70_000, "투수가 공을 던집니다"), new AnswerContext.Narration(85_000, "삼진입니다"));
+        assertThat(context.currentScene().screenTexts()).containsExactly("1회 말 0:0", "스트라이크");
+        assertThat(context.recentDialogues()).extracting(AnswerContext.Dialogue::speaker).containsExactly("김현수", null);
+        assertThat(context.characters()).extracting(AnswerContext.Person::name).containsExactly("김현수");
+    }
+
+    @Test
+    void 영상_앞부분이면_대사는_0부터_첫_장면_전이면_문장은_없다() {
+        List<Scene> late = List.of(scene(20_000, 60_000, "시작"));
+        when(sceneRepository.findByDescription_IdOrderBySceneIndexAsc(DESC)).thenReturn(late);
+
+        AnswerContext context = reader.read(DESC, 5_000).orElseThrow();
+
+        assertThat(context.scenes()).extracting(AnswerContext.SceneInfo::title).containsExactly("시작");
+        verify(lineRepository).findInRange(DESC, 5_000, 5_000);
+        verify(transcriptRepository).findInRangeWithCharacter(DESC, 0, 5_000);
+    }
+
+    @Test
+    void 해설이_없으면_비어_있다() {
+        assertThat(reader.read(1L, 0)).isEmpty();
+    }
+
+    private static Scene scene(int start, int end, String title) {
+        Scene scene = mock(Scene.class);
+        when(scene.getStartMs()).thenReturn(start);
+        when(scene.getEndMs()).thenReturn(end);
+        when(scene.getTitle()).thenReturn(title);
+        when(scene.getSceneDescription()).thenReturn(title + " 설명");
+        return scene;
+    }
+
+    private static DescriptionLine line(int start, String text) {
+        DescriptionLine line = mock(DescriptionLine.class);
+        when(line.getStartMs()).thenReturn(start);
+        when(line.getText()).thenReturn(text);
+        return line;
+    }
+
+    private static ScreenText screenText(int start, String headline, String fullText) {
+        ScreenText text = mock(ScreenText.class);
+        when(text.getStartMs()).thenReturn(start);
+        when(text.getHeadline()).thenReturn(headline);
+        when(text.getFullText()).thenReturn(fullText);
+        return text;
+    }
+
+    private static TranscriptSegment dialogue(int start, String text, Character character) {
+        TranscriptSegment segment = mock(TranscriptSegment.class);
+        when(segment.getStartMs()).thenReturn(start);
+        when(segment.getText()).thenReturn(text);
+        when(segment.getCharacter()).thenReturn(character);
+        return segment;
+    }
+
+    private static Character character(String name, String appearance) {
+        Character character = mock(Character.class);
+        when(character.getName()).thenReturn(name);
+        when(character.getAppearance()).thenReturn(appearance);
+        return character;
+    }
+}

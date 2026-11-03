@@ -8,4 +8,6 @@ import java.util.List;
 public interface ScreenTextRepository extends JpaRepository<ScreenText, Long> {
 
     List<ScreenText> findByDescription_IdOrderByStartMsAsc(Long descriptionId);
+
+    List<ScreenText> findByDescription_IdAndStartMsBetweenOrderByStartMsAsc(Long descriptionId, Integer fromMs, Integer toMs);
 }

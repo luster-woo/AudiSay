@@ -1,0 +1,67 @@
+package com.audisay.domain.chat.answer;
+
+import com.audisay.domain.description.service.AnswerContext;
+import com.audisay.domain.description.service.AnswerContext.Dialogue;
+import com.audisay.domain.description.service.AnswerContext.Narration;
+import com.audisay.domain.description.service.AnswerContext.Person;
+import com.audisay.domain.description.service.AnswerContext.SceneInfo;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.api.Test;
+import tools.jackson.databind.json.JsonMapper;
+
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class AnswerPromptTest {
+    private final AnswerPrompt prompt = new AnswerPrompt(JsonMapper.builder().build());
+
+    private final AnswerContext context = new AnswerContext("테슬라 신형 로드스터 공개 행사", "로드스터를 공개했어요.", 280_000,
+            List.of(new SceneInfo(237_000, "무대 위로 등장한 로드스터", "문이 위로 열립니다.",
+                            List.of(new Narration(240_000, "차가 무대에 섭니다")),
+                            List.of("일론 머스크 스페이스X 최고경영자")),
+                    new SceneInfo(261_000, "제로백 가속 테스트", "차가 번개처럼 튀어나갑니다.",
+                            List.of(new Narration(270_000, "시속 60마일까지 0.81초")),
+                            List.of())),
+            List.of(new Dialogue(264_000, null, "This goes fast. (정말 빠릅니다.)")),
+            List.of(new Person("일론 머스크", "무대 중앙의 중년 남성")));
+
+    @Test
+    void 질문_프롬프트는_스파이크와_같은_모양의_자료와_질문() {
+        String user = prompt.questionUser(context, "몇 초 걸렸어?");
+
+        assertThat(user).startsWith("해설 자료:\n{\"현재 시각\":\"04:40\",\"영상 제목\":\"테슬라 신형 로드스터 공개 행사\"")
+                .contains("\"장면(앞 장면, 지금 장면)\":[{\"시작\":\"03:57\",\"제목\":\"무대 위로 등장한 로드스터\"")
+                .contains("\"해설 문장\":[{\"시각\":\"04:30\",\"문장\":\"시속 60마일까지 0.81초\"}]")
+                .contains("\"최근 60초 대사\":[{\"시각\":\"04:24\",\"말한 사람\":null,\"대사\":\"This goes fast. (정말 빠릅니다.)\"}]")
+                .contains("\"등장인물\":[{\"이름\":\"일론 머스크\"")
+                .endsWith("\n\n질문: 몇 초 걸렸어?");
+    }
+
+    @Test
+    void 지금_장면_프롬프트와_첫_문장() {
+        assertThat(prompt.sceneNowUser(context)).endsWith("\n\n요청: 지금 화면을 설명해 주세요.");
+        assertThat(AnswerPrompt.sceneTitleSentence(context.currentScene())).isEqualTo("지금은 제로백 가속 테스트 장면이에요.");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"그건 해설 자료에 없어요.", "해설 자료에는 그 내용이 나오지 않아요.", "자료에 나와 있지 않아 알 수 없어요.",
+            "해설에서는 알 수 없어요."})
+    void 자료에_없다는_답을_알아본다(String answer) {
+        assertThat(AnswerPrompt.saidUnanswerable(answer)).isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"손흥민이 골을 넣었어요.", "차가 없어졌어요. 순식간에 사라졌어요."})
+    void 보통_답은_자료에_없다는_답이_아니다(String answer) {
+        assertThat(AnswerPrompt.saidUnanswerable(answer)).isFalse();
+    }
+
+    @Test
+    void 장면_설명을_문장으로_나눠_앞에서부터_자른다() {
+        assertThat(AnswerPrompt.sentencesOf("문이 열립니다. 핸들이 보입니다. 스포일러가 솟습니다", 2))
+                .containsExactly("문이 열립니다.", "핸들이 보입니다.");
+        assertThat(AnswerPrompt.clock(3_725_000)).isEqualTo("1:02:05");
+    }
+}

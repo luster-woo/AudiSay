@@ -97,6 +97,19 @@ public class ChatLog {
         this.seekSource = seekSource;
     }
 
+    /** 답변 스트림이 끝났다(실패·취소면 source는 null이고 받은 데까지만) */
+    public void answer(String answerText, AnswerSource answerSource, Integer firstAudioMs, int totalLatencyMs) {
+        this.answerText = answerText;
+        this.answerSource = answerSource;
+        this.firstAudioMs = firstAudioMs;
+        this.totalLatencyMs = totalLatencyMs;
+    }
+
+    /** 답변을 한 번 만들었는지(다시 구독하면 done만 보낸다) */
+    public boolean isAnswered() {
+        return totalLatencyMs != null;
+    }
+
     public boolean isAnswerable() {
         return intent == ChatIntent.QUESTION || intent == ChatIntent.SCENE_NOW;
     }

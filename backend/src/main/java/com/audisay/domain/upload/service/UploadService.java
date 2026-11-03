@@ -185,10 +185,20 @@ public class UploadService {
         videoRepository.delete(video);
     }
 
-    /** 워커가 재생용 파일을 만들었다(LOCAL prepare 완료) */
+    /**
+     * 워커가 재생용 파일과 썸네일을 만들었다(LOCAL prepare 완료). 썸네일 키는 워커가 알려 주지 않아 AI 규칙
+     * (ai/app/pipeline/local.py thumb_key)대로 쓴다 — 워커는 재생용 파일 바로 뒤에 썸네일을 올린다
+     */
     @Transactional
     public void finishTranscode(Long videoId, String playbackKey) {
-        videoUploadRepository.findById(videoId).ifPresent(upload -> upload.finishTranscode(playbackKey));
+        videoUploadRepository.findById(videoId).ifPresent(upload -> {
+            upload.finishTranscode(playbackKey);
+            upload.getVideo().attachUploadThumbnail(thumbnailKey(videoId));
+        });
+    }
+
+    static String thumbnailKey(Long videoId) {
+        return "uploads/%d/thumb.jpg".formatted(videoId);
     }
 
     /** 해설 작업이 실패했다. 재생용 파일을 이미 만들었으면 그대로 둔다 */

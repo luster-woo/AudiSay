@@ -9,6 +9,7 @@ import com.audisay.domain.video.repository.VideoRepository;
 import com.audisay.domain.video.service.DescriptionState;
 import com.audisay.domain.video.service.DescriptionStateReader;
 import com.audisay.domain.video.service.VideoService;
+import com.audisay.global.external.s3.ThumbnailUrlResolver;
 import com.audisay.global.response.PageResponse;
 import com.audisay.global.security.AuthUser;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +30,7 @@ public class FavoriteService {
     private final VideoRepository videoRepository;
     private final VideoService videoService;
     private final DescriptionStateReader descriptionStateReader;
+    private final ThumbnailUrlResolver thumbnailUrlResolver;
 
     /**
      * 즐겨찾기에 넣은 영상. 최근에 넣은 순
@@ -44,7 +46,8 @@ public class FavoriteService {
         return PageResponse.from(favorites.map(favorite -> {
             Video video = videos.get(favorite.getVideoId());
             boolean available = video.isAvailable() && video.isViewableBy(authUser.userId(), authUser.role());
-            return FavoriteVideoResponse.of(video, states.get(video.getId()).descriptionId() != null,
+            return FavoriteVideoResponse.of(video, thumbnailUrlResolver.resolve(video.getThumbnailUrl()),
+                    states.get(video.getId()).descriptionId() != null,
                     available, favorite.getCreatedAt());
         }));
     }

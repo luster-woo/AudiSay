@@ -75,8 +75,32 @@ api.interceptors.response.use(
       }
     }
 
-    // 토큰 없음·잘못됨·Refresh 만료 → 세션 종료
-    if (status === 401 && (code === 'COMMON_002' || code === 'AUTH_002')) {
+    // 토큰이 잘못됨(COMMON_002): 토큰을 실어 보낸 요청이면 재발급을 한 번 시도한다.
+    // 서버가 다른 오류(검증 실패 등)를 401 로 돌려주는 경우에 바로 로그아웃되지 않게 하기 위함.
+    // 재발급이 실패하면 진짜 세션 만료다
+    if (
+      status === 401 &&
+      code === 'COMMON_002' &&
+      config &&
+      !config._retried &&
+      config.headers.Authorization
+    ) {
+      config._retried = true
+      let token: string
+      try {
+        token = await reissueAccessToken()
+      } catch {
+        tokenStore.clear()
+        sessionListener?.('expired')
+        throw new ApiError('AUTH_002', 401, '로그인이 만료되었습니다.')
+      }
+      config.headers.Authorization = `Bearer ${token}`
+      return api(config)
+    }
+
+    // 토큰 없음·Refresh 만료 → 세션 종료.
+    // 방금 재발급에 성공하고 다시 보낸 요청이 또 401 이면 세션 문제가 아니라 그 요청의 문제라 로그아웃하지 않는다
+    if (status === 401 && (code === 'COMMON_002' || code === 'AUTH_002') && !config?._retried) {
       tokenStore.clear()
       sessionListener?.('expired')
     }

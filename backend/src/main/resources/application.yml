@@ -71,6 +71,12 @@ audisay:
       seek-negation-filter: true      # 부정 문장 빼기·요약하는 말 점수 낮추기
       seek-evidence-bonus: true       # 15초 안에 대사·해설·화면 글자가 함께 말하면 점수 올리기
       seek-llm-verify: true           # 대사 한 줄에서만 찾은 후보가 섞이면 LLM이 거르기
+    answer:                           # 질문 답변 SSE(283)
+      threads: 32                     # 동시에 만드는 답변 수(넘으면 CHAT_005)
+      tts-threads: 16                 # 답변 문장 음성(AI /internal/tts) 스레드
+      voice: F1                       # 답변 목소리(Supertonic, 안내 목소리와 같음)
+      stream-timeout: 90s             # SSE 최대 연결 시간(LLM 전체 60초 + 음성)
+      speech-wait: 15s                # LLM이 끝난 뒤 남은 문장 음성을 기다리는 최대 시간
   job:
     partial-on-chunk-failure: true    # 조각 하나 실패 시 작업 전체 FAILED 대신 나머지로 PARTIAL
 

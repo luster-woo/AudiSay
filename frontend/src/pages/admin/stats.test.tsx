@@ -194,30 +194,73 @@ describe('통계', () => {
     )
   })
 
-  test('직접 고른 기간이 잘못되면 보내지 않고 이유를 보여 준다', async () => {
+  test('달력 하나에서 시작과 끝을 차례로 누르고 확인을 눌러야 조회한다', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-11-03T03:00:00Z') })
+    try {
+      renderRoute('/admin/stats')
+      await screen.findByRole('heading', { level: 1, name: '통계' })
+      expect(adminApi.aiUsage).toHaveBeenCalledTimes(1)
+      // 오른쪽 위 '10. 5. ~ 11. 3. (30일)' 글자는 없다
+      expect(screen.queryByText(/\(30일\)/)).not.toBeInTheDocument()
+
+      const trigger = screen.getByRole('button', { name: /^기간 직접 고르기/ })
+      expect(trigger).toHaveTextContent('10월 5일(월)–11월 3일(화)')
+      expect(trigger).not.toHaveTextContent('30일')
+      await userEvent.click(trigger)
+      const dialog = screen.getByRole('dialog', { name: '2026년 11월' })
+
+      // 오늘 뒤는 누를 수 없고, 다음 달로도 못 간다
+      expect(within(dialog).getByRole('button', { name: /2026년 11월 4일/ })).toBeDisabled()
+      expect(within(dialog).getByRole('button', { name: '다음 달' })).toBeDisabled()
+
+      await userEvent.click(within(dialog).getByRole('button', { name: '이전 달' }))
+      expect(screen.getByRole('dialog', { name: '2026년 10월' })).toBeInTheDocument()
+      await userEvent.click(within(dialog).getByRole('button', { name: /2026년 10월 20일/ }))
+      // 시작만 고른 상태에서는 확인을 누를 수 없다. 버튼은 확인 하나뿐
+      expect(within(dialog).getByRole('button', { name: '확인' })).toHaveAttribute(
+        'aria-disabled',
+        'true',
+      )
+      expect(within(dialog).queryByRole('button', { name: /적용|취소/ })).not.toBeInTheDocument()
+      await userEvent.click(within(dialog).getByRole('button', { name: '다음 달' }))
+      await userEvent.click(within(dialog).getByRole('button', { name: /2026년 11월 2일/ }))
+      expect(adminApi.aiUsage).toHaveBeenCalledTimes(1)
+
+      await userEvent.click(within(dialog).getByRole('button', { name: '확인' }))
+      expect(adminApi.aiUsage).toHaveBeenLastCalledWith('2026-10-20', '2026-11-02')
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      expect(trigger).toHaveFocus()
+      expect(trigger).toHaveTextContent('10월 20일(화)–11월 2일(월)')
+      // 프리셋과 다른 기간이면 프리셋은 풀린다
+      expect(screen.getByRole('radio', { name: '최근 30일' })).not.toBeChecked()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  test('시작을 고른 뒤에는 최대 92일을 넘는 날을 누를 수 없고, Esc 로 닫으면 바뀌지 않는다', async () => {
     renderRoute('/admin/stats')
     await screen.findByRole('heading', { level: 1, name: '통계' })
+    const trigger = screen.getByRole('button', { name: /^기간 직접 고르기/ })
+    await userEvent.click(trigger)
+    const dialog = screen.getByRole('dialog')
+    // 석 달 전 달의 1일을 시작으로
+    for (let i = 0; i < 3; i++)
+      await userEvent.click(within(dialog).getByRole('button', { name: '이전 달' }))
+    const startBtn = within(dialog).getAllByRole('button', { name: /1일 / })[0]
+    await userEvent.click(startBtn)
+    for (let i = 0; i < 3; i++)
+      await userEvent.click(within(dialog).getByRole('button', { name: '다음 달' }))
+    // 시작부터 92일을 넘는 날(오늘 근처)은 막혀 있다
+    const disabled = within(dialog)
+      .getAllByRole('button', { name: /일 .요일/ })
+      .filter((b) => b.hasAttribute('disabled'))
+    expect(disabled.length).toBeGreaterThan(0)
+
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
     expect(adminApi.aiUsage).toHaveBeenCalledTimes(1)
-
-    const fromBox = screen.getByLabelText('시작')
-    const toBox = screen.getByLabelText('끝')
-    await userEvent.clear(fromBox)
-    await userEvent.type(fromBox, '2026-07-01')
-    await userEvent.clear(toBox)
-    await userEvent.type(toBox, '2026-11-01')
-    await userEvent.click(screen.getByRole('button', { name: '조회' }))
-
-    expect(adminApi.aiUsage).toHaveBeenCalledTimes(1)
-    expect(fromBox).toHaveAccessibleDescription(/최대 92일/)
-    expect(fromBox).toHaveAttribute('aria-invalid', 'true')
-
-    await userEvent.clear(fromBox)
-    await userEvent.type(fromBox, '2026-10-01')
-    await userEvent.click(screen.getByRole('button', { name: '조회' }))
-    expect(adminApi.aiUsage).toHaveBeenLastCalledWith('2026-10-01', '2026-11-01')
-    expect(fromBox).not.toHaveAttribute('aria-invalid')
-    // 프리셋은 풀린다
-    expect(screen.getByRole('radio', { name: '최근 30일' })).not.toBeChecked()
   })
 
   test('서버가 거부하면 그 말을 보여 준다', async () => {

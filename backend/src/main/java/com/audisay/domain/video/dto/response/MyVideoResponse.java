@@ -24,12 +24,12 @@ public record MyVideoResponse(
         Long jobId,
         Instant requestedAt
 ) {
-    public static MyVideoResponse of(Video video, DescriptionState state, Instant requestedAt) {
+    public static MyVideoResponse of(Video video, String thumbnailUrl, DescriptionState state, Instant requestedAt) {
         return new MyVideoResponse(
                 video.getId(),
                 video.getSourceType(),
                 video.getTitle(),
-                video.getThumbnailUrl(),
+                thumbnailUrl,
                 video.getDurationSec(),
                 video.getCategory(),
                 video.isAvailable(),

@@ -17,4 +17,13 @@ public interface DescriptionLineRepository extends JpaRepository<DescriptionLine
             order by l.startMs, l.lineIndex, l.detailLevel
             """)
     List<DescriptionLine> findAllByDescriptionId(Long descriptionId);
+
+    /** [fromMs, toMs] 안에서 시작하는 문장. 시각 → 문장 순서 → 상세도 순 */
+    @Query("""
+            select l from DescriptionLine l
+            where l.description.id = :descriptionId
+              and l.startMs between :fromMs and :toMs
+            order by l.startMs, l.lineIndex, l.detailLevel
+            """)
+    List<DescriptionLine> findInRange(Long descriptionId, Integer fromMs, Integer toMs);
 }

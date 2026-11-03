@@ -78,8 +78,14 @@ beforeEach(() => {
     const list = USERS.filter(
       (u) => (!p.role || u.role === p.role) && (!p.keyword || u.email.includes(p.keyword)),
     )
+    // 정렬용 전체 받기(size 50)는 한 쪽으로 끝난다
+    if (p.size === 50) return paged(list, { last: true })
     // 역할·검색어 없이 부르면 서버는 관리자까지 세어 129명 (관리자 1명)
-    return paged(list, { total: p.role || p.keyword ? list.length : 129, last: false })
+    return paged(list, {
+      total: p.role || p.keyword ? list.length : 129,
+      number: p.page ?? 0,
+      last: false,
+    })
   })
 })
 
@@ -91,7 +97,9 @@ describe('회원', () => {
     await waitFor(() => expect(heading).toHaveFocus())
     expect(adminApi.users).toHaveBeenCalledWith({ page: 0, size: 10 })
     expect(adminApi.users).toHaveBeenCalledWith({ role: 'ADMIN', size: 1 })
-    expect(await screen.findByText('전체 128명')).toBeInTheDocument()
+    expect(await screen.findByRole('rowheader', { name: '박도윤' })).toBeInTheDocument()
+    // 오른쪽 위 인원수 글자는 두지 않는다
+    expect(screen.queryByText(/전체 \d+명/)).not.toBeInTheDocument()
     expect(screen.queryByText('admin@ssafy.com')).not.toBeInTheDocument()
     // 회원 화면엔 위쪽 줄(현재 위치)이 없다 (Figma)
     expect(screen.queryByRole('navigation', { name: '현재 위치' })).not.toBeInTheDocument()
@@ -101,14 +109,25 @@ describe('회원', () => {
     expect(within(rows[1]).getByRole('rowheader', { name: '박도윤' })).toBeInTheDocument()
     expect(rows[1]).toHaveTextContent('시각장애인')
     expect(rows[2]).toHaveTextContent('인증 안 함')
-    expect(screen.getByRole('navigation', { name: '페이지' })).toHaveTextContent('가입 최신순')
+    // 표 아래 가운데: 이전 · 쪽 번호(최대 5개) · 다음. '1–10 / 128명' 같은 글자는 없다
+    const nav = screen.getByRole('navigation', { name: '페이지' })
+    expect(
+      within(nav)
+        .getAllByRole('listitem')
+        .map((li) => li.textContent),
+    ).toEqual(['1', '2', '3', '4', '5'])
+    expect(within(nav).getByRole('button', { name: '1쪽' })).toHaveAttribute('aria-current', 'page')
+    expect(nav).not.toHaveTextContent('128명')
+    expect(
+      screen.queryByText('가입한 회원을 찾아봐요. 보기만 할 수 있어요.'),
+    ).not.toBeInTheDocument()
 
     expect(await axe(container)).toHaveNoViolations()
   })
 
   test('역할을 고르면 그 역할만 다시 불러오고 몇 명인지 알려 준다', async () => {
     renderRoute('/admin/users')
-    await screen.findByText('전체 128명')
+    await screen.findByRole('rowheader', { name: '박도윤' })
 
     // 관리자는 거르는 칸이 없다 (Figma)
     expect(screen.getAllByRole('radio').map((r) => r.closest('label')?.textContent)).toEqual([
@@ -118,7 +137,13 @@ describe('회원', () => {
     ])
     await userEvent.click(screen.getByRole('radio', { name: '일반' }))
 
-    expect(await screen.findByText('일반 1명')).toBeInTheDocument()
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole('table'))
+          .getAllByRole('rowheader')
+          .map((c) => c.textContent),
+      ).toEqual(['이서진']),
+    )
     expect(adminApi.users).toHaveBeenLastCalledWith({ role: 'GENERAL', page: 0, size: 10 })
     expect(within(screen.getByRole('table')).getAllByRole('row')).toHaveLength(2)
     await waitFor(() => expect(screen.getByText('회원 1명을 찾았어요.')).toBeInTheDocument())
@@ -126,7 +151,7 @@ describe('회원', () => {
 
   test('이메일로 찾고, 없으면 없다고 알려 준다', async () => {
     renderRoute('/admin/users')
-    await screen.findByText('전체 128명')
+    await screen.findByRole('rowheader', { name: '박도윤' })
 
     const box = screen.getByRole('searchbox', { name: '이메일 또는 이름' })
     await userEvent.type(box, '  nobody  ')
@@ -140,11 +165,78 @@ describe('회원', () => {
 
   test('다음 쪽으로 넘기면 목록 제목으로 포커스를 옮긴다', async () => {
     renderRoute('/admin/users')
-    await screen.findByText('전체 128명')
+    await screen.findByRole('rowheader', { name: '박도윤' })
 
     await userEvent.click(screen.getByRole('button', { name: '다음 페이지' }))
 
     expect(adminApi.users).toHaveBeenLastCalledWith({ page: 1, size: 10 })
     expect(screen.getByRole('heading', { name: '회원 목록' })).toHaveFocus()
+  })
+
+  test('쪽 번호는 5개씩: 5쪽에서 다음을 누르면 6~10쪽 번호가 보이고, 번호를 눌러 옮길 수 있다', async () => {
+    renderRoute('/admin/users')
+    await screen.findByRole('rowheader', { name: '박도윤' })
+    const nav = () => screen.getByRole('navigation', { name: '페이지' })
+
+    await userEvent.click(within(nav()).getByRole('button', { name: '5쪽' }))
+    expect(adminApi.users).toHaveBeenLastCalledWith({ page: 4, size: 10 })
+    await userEvent.click(within(nav()).getByRole('button', { name: '다음 페이지' }))
+    expect(adminApi.users).toHaveBeenLastCalledWith({ page: 5, size: 10 })
+    // 128명 / 10명 = 13쪽 → 6~10 묶음
+    await waitFor(() =>
+      expect(
+        within(nav())
+          .getAllByRole('listitem')
+          .map((li) => li.textContent),
+      ).toEqual(['6', '7', '8', '9', '10']),
+    )
+    expect(within(nav()).getByRole('button', { name: '6쪽' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+  })
+
+  test('정렬을 고르면 같은 조건의 회원을 모두 받아 화면에서 정렬한다 (관리자는 빼고)', async () => {
+    renderRoute('/admin/users')
+    await screen.findByRole('rowheader', { name: '박도윤' })
+
+    const sort = screen.getByRole('combobox', { name: '정렬' })
+    expect(
+      within(sort)
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(['기본', '가입일(최신 순)', '가입일(오래된 순)', '이름(가나다순)'])
+
+    await userEvent.selectOptions(sort, '가입일(오래된 순)')
+    expect(adminApi.users).toHaveBeenCalledWith({ page: 0, size: 50 })
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole('table'))
+          .getAllByRole('rowheader')
+          .map((c) => c.textContent),
+      ).toEqual(['이서진', '박도윤']),
+    )
+
+    await userEvent.selectOptions(sort, '이름(가나다순)')
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole('table'))
+          .getAllByRole('rowheader')
+          .map((c) => c.textContent),
+      ).toEqual(['박도윤', '이서진']),
+    )
+  })
+})
+
+describe('AdminPagination', () => {
+  test('6쪽까지 있을 때 6쪽에 오면 번호는 6 하나만 보인다', async () => {
+    const { render } = await import('@testing-library/react')
+    const { AdminPagination } = await import('@/features/admin/AdminPagination')
+    render(<AdminPagination page={5} totalPages={6} onChange={() => {}} />)
+    expect(screen.getAllByRole('listitem').map((li) => li.textContent)).toEqual(['6'])
+    expect(screen.getByRole('button', { name: '다음 페이지' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    )
   })
 })

@@ -18,4 +18,14 @@ public interface TranscriptSegmentRepository extends JpaRepository<TranscriptSeg
             order by t.startMs
             """)
     List<TranscriptSegment> findAllWithCharacterByDescriptionId(Long descriptionId);
+
+    /** [fromMs, toMs] 안에서 시작하는 대사(인물 이름 함께) */
+    @Query("""
+            select t from TranscriptSegment t
+            left join fetch t.character
+            where t.description.id = :descriptionId
+              and t.startMs between :fromMs and :toMs
+            order by t.startMs
+            """)
+    List<TranscriptSegment> findInRangeWithCharacter(Long descriptionId, Integer fromMs, Integer toMs);
 }

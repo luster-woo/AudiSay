@@ -1,4 +1,5 @@
 import { useRef, useState, type FormEvent } from 'react'
+import { useLocation } from 'react-router-dom'
 import { ApiError, toUserMessage } from '@/api/errors'
 import { useAnnouncer } from '@/features/announcer/context'
 import { useAuth } from '@/features/auth/context'
@@ -20,8 +21,10 @@ export default function LoginPage() {
   const { announce } = useAnnouncer()
   const emailRef = useRef<HTMLInputElement>(null)
   const passwordRef = useRef<HTMLInputElement>(null)
+  // 회원가입을 마치고 넘어왔으면 그 이메일 (가입은 로그인을 하지 않는다)
+  const signedUpEmail = (useLocation().state as { signedUpEmail?: string } | null)?.signedUpEmail
 
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState(signedUpEmail ?? '')
   const [password, setPassword] = useState('')
   const [errors, setErrors] = useState<Errors>({})
   const [summary, setSummary] = useState<string | null>(null)
@@ -29,8 +32,10 @@ export default function LoginPage() {
 
   usePageEntry({
     title: '로그인',
-    announce: '로그인 화면이에요. 이메일 칸에 있어요.',
-    focusRef: emailRef,
+    announce: signedUpEmail
+      ? '가입했어요. 이메일을 채워 뒀어요. 비밀번호를 넣고 로그인해 주세요. 비밀번호 칸에 있어요.'
+      : '로그인 화면이에요. 이메일 칸에 있어요.',
+    focusRef: signedUpEmail ? passwordRef : emailRef,
   })
 
   /**
@@ -82,10 +87,16 @@ export default function LoginPage() {
       <p className="text-lg font-bold text-ink-muted">AudiSay 계정</p>
       <h1 className="mt-2 text-[2.5rem] font-bold">로그인</h1>
 
-      {summary && (
+      {summary ? (
         <Notice title="로그인하지 못했어요" className="mt-8 max-w-[35rem]">
           {summary}
         </Notice>
+      ) : (
+        signedUpEmail && (
+          <Notice title="가입했어요" tone="success" className="mt-8 max-w-[35rem]">
+            비밀번호를 넣고 로그인하면 사용법 안내가 시작돼요.
+          </Notice>
+        )
       )}
 
       <form noValidate onSubmit={onSubmit} className="mt-6 flex max-w-[35rem] flex-col gap-5">

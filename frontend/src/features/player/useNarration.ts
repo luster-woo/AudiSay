@@ -53,11 +53,15 @@ export function useNarration({
   announce,
 }: Options) {
   const level = settings.detailLevel
+  /**
+   * 상세도는 누적이다: 2 기본 = 1·2단계 문장 모두, 3 자세히 = 1·2·3단계 전부를 시각 순서로 읽는다.
+   * (AI 가 단계마다 '덧붙이는' 문장을 만들므로 같은 단계만 고르면 대부분이 빠진다)
+   */
   const lines = useMemo(
     () =>
       (description?.lines ?? [])
-        .filter((l) => l.detailLevel === level)
-        .sort((a, b) => a.startMs - b.startMs),
+        .filter((l) => l.detailLevel <= level)
+        .sort((a, b) => a.startMs - b.startMs || a.detailLevel - b.detailLevel),
     [description, level],
   )
   const screenTexts = useMemo(

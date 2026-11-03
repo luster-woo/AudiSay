@@ -5,6 +5,7 @@ import type { RouteHandle } from './routeHandle'
 import { RequireAuth } from '@/features/auth/guards/RequireAuth'
 import { RequireRole } from '@/features/auth/guards/RequireRole'
 import { RedirectIfAuthed } from '@/features/auth/guards/RedirectIfAuthed'
+import { RedirectAdmin } from '@/features/auth/guards/RedirectAdmin'
 import { AppLayout } from '@/layouts/AppLayout'
 import { AuthLayout } from '@/layouts/AuthLayout'
 import { BareLayout } from '@/layouts/BareLayout'
@@ -20,6 +21,8 @@ import YoutubeCheckPage from '@/pages/home/YoutubeCheckPage'
 import RegisterPage from '@/pages/register/RegisterPage'
 import JobPage from '@/pages/jobs/JobPage'
 import WatchPage from '@/pages/watch/WatchPage'
+import MyVideosPage from '@/pages/my-videos/MyVideosPage'
+import MyInfoPage from '@/pages/my-info/MyInfoPage'
 import NotFoundPage from '@/pages/errors/NotFoundPage'
 import RouteError from '@/pages/errors/RouteError'
 import RootError from '@/pages/errors/RootError'
@@ -60,25 +63,30 @@ const publicRoutes: RouteObject[] = [
   },
 ]
 
-/** 로그인한 사용자 화면 (헤더 + 주 메뉴 + 방금 안내 띠) */
+/** 로그인한 사용자 화면 (헤더 + 주 메뉴 + 방금 안내 띠). 관리자는 RedirectAdmin 이 관리자 화면으로 보낸다 */
 const userRoutes: RouteObject[] = [
   {
-    element: <AppLayout />,
+    element: <RedirectAdmin />,
     children: [
-      { index: true, element: <HomePage /> },
-      { path: 'search', element: <SearchPage /> },
-      { path: 'search/youtube', element: <YoutubeCheckPage /> },
-      { path: 'register', element: <RegisterPage /> },
-      // 업로드 단계는 한 화면(/register) 안에서 바뀐다. 예전 주소는 처음 단계로 보낸다
-      { path: 'register/*', element: <Navigate to="/register" replace /> },
-      { path: 'upload/*', element: <Navigate to="/register" replace /> },
-      { path: 'jobs/:jobId', element: <JobPage /> },
-      { path: 'watch/:videoId', element: <WatchPage /> },
-      { path: 'tutorial/:step', element: <TutorialPage /> },
-      { path: 'verify', element: <VerifyPage /> },
-      page('me', { title: '내 정보' }),
-      page('me/videos', { title: '내 영상' }),
-      page('help', { title: '도움말' }),
+      {
+        element: <AppLayout />,
+        children: [
+          { index: true, element: <HomePage /> },
+          { path: 'search', element: <SearchPage /> },
+          { path: 'search/youtube', element: <YoutubeCheckPage /> },
+          { path: 'register', element: <RegisterPage /> },
+          // 업로드 단계는 한 화면(/register) 안에서 바뀐다. 예전 주소는 처음 단계로 보낸다
+          { path: 'register/*', element: <Navigate to="/register" replace /> },
+          { path: 'upload/*', element: <Navigate to="/register" replace /> },
+          { path: 'jobs/:jobId', element: <JobPage /> },
+          { path: 'watch/:videoId', element: <WatchPage /> },
+          { path: 'tutorial/:step', element: <TutorialPage /> },
+          { path: 'verify', element: <VerifyPage /> },
+          { path: 'me', element: <MyInfoPage /> },
+          { path: 'me/videos', element: <MyVideosPage /> },
+          page('help', { title: '도움말' }),
+        ],
+      },
     ],
   },
 ]

@@ -125,6 +125,9 @@ export function usePlayerSource(
           rel: 0,
           modestbranding: 1,
           playsinline: 1,
+          // 유튜브 자막(자동 생성 포함)은 끄고 시작한다. 자막은 우리 해설 데이터(screenTexts)를 설정대로 읽는다.
+          // 3 = 비공식 값. 유튜브 계정에서 '항상 자막 켜기'를 켠 사용자는 그 설정이 우선할 수 있다
+          cc_load_policy: 3 as unknown as YT.ClosedCaptionsLoadPolicy,
           origin: window.location.origin,
         },
         events: {

@@ -2,15 +2,16 @@ import { useQuery } from '@tanstack/react-query'
 import { usersApi } from '@/api/users'
 import { queryKeys } from '@/api/queryKeys'
 import type { QuotaItem } from '@/api/types'
+import { Button } from '@/components/ui/Button'
 import { cn } from '@/components/ui/cn'
 
 function Row({ label, item }: { label: string; item: QuotaItem }) {
   const unlimited = item.limit == null
-  const empty = !unlimited && item.remaining === 0
   return (
     <div className="flex items-center justify-between gap-4 py-2">
-      <dt className="text-2xl">{label}</dt>
-      <dd className={cn('text-2xl font-bold', empty ? 'text-danger' : 'text-ink')}>
+      <dt className="text-2xl text-ink">{label}</dt>
+      {/* 숫자는 같은 폭(tabular-nums)으로 오른쪽 정렬해 두 줄의 숫자 위치를 맞춘다. 색은 늘 검정 */}
+      <dd className="min-w-[5.5rem] text-right text-2xl font-bold text-ink tabular-nums">
         {unlimited ? (
           '제한 없음'
         ) : (
@@ -30,11 +31,20 @@ function Row({ label, item }: { label: string; item: QuotaItem }) {
 }
 
 /** 오른쪽 '오늘 남은 횟수'. GET /users/me/quota */
-export function QuotaAside({ showLeftNote = true }: { showLeftNote?: boolean }) {
-  const { data } = useQuery({ queryKey: queryKeys.quota, queryFn: usersApi.quota })
+export function QuotaAside({
+  showLeftNote = true,
+  className,
+}: {
+  showLeftNote?: boolean
+  className?: string
+}) {
+  const { data, isPending, refetch } = useQuery({
+    queryKey: queryKeys.quota,
+    queryFn: usersApi.quota,
+  })
 
   return (
-    <aside aria-labelledby="quota-title" className="border-t-2 border-line pt-5">
+    <aside aria-labelledby="quota-title" className={cn('border-t-2 border-line pt-5', className)}>
       <h2 id="quota-title" className="text-[1.75rem] font-bold">
         오늘 남은 횟수
       </h2>
@@ -44,7 +54,16 @@ export function QuotaAside({ showLeftNote = true }: { showLeftNote?: boolean }) 
           <Row label="영상 올리기" item={data.upload} />
         </dl>
       ) : (
-        <p className="mt-4 text-lg text-ink-muted">불러오는 중이에요.</p>
+        <div className="mt-4 space-y-3">
+          <p className="text-lg text-ink-muted">
+            {isPending ? '불러오는 중이에요.' : '남은 횟수를 불러오지 못했어요.'}
+          </p>
+          {!isPending && (
+            <Button variant="secondary" onClick={() => void refetch()}>
+              횟수 다시 불러오기
+            </Button>
+          )}
+        </div>
       )}
       <p className="mt-6 text-xl leading-relaxed">
         {showLeftNote && (

@@ -59,6 +59,7 @@ public enum ErrorCode {
     CHAT_AI_TIMEOUT(HttpStatus.GATEWAY_TIMEOUT, "CHAT_006", "응답이 늦어지고 있어요. 다시 시도해 주세요."),
     CHAT_AI_LIMIT(HttpStatus.TOO_MANY_REQUESTS, "CHAT_007", "지금은 이용할 수 없어요. 나중에 다시 시도해 주세요."),
     ANSWER_IN_PROGRESS(HttpStatus.CONFLICT, "CHAT_008", "이미 답변을 만드는 중입니다."),
+    CHAT_RATE_LIMIT(HttpStatus.TOO_MANY_REQUESTS, "CHAT_009", "너무 자주 말씀하셨어요. 잠시 후에 다시 말씀해 주세요."),
 
     ALREADY_REPORTED(HttpStatus.CONFLICT, "REPORT_001", "이미 신고한 문장입니다."),
     REPORT_NOT_FOUND(HttpStatus.NOT_FOUND, "REPORT_002", "존재하지 않는 신고입니다."),

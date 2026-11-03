@@ -1,5 +1,6 @@
 node_modules
 dist
+coverage
 .git
 .env
 .env.*
@@ -7,3 +8,4 @@ dist
 *.log
 Dockerfile
 .dockerignore
+.vscode

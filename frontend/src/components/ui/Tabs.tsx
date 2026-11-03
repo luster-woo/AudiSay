@@ -1,5 +1,6 @@
 import { useId, useRef, type KeyboardEvent, type ReactNode } from 'react'
 import { cn } from './cn'
+import { buttonClass } from './buttonStyles'
 
 export interface TabItem<T extends string> {
   value: T
@@ -20,6 +21,8 @@ export interface TabsProps<T extends string> {
   /** 탭 패널 위쪽 여백을 바꿀 때 */
   panelClassName?: string
   className?: string
+  variant?: 'underline' | 'pills'
+  tabListClassName?: string
 }
 
 /**
@@ -36,8 +39,11 @@ export function Tabs<T extends string>({
   size = 'md',
   panelClassName,
   className,
+  variant = 'underline',
+  tabListClassName,
 }: TabsProps<T>) {
   const buttons = appearance === 'buttons'
+  const pills = variant === 'pills'
   const baseId = useId()
   const tabRefs = useRef(new Map<T, HTMLButtonElement>())
   const tabId = (v: T) => `${baseId}-tab-${v}`
@@ -74,7 +80,14 @@ export function Tabs<T extends string>({
       <div
         role="tablist"
         aria-label={label}
-        className={buttons ? 'grid grid-cols-3 gap-2' : 'flex gap-1 border-b-2 border-line'}
+        className={cn(
+          pills
+            ? 'flex flex-wrap gap-4'
+            : buttons
+              ? 'grid grid-cols-3 gap-2'
+              : 'flex gap-1 border-b-2 border-line',
+          tabListClassName,
+        )}
       >
         {items.map((it) => {
           const selected = it.value === value
@@ -93,23 +106,26 @@ export function Tabs<T extends string>({
               tabIndex={selected ? 0 : -1}
               onClick={() => onChange(it.value)}
               onKeyDown={onKeyDown}
-              className={cn(
-                buttons
-                  ? 'min-h-touch rounded-md border-2 border-navy px-4 text-lg font-bold'
-                  : '-mb-0.5 font-bold',
-                // sm: 관리자 화면의 작은 탭 (Figma 14px, 밑줄 2px)
-                !buttons &&
-                  (size === 'sm'
-                    ? 'min-h-11 border-b-2 px-3 text-sm'
-                    : 'min-h-touch border-b-4 px-5'),
-                buttons
-                  ? selected
-                    ? 'bg-navy text-cream focus-visible:bg-navy-deep'
-                    : 'bg-paper text-navy'
-                  : selected
-                    ? 'border-navy text-ink'
-                    : 'border-transparent text-ink-muted',
-              )}
+              className={
+                pills
+                  ? buttonClass(selected ? 'primary' : 'secondary', 'xl', 'px-6')
+                  : cn(
+                      buttons
+                        ? 'min-h-touch rounded-md border-2 border-navy px-4 text-lg font-bold'
+                        : '-mb-0.5 font-bold',
+                      !buttons &&
+                        (size === 'sm'
+                          ? 'min-h-11 border-b-2 px-3 text-sm'
+                          : 'min-h-touch border-b-4 px-5'),
+                      buttons
+                        ? selected
+                          ? 'bg-navy text-cream focus-visible:bg-navy-deep'
+                          : 'bg-paper text-navy'
+                        : selected
+                          ? 'border-navy text-ink'
+                          : 'border-transparent text-ink-muted',
+                    )
+              }
             >
               {it.label}
             </button>

@@ -3,15 +3,12 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { videosApi } from '@/api/videos'
 import { queryKeys } from '@/api/queryKeys'
 import type { VideoCategory } from '@/api/types'
-import { Button } from '@/components/ui/Button'
-import { ButtonLink } from '@/components/ui/ButtonLink'
 import { Pagination } from '@/components/ui/Pagination'
 import { Select } from '@/components/ui/Select'
 import { useAnnouncer } from '@/features/announcer/context'
 import { usePageEntry } from '@/features/page/usePageEntry'
 import { HomeTop } from '@/features/search/HomeTop'
 import { CATEGORY_LABELS, CATEGORY_OPTIONS } from '@/features/video/categories'
-import { useFavoriteToggle } from '@/features/video/useFavoriteToggle'
 import { VideoCard } from '@/features/video/VideoCard'
 
 const PAGE_SIZE = 4
@@ -23,7 +20,6 @@ export default function HomePage() {
   const listHeadingRef = useRef<HTMLHeadingElement>(null)
   const [category, setCategory] = useState<VideoCategory | ''>('')
   const [page, setPage] = useState(0)
-  const toggleFavorite = useFavoriteToggle()
 
   const params = { category: category || undefined, page, size: PAGE_SIZE }
   const { data, isPlaceholderData, isError } = useQuery({
@@ -109,29 +105,7 @@ export default function HomePage() {
                     channelTitle={v.channelTitle}
                     durationSec={v.durationSec}
                     thumbnailUrl={v.thumbnailUrl}
-                    actions={
-                      <>
-                        <ButtonLink
-                          to={`/watch/${v.videoId}`}
-                          variant="primary"
-                          size="xl"
-                          aria-label={`재생, ${v.title}`}
-                          className="px-4"
-                        >
-                          재생
-                        </ButtonLink>
-                        {/* 켜고 끄는 버튼은 이름이 바뀐다 (aria-pressed 쓰지 않음, 원칙 4장) */}
-                        <Button
-                          variant={v.isFavorite ? 'on' : 'secondary'}
-                          size="xl"
-                          aria-label={`${v.isFavorite ? '즐겨찾기 해제' : '즐겨찾기'}, ${v.title}`}
-                          onClick={() => toggleFavorite(v)}
-                          className="flex-1 px-2"
-                        >
-                          {v.isFavorite ? '즐겨찾기 해제' : '즐겨찾기'}
-                        </Button>
-                      </>
-                    }
+                    to={`/watch/${v.videoId}`}
                   />
                 </li>
               ))}

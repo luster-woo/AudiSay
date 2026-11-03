@@ -23,6 +23,7 @@ vi.mock('@/api/users', () => ({
     quota: vi.fn(),
     changePassword: vi.fn(),
     withdraw: vi.fn(),
+    verify: vi.fn(),
   },
 }))
 
@@ -72,6 +73,9 @@ test('계정 정보·설정·이용 횟수를 표시하고 제목에 초점을 �
   const { container } = renderRoute('/me')
   expect(await screen.findByText(me.email)).toBeVisible()
   expect(screen.getByText('2026년 10월 22일')).toBeVisible()
+  expect(screen.getByText('시각장애인 인증 완료', { exact: false })).toBeVisible()
+  expect(screen.queryByRole('link', { name: '시각장애인 인증' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /인증 완료/ })).not.toBeInTheDocument()
   await waitFor(() =>
     expect(screen.getByRole('heading', { level: 1, name: '내 정보' })).toHaveFocus(),
   )
@@ -92,7 +96,60 @@ test('일반 회원에게 임의 인증 날짜를 보여 주지 않는다', asyn
   })
   renderRoute('/me')
   expect(await screen.findByText('일반 회원')).toBeVisible()
+  expect(screen.getByRole('link', { name: '시각장애인 인증' })).toHaveAttribute('href', '/verify')
   expect(screen.queryByText('2026년 10월 22일')).not.toBeInTheDocument()
+})
+
+test('미인증 회원은 키보드로 인증 화면에 이동하고 인증 후 돌아오면 등급·날짜·횟수가 갱신된다', async () => {
+  vi.mocked(usersApi.me).mockResolvedValue({
+    ...me,
+    role: 'GENERAL',
+    verified: false,
+    verifiedAt: null,
+  })
+  vi.mocked(usersApi.quota).mockResolvedValue({
+    role: 'GENERAL',
+    date: '2026-11-03',
+    youtube: { limit: 2, remaining: 2, used: 0, maxDurationSec: 600 },
+    upload: { limit: 1, remaining: 1, used: 0, maxDurationSec: 600, maxSizeBytes: 104857600 },
+  })
+  vi.mocked(usersApi.verify).mockImplementation(async () => {
+    vi.mocked(usersApi.me).mockResolvedValue(me)
+    vi.mocked(usersApi.quota).mockResolvedValue({
+      role: 'VISUALLY_IMPAIRED',
+      date: '2026-11-03',
+      youtube: { limit: 5, remaining: 5, used: 0, maxDurationSec: 3600 },
+      upload: { limit: 3, remaining: 3, used: 0, maxDurationSec: 3600, maxSizeBytes: 2147483648 },
+    })
+    return {
+      role: 'VISUALLY_IMPAIRED',
+      verifiedAt: me.verifiedAt!,
+      accessToken: 'verified-session',
+      tokenType: 'Bearer',
+      expiresIn: 3600,
+    }
+  })
+  const { router, queryClient, container } = renderRoute('/me')
+  queryClient.setDefaultOptions({ queries: { retry: false, staleTime: 30_000 } })
+  const link = await screen.findByRole('link', { name: '시각장애인 인증' })
+  expect(await screen.findByText('2번 중 2번 남음')).toBeInTheDocument()
+  expect(await axe(container)).toHaveNoViolations()
+  link.focus()
+  await userEvent.keyboard('{Enter}')
+  expect(router.state.location.pathname).toBe('/verify')
+  await userEvent.upload(
+    await screen.findByLabelText('인증 서류 파일 고르기'),
+    new File(['test'], 'test-document.png', { type: 'image/png' }),
+  )
+  await userEvent.click(screen.getByRole('checkbox', { name: /민감정보/ }))
+  await userEvent.click(screen.getByRole('button', { name: '인증 신청' }))
+  await screen.findByRole('heading', { level: 1, name: '인증이 끝났어요' })
+  await userEvent.click(within(screen.getByRole('main')).getByRole('link', { name: '내 정보' }))
+  expect(await screen.findByText('시각장애인 인증 완료', { exact: false })).toBeVisible()
+  expect(screen.getByText('2026년 10월 22일')).toBeVisible()
+  expect(await screen.findByText('5번 중 5번 남음')).toBeInTheDocument()
+  expect(screen.queryByRole('link', { name: '시각장애인 인증' })).not.toBeInTheDocument()
+  expect(tokenStore.get()).toBe('verified-session')
 })
 
 test('본문에서 단축키 안내를 열고 닫으면 버튼을 선택하지 않고 본문으로 초점이 돌아온다', async () => {

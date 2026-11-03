@@ -1,6 +1,8 @@
 import { useId, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { usersApi } from '@/api/users'
+import { queryKeys } from '@/api/queryKeys'
 import { tokenStore } from '@/api/token'
 import { toUserMessage } from '@/api/errors'
 import { useAnnouncer } from '@/features/announcer/context'
@@ -23,6 +25,7 @@ function checkFile(file: File): string | null {
 }
 
 export default function VerifyPage() {
+  const queryClient = useQueryClient()
   const { user, updateUser } = useAuth()
   const { announce } = useAnnouncer()
   const headingRef = useRef<HTMLHeadingElement>(null)
@@ -80,6 +83,10 @@ export default function VerifyPage() {
       // 역할이 AccessToken 에 담기므로 새 토큰으로 바꾼다 (API 명세)
       tokenStore.set(res.accessToken)
       updateUser({ role: res.role, verified: true })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.me, exact: true }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.quota, exact: true }),
+      ])
       setDone(true)
       requestAnimationFrame(() => {
         headingRef.current?.focus()

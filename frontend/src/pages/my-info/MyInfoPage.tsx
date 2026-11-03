@@ -16,7 +16,7 @@ import { WithdrawDialog } from './WithdrawDialog'
 
 const ROLE_LABELS = {
   GENERAL: '일반 회원',
-  VISUALLY_IMPAIRED: '시각장애인 인증',
+  VISUALLY_IMPAIRED: '시각장애인 인증 완료',
   ADMIN: '관리자',
 } as const
 const dateFormatter = new Intl.DateTimeFormat('ko-KR', {
@@ -125,13 +125,26 @@ export default function MyInfoPage() {
               </div>
               <div className={row}>
                 <dt className="font-bold">회원 등급</dt>
-                <dd className="min-w-0">
-                  {ROLE_LABELS[me.role]}
-                  {me.verified && verifiedDate && !Number.isNaN(verifiedDate.getTime()) && (
-                    <>
-                      {' '}
-                      · <time dateTime={me.verifiedAt!}>{dateFormatter.format(verifiedDate)}</time>
-                    </>
+                <dd className="flex min-w-0 flex-wrap items-center justify-between gap-4">
+                  <span className="min-w-0 wrap-anywhere">
+                    {ROLE_LABELS[me.role]}
+                    {me.verified && verifiedDate && !Number.isNaN(verifiedDate.getTime()) && (
+                      <>
+                        {' '}
+                        ·{' '}
+                        <time dateTime={me.verifiedAt!}>{dateFormatter.format(verifiedDate)}</time>
+                      </>
+                    )}
+                  </span>
+                  {me.role === 'GENERAL' && !me.verified && (
+                    <ButtonLink
+                      to="/verify"
+                      variant="secondary"
+                      size="xl"
+                      className="w-[14.375rem] max-w-full"
+                    >
+                      시각장애인 인증
+                    </ButtonLink>
                   )}
                 </dd>
               </div>
@@ -142,7 +155,12 @@ export default function MyInfoPage() {
                     <span aria-hidden="true">••••••••</span>
                     <span className="sr-only">보안을 위해 표시하지 않음</span>
                   </span>
-                  <Button variant="secondary" size="xl" onClick={() => setDialog('password')}>
+                  <Button
+                    variant="secondary"
+                    size="xl"
+                    className="w-[14.375rem] max-w-full"
+                    onClick={() => setDialog('password')}
+                  >
                     비밀번호 바꾸기
                   </Button>
                 </dd>

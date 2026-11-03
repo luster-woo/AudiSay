@@ -19,6 +19,8 @@ export interface AuthValue {
   isAdmin: boolean
   login: (email: string, password: string) => Promise<SessionUser>
   logout: () => Promise<void>
+  /** 서버에서 탈퇴가 끝난 뒤 로컬 세션도 즉시 비운다 */
+  endSession: (message: string) => Promise<void>
   /** 인증·튜토리얼 완료처럼 세션 사용자 정보 일부가 바뀌었을 때 */
   updateUser: (patch: Partial<SessionUser>) => void
 }

@@ -3,6 +3,7 @@ import { usersApi } from '@/api/users'
 import { queryKeys } from '@/api/queryKeys'
 import type { QuotaItem } from '@/api/types'
 import { cn } from '@/components/ui/cn'
+import { Button } from '@/components/ui/Button'
 
 function Row({ label, item }: { label: string; item: QuotaItem }) {
   const unlimited = item.limit == null
@@ -37,7 +38,10 @@ export function QuotaAside({
   showLeftNote?: boolean
   className?: string
 }) {
-  const { data } = useQuery({ queryKey: queryKeys.quota, queryFn: usersApi.quota })
+  const { data, isPending, refetch } = useQuery({
+    queryKey: queryKeys.quota,
+    queryFn: usersApi.quota,
+  })
 
   return (
     <aside aria-labelledby="quota-title" className={cn('border-t-2 border-line pt-5', className)}>
@@ -50,7 +54,16 @@ export function QuotaAside({
           <Row label="영상 올리기" item={data.upload} />
         </dl>
       ) : (
-        <p className="mt-4 text-lg text-ink-muted">불러오는 중이에요.</p>
+        <div className="mt-4 space-y-3">
+          <p className="text-lg text-ink-muted">
+            {isPending ? '불러오는 중이에요.' : '남은 횟수를 불러오지 못했어요.'}
+          </p>
+          {!isPending && (
+            <Button variant="secondary" onClick={() => void refetch()}>
+              횟수 다시 불러오기
+            </Button>
+          )}
+        </div>
       )}
       <p className="mt-6 text-xl leading-relaxed">
         {showLeftNote && (

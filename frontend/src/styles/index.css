@@ -67,11 +67,27 @@
   :focus-visible:not([tabindex='-1']) {
     outline: 3px solid var(--color-navy);
     outline-offset: 2px;
+  }
+  /* 본문·제목으로 초점을 돌려도 화면 전체가 칠해지지 않게 조작 요소만 강조한다. */
+  :focus-visible:where(
+    a,
+    button,
+    input,
+    select,
+    textarea,
+    summary,
+    [role='button'],
+    [role='tab'],
+    [role='radio'],
+    [role='checkbox'],
+    [role='switch'],
+    [role='slider'],
+    [contenteditable='true']
+  ) {
     background-color: var(--color-yellow-soft);
   }
   html[data-contrast='high'] :focus-visible:not([tabindex='-1']) {
     outline: 4px solid #000;
-    background-color: #ffff8d;
   }
   body {
     @apply bg-cream text-ink font-sans antialiased;

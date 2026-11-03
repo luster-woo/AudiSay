@@ -104,22 +104,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [navigate, location.state, queryClient],
   )
 
+  const endSession = useCallback(
+    async (message: string) => {
+      tokenStore.clear()
+      setUser(null)
+      // 이동 중 보호 라우트가 /login 으로 보내지 않게 한 번에 세션을 끝낸다.
+      setStatus('loading')
+      queryClient.clear() // 관리자 데이터가 다음 사용자에게 남지 않게
+      try {
+        await navigate('/landing', { replace: true, flushSync: true })
+      } finally {
+        setStatus('anonymous')
+        announce(message)
+      }
+    },
+    [announce, navigate, queryClient],
+  )
+
   const logout = useCallback(async () => {
-    await authApi.logout()
-    setUser(null)
-    setStatus('anonymous')
-    queryClient.clear() // 관리자 데이터가 다음 사용자에게 남지 않게
-    announce('로그아웃했어요.')
-    navigate('/landing', { replace: true })
-  }, [announce, navigate, queryClient])
+    try {
+      await authApi.logout()
+    } finally {
+      // authApi 는 실패해도 토큰을 비운다. 화면 상태·개인정보 캐시도 함께 비운다.
+      await endSession('로그아웃했어요.')
+    }
+  }, [endSession])
 
   const updateUser = useCallback((patch: Partial<SessionUser>) => {
     setUser((prev) => (prev ? { ...prev, ...patch } : prev))
   }, [])
 
   const value = useMemo<AuthValue>(
-    () => ({ status, user, isAdmin: user?.role === 'ADMIN', login, logout, updateUser }),
-    [status, user, login, logout, updateUser],
+    () => ({
+      status,
+      user,
+      isAdmin: user?.role === 'ADMIN',
+      login,
+      logout,
+      endSession,
+      updateUser,
+    }),
+    [status, user, login, logout, endSession, updateUser],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

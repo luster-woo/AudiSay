@@ -73,7 +73,10 @@ export function SettingsDialog({ open, onClose, onPreview }: SettingsDialogProps
 
   const set = <K extends keyof UserSettings>(key: K, value: UserSettings[K], said: string) => {
     void update({ [key]: value } as Partial<UserSettings>)
-    announce(said)
+      .then(() => announce(said))
+      .catch(() => {
+        /* 저장 실패·원복 안내는 SettingsProvider 가 맡는다 */
+      })
   }
   const row = 'flex flex-wrap items-center justify-between gap-x-6 gap-y-3 px-5 py-4'
 
@@ -108,7 +111,7 @@ export function SettingsDialog({ open, onClose, onPreview }: SettingsDialogProps
             max={2.5}
             step={0.1}
             format={(v) => `${v.toFixed(1)}배`}
-            onChange={(v) => void update({ speechRate: v })}
+            onChange={(v) => void update({ speechRate: v }).catch(() => {})}
             className={row}
           />
           <div className={row}>
@@ -150,7 +153,7 @@ export function SettingsDialog({ open, onClose, onPreview }: SettingsDialogProps
             format={(v) => `${v}%`}
             decreaseLabel="영상 소리 크기 줄이기"
             increaseLabel="영상 소리 크기 키우기"
-            onChange={(v) => void update({ originalVolume: v })}
+            onChange={(v) => void update({ originalVolume: v }).catch(() => {})}
             className={row}
           />
           <ChoiceGroup

@@ -3,6 +3,14 @@ import type { Me, MyVideo, Paged, Quota, UserSettings, VerificationResult } from
 
 export const usersApi = {
   me: () => request<Me>({ url: '/users/me' }),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    request<null>({
+      method: 'PATCH',
+      url: '/users/me/password',
+      data: { currentPassword, newPassword },
+    }),
+  withdraw: (password: string) =>
+    request<null>({ method: 'DELETE', url: '/users/me', data: { password } }),
   settings: () => request<UserSettings>({ url: '/users/me/settings' }),
   updateSettings: (patch: Partial<UserSettings>) =>
     request<UserSettings>({ method: 'PATCH', url: '/users/me/settings', data: patch }),

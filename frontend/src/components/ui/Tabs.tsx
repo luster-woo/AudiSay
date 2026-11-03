@@ -23,6 +23,8 @@ export interface TabsProps<T extends string> {
   className?: string
   variant?: 'underline' | 'pills'
   tabListClassName?: string
+  /** 탭 목록 바로 뒤에 둘 화면 이동 링크 등. 탭 역할에는 포함하지 않는다. */
+  navigationEnd?: ReactNode
 }
 
 /**
@@ -41,6 +43,7 @@ export function Tabs<T extends string>({
   className,
   variant = 'underline',
   tabListClassName,
+  navigationEnd,
 }: TabsProps<T>) {
   const buttons = appearance === 'buttons'
   const pills = variant === 'pills'
@@ -75,63 +78,74 @@ export function Tabs<T extends string>({
 
   const active = items.find((it) => it.value === value)
 
+  const tabList = (
+    <div
+      role="tablist"
+      aria-label={label}
+      className={cn(
+        pills
+          ? 'flex flex-wrap gap-4'
+          : buttons
+            ? 'grid grid-cols-3 gap-2'
+            : 'flex gap-1 border-b-2 border-line',
+        tabListClassName,
+      )}
+    >
+      {items.map((it) => {
+        const selected = it.value === value
+        return (
+          <button
+            key={it.value}
+            ref={(el) => {
+              if (el) tabRefs.current.set(it.value, el)
+              else tabRefs.current.delete(it.value)
+            }}
+            type="button"
+            role="tab"
+            id={tabId(it.value)}
+            aria-selected={selected}
+            aria-controls={panelId(it.value)}
+            tabIndex={selected ? 0 : -1}
+            onClick={() => onChange(it.value)}
+            onKeyDown={onKeyDown}
+            className={
+              pills
+                ? buttonClass(selected ? 'primary' : 'secondary', 'xl', 'px-6')
+                : cn(
+                    buttons
+                      ? 'min-h-touch rounded-md border-2 border-navy px-4 text-lg font-bold'
+                      : '-mb-0.5 font-bold',
+                    !buttons &&
+                      (size === 'sm'
+                        ? 'min-h-11 border-b-2 px-3 text-sm'
+                        : 'min-h-touch border-b-4 px-5'),
+                    buttons
+                      ? selected
+                        ? 'bg-navy text-cream focus-visible:bg-navy-deep'
+                        : 'bg-paper text-navy'
+                      : selected
+                        ? 'border-navy text-ink'
+                        : 'border-transparent text-ink-muted',
+                  )
+            }
+          >
+            {it.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+
   return (
     <div className={className}>
-      <div
-        role="tablist"
-        aria-label={label}
-        className={cn(
-          pills
-            ? 'flex flex-wrap gap-4'
-            : buttons
-              ? 'grid grid-cols-3 gap-2'
-              : 'flex gap-1 border-b-2 border-line',
-          tabListClassName,
-        )}
-      >
-        {items.map((it) => {
-          const selected = it.value === value
-          return (
-            <button
-              key={it.value}
-              ref={(el) => {
-                if (el) tabRefs.current.set(it.value, el)
-                else tabRefs.current.delete(it.value)
-              }}
-              type="button"
-              role="tab"
-              id={tabId(it.value)}
-              aria-selected={selected}
-              aria-controls={panelId(it.value)}
-              tabIndex={selected ? 0 : -1}
-              onClick={() => onChange(it.value)}
-              onKeyDown={onKeyDown}
-              className={
-                pills
-                  ? buttonClass(selected ? 'primary' : 'secondary', 'xl', 'px-6')
-                  : cn(
-                      buttons
-                        ? 'min-h-touch rounded-md border-2 border-navy px-4 text-lg font-bold'
-                        : '-mb-0.5 font-bold',
-                      !buttons &&
-                        (size === 'sm'
-                          ? 'min-h-11 border-b-2 px-3 text-sm'
-                          : 'min-h-touch border-b-4 px-5'),
-                      buttons
-                        ? selected
-                          ? 'bg-navy text-cream focus-visible:bg-navy-deep'
-                          : 'bg-paper text-navy'
-                        : selected
-                          ? 'border-navy text-ink'
-                          : 'border-transparent text-ink-muted',
-                    )
-              }
-            >
-              {it.label}
-            </button>
-          )
-        })}
-      </div>
+      {navigationEnd ? (
+        <div className="flex flex-wrap items-center gap-4">
+          {tabList}
+          {navigationEnd}
+        </div>
+      ) : (
+        tabList
+      )}
       {active && (
         <div
           role="tabpanel"

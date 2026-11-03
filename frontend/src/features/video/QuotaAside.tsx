@@ -66,15 +66,7 @@ export function QuotaAside({
         </div>
       )}
       <p className="mt-6 text-xl leading-relaxed">
-        {showLeftNote && (
-          <>
-            남은 횟수예요.
-            <br />
-          </>
-        )}
-        밤 12시(한국 시간)에
-        <br />
-        다시 채워져요.
+        {showLeftNote && '남은 횟수예요. '}밤 12시에 다시 채워져요.
       </p>
     </aside>
   )

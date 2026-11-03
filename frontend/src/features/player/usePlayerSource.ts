@@ -26,6 +26,21 @@ declare global {
 
 let ytApiPromise: Promise<void> | null = null
 /** 유튜브 IFrame API 스크립트를 한 번만 불러온다 */
+/**
+ * 유튜브 자막(자동 생성 포함)을 끈다. 자막은 우리 해설 데이터(screenTexts)로 읽기 때문이다.
+ * playerVars 의 cc_load_policy 만으로는 유튜브 계정에서 '항상 자막 켜기'를 켠 사용자나
+ * 자막이 기본으로 켜지는 영상에서 자막이 그대로 보여서, 플레이어의 자막 모듈 자체를 내린다 (비공식 API).
+ */
+function unloadCaptions(player: YT.Player) {
+  const p = player as unknown as { unloadModule?: (name: string) => void }
+  try {
+    p.unloadModule?.('captions')
+    p.unloadModule?.('cc')
+  } catch {
+    /* 모듈이 없거나 이미 내려간 상태 */
+  }
+}
+
 function loadYoutubeApi(): Promise<void> {
   if (typeof YT !== 'undefined' && YT.Player) return Promise.resolve()
   if (ytApiPromise) return ytApiPromise
@@ -126,13 +141,14 @@ export function usePlayerSource(
           modestbranding: 1,
           playsinline: 1,
           // 유튜브 자막(자동 생성 포함)은 끄고 시작한다. 자막은 우리 해설 데이터(screenTexts)를 설정대로 읽는다.
-          // 3 = 비공식 값. 유튜브 계정에서 '항상 자막 켜기'를 켠 사용자는 그 설정이 우선할 수 있다
+          // 3 = 비공식 값. 이것만으로 안 꺼지는 경우가 있어 onReady/재생 시작 때 unloadCaptions 로 모듈도 내린다
           cc_load_policy: 3 as unknown as YT.ClosedCaptionsLoadPolicy,
           origin: window.location.origin,
         },
         events: {
           onReady: () => {
             if (cancelled) return
+            unloadCaptions(player)
             patch({
               ready: true,
               durationMs: Math.round((player.getDuration() || fallbackDurationSec) * 1000),
@@ -143,8 +159,11 @@ export function usePlayerSource(
           },
           onStateChange: (e) => {
             const s = e.data
-            if (s === YT.PlayerState.PLAYING) patch({ playing: true, ended: false })
-            else if (s === YT.PlayerState.ENDED) patch({ playing: false, ended: true })
+            // 자막 모듈은 재생이 시작될 때 다시 올라올 수 있어 그때마다 내린다
+            if (s === YT.PlayerState.PLAYING) {
+              unloadCaptions(player)
+              patch({ playing: true, ended: false })
+            } else if (s === YT.PlayerState.ENDED) patch({ playing: false, ended: true })
             else if (s === YT.PlayerState.PAUSED) patch({ playing: false })
           },
         },

@@ -183,7 +183,7 @@ function CheckView({ url }: { url: string }) {
               <span aria-hidden="true">0 / {quota.data.youtube.limit}</span>
               <span className="sr-only">{quota.data.youtube.limit}번 중 0번 남음</span>
             </p>
-            <p className="mt-8 text-2xl">밤 12시(한국 시간)에 다시 채워져요.</p>
+            <p className="mt-8 text-2xl">밤 12시에 다시 채워져요.</p>
             <p className="mt-4 text-2xl">이미 해설이 있는 영상은 계속 볼 수 있어요.</p>
           </section>
         )}

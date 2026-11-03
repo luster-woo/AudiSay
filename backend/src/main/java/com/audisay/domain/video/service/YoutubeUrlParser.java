@@ -42,7 +42,8 @@ public final class YoutubeUrlParser {
         String path = uri.getPath();
 
         if (host.equals("youtu.be")) {
-            return firstSegment(path.substring(1));
+            // "youtu.be"처럼 경로가 아예 없으면 path가 빈 문자열이다
+            return path.isEmpty() ? null : firstSegment(path.substring(1));
         }
         if (!host.equals("youtube.com") && !host.equals("youtube-nocookie.com")) {
             return null;

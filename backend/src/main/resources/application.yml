@@ -90,6 +90,58 @@ audisay:
     connect-timeout: 3s
     read-timeout: 5s
 
+  # AI 서버 내부 API(/internal/*). 운영 주소(http://ai:8000)는 docker-compose.prod.yml에서 넣는다
+  ai:
+    base-url: ${AI_SERVER_URL:http://localhost:8000}
+    internal-token: ${AI_INTERNAL_TOKEN:}
+    connect-timeout: 2s
+    stt-timeout: 10s
+    tts-timeout: 7s   # 500자는 AI가 120자 조각 4~5개로 나눠 약 2초. H200이 느리면 AI가 조각마다 5초에 끊고 TTS_003을 준다
+
+  # 챗봇 LLM(분류·장면 찾기·답변). Spring이 GMS를 직접 부른다. 모델은 11-02 비교로 결정(claude_AudiSay_GMS_모델비교.md)
+  # mode: real(기본) / mock(가짜 응답, 크레딧 0 — 로컬에서 아끼고 싶을 때 .env에 AUDISAY_GMS_MODE=mock)
+  gms:
+    mode: ${AUDISAY_GMS_MODE:real}
+    api-key: ${GMS_API_KEY:}
+    gemini-base-url: ${GMS_GEMINI_BASE_URL:https://gms.ssafy.io/gmsapi/generativelanguage.googleapis.com}
+    anthropic-base-url: https://gms.ssafy.io/gmsapi/api.anthropic.com
+    connect-timeout: 2s
+    thinking-budget: 0
+    models:
+      intent: gemini-3.1-flash-lite
+      seek: gemini-3.1-flash-lite
+      answer: gemini-3.1-flash-lite
+    timeouts:
+      intent: 5s
+      seek: 10s
+      answer: 60s
+    stream-first-event-timeout: 10s
+    # Gemini가 429·장애·서킷 열림이면 한 번 더 부를 대체 모델(다른 공급사라 한도가 따로). 시간 초과·안전 거부는 대체 안 함
+    fallback:
+      enabled: true
+      models:
+        intent: claude-haiku-5-5
+        seek: claude-haiku-5-5
+        answer: claude-haiku-5-5
+    # 토큰당 크레딧(입력/출력, 출력에 추론 토큰 포함). GMS common-codes/models 2026-11-03, trace의 creditUsed와 일치 확인
+    # 표에 없는 모델(h200:*, supertonic, mock)은 0. whisper-1은 토큰이 아니라 녹음 1초 = 1크레딧이라 표에 넣지 않음
+    prices:
+      "[gemini-3.1-flash-lite]": { input: 0.0025, output: 0.015 }
+      "[gemini-3.5-flash]": { input: 0.015, output: 0.09 }
+      "[gemini-3.8-flash]": { input: 0.015, output: 0.075 }
+      "[gemini-3.8-flash-tts]": { input: 0.01, output: 0.18 }
+      "[gemini-3.8-flash-lite-tts]": { input: 0.01, output: 0.12 }
+      "[claude-haiku-5-5]": { input: 0.001, output: 0.005 }
+    circuit-breaker:
+      failure-rate-threshold: 50
+      sliding-window-size: 20
+      minimum-number-of-calls: 10
+      wait-in-open-state: 30s
+      permitted-calls-in-half-open: 3
+    mock:
+      latency: 300ms
+      # failure: rate-limit   # 주 모델에 일부러 낼 실패(rate-limit / unavailable / timeout). 대체 모델 동작 확인용
+
   # S3. 버킷이 비어 있으면 음성 주소(audioUrl)를 만들지 않는다 → FE가 브라우저 음성으로 읽음
   s3:
     region: ${AWS_REGION:ap-northeast-2}

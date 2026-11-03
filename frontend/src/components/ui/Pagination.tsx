@@ -6,8 +6,10 @@ export interface PaginationProps {
   page: PageInfo
   onChange: (pageNumber: number) => void
   unit?: string
-  /** xl: 홈·검색 결과의 큰 버튼 (Figma) */
-  size?: 'md' | 'xl'
+  /** 건수 뒤에 붙일 말 ('가입 최신순'). 화면과 낭독기 모두 읽는다 */
+  note?: string
+  /** sm: 관리자 화면 · xl: 홈·검색 결과의 큰 버튼 (Figma) */
+  size?: 'sm' | 'md' | 'xl'
   className?: string
 }
 
@@ -21,16 +23,22 @@ export function Pagination({
   page,
   onChange,
   unit = '개',
+  note,
   size = 'md',
   className,
 }: PaginationProps) {
   const big = size === 'xl'
+  const small = size === 'sm'
   const start = page.totalElements === 0 ? 0 : page.number * page.size + 1
   const end = Math.min((page.number + 1) * page.size, page.totalElements)
 
   return (
     <nav aria-label="페이지" className={cn('flex items-center justify-between gap-4', className)}>
-      <p className={big ? 'text-2xl text-ink' : 'text-lg text-ink-muted'}>
+      <p
+        className={
+          big ? 'text-2xl text-ink' : small ? 'text-[0.9333rem] text-ink' : 'text-lg text-ink-muted'
+        }
+      >
         <span aria-hidden="true">
           {start}–{end} / {page.totalElements}
           {unit}
@@ -39,11 +47,12 @@ export function Pagination({
           전체 {page.totalElements}
           {unit} 중 {start}번째부터 {end}번째까지
         </span>
+        {note && ` · ${note}`}
       </p>
-      <div className="flex gap-3">
+      <div className={small ? 'flex gap-[0.6667rem]' : 'flex gap-3'}>
         <Button
           variant="secondary"
-          size={big ? 'xl' : 'md'}
+          size={big ? 'xl' : small ? 'sm' : 'md'}
           className={big ? 'min-w-[13.5rem]' : undefined}
           aria-label="이전 페이지"
           disabled={page.first}
@@ -53,7 +62,7 @@ export function Pagination({
         </Button>
         <Button
           variant="secondary"
-          size={big ? 'xl' : 'md'}
+          size={big ? 'xl' : small ? 'sm' : 'md'}
           className={big ? 'min-w-[13.5rem]' : undefined}
           aria-label="다음 페이지"
           disabled={page.last}

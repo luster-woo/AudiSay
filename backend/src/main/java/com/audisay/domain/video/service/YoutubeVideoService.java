@@ -17,7 +17,6 @@ import com.audisay.global.external.youtube.YoutubeVideo;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Comparator;
 import java.util.List;
@@ -40,8 +39,8 @@ public class YoutubeVideoService {
     /**
      * 해설을 만들 수 있는 영상인지 확인만 한다. 조건이 안 맞아도 예외 없이 rejectReason으로 알려 준다.
      * 길이 제한이 역할마다 달라 결과를 저장하지 않고 요청할 때마다 다시 확인한다.
+     * 유튜브 API를 기다리는 동안 DB 커넥션을 잡지 않도록 트랜잭션을 열지 않는다(DB 조회는 각자 짧은 트랜잭션).
      */
-    @Transactional(readOnly = true)
     public YoutubeCheckResponse check(Long userId, String url) {
         String youtubeVideoId = YoutubeUrlParser.extractVideoId(url);
         Role role = userService.getActiveUser(userId).getRole();
@@ -69,9 +68,8 @@ public class YoutubeVideoService {
 
     /**
      * 해설이 있는 영상을 앞에 두고, 같은 그룹 안에서는 유튜브 순서를 지킨다.
-     * 유튜브 결과는 캐시하고 해설 여부는 매번 DB에서 붙인다.
+     * 유튜브 결과는 캐시하고 해설 여부는 매번 DB에서 붙인다. check와 같은 이유로 트랜잭션을 열지 않는다.
      */
-    @Transactional(readOnly = true)
     public YoutubeSearchResponse search(YoutubeSearchRequest request) {
         String query = request.q().strip();
         YoutubeSearchCache.CachedPage page = youtubeSearchCache.get(query, request.pageToken())

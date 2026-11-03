@@ -5,6 +5,11 @@ export const queryKeys = {
   myVideos: (page: number) => ['me', 'videos', page] as const,
   videos: (params: Record<string, unknown>) => ['videos', params] as const,
   video: (id: number) => ['videos', id] as const,
+  playback: (id: number) => ['videos', id, 'playback'] as const,
+  description: (id: number) => ['videos', id, 'description'] as const,
+  chapters: (id: number) => ['videos', id, 'chapters'] as const,
+  summary: (id: number) => ['videos', id, 'summary'] as const,
+  chatHistory: (id: number) => ['videos', id, 'chat'] as const,
   youtubeSearch: (q: string) => ['youtube', 'search', q] as const,
   youtubeCheck: (url: string) => ['youtube', 'check', url] as const,
   job: (id: number) => ['jobs', id] as const,
@@ -12,5 +17,8 @@ export const queryKeys = {
     all: ['admin'] as const,
     reports: (params: Record<string, unknown>) => ['admin', 'reports', params] as const,
     users: (params: Record<string, unknown>) => ['admin', 'users', params] as const,
+    aiUsage: (from: string, to: string) => ['admin', 'stats', 'ai-usage', from, to] as const,
+    review: (videoId: number, descriptionId?: number) =>
+      ['admin', 'videos', videoId, 'description', descriptionId ?? 'current'] as const,
   },
 }

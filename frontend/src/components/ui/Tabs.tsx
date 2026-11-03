@@ -8,10 +8,17 @@ export interface TabItem<T extends string> {
 }
 
 export interface TabsProps<T extends string> {
+  /** 탭 묶음 이름 (낭독기용) */
   label: string
   items: TabItem<T>[]
   value: T
   onChange: (value: T) => void
+  /** underline: 밑줄 탭(관리자) · buttons: 테두리 버튼 세 개가 나란히 (시청 화면 목차·대본·질문 기록) */
+  appearance?: 'underline' | 'buttons'
+  /** sm: 관리자 화면의 작은 탭 (Figma 14px, 밑줄 2px). 기본 md */
+  size?: 'md' | 'sm'
+  /** 탭 패널 위쪽 여백을 바꿀 때 */
+  panelClassName?: string
   className?: string
 }
 
@@ -20,7 +27,17 @@ export interface TabsProps<T extends string> {
  * Tab 키로는 선택된 탭 하나에만 멈추고(roving tabindex), 탭 사이는 ← → Home End 로 옮긴다.
  * 옮기면 바로 선택된다(자동 활성화).
  */
-export function Tabs<T extends string>({ label, items, value, onChange, className }: TabsProps<T>) {
+export function Tabs<T extends string>({
+  label,
+  items,
+  value,
+  onChange,
+  appearance = 'underline',
+  size = 'md',
+  panelClassName,
+  className,
+}: TabsProps<T>) {
+  const buttons = appearance === 'buttons'
   const baseId = useId()
   const tabRefs = useRef(new Map<T, HTMLButtonElement>())
   const tabId = (v: T) => `${baseId}-tab-${v}`
@@ -54,7 +71,11 @@ export function Tabs<T extends string>({ label, items, value, onChange, classNam
 
   return (
     <div className={className}>
-      <div role="tablist" aria-label={label} className="flex gap-1 border-b-2 border-line">
+      <div
+        role="tablist"
+        aria-label={label}
+        className={buttons ? 'grid grid-cols-3 gap-2' : 'flex gap-1 border-b-2 border-line'}
+      >
         {items.map((it) => {
           const selected = it.value === value
           return (
@@ -73,8 +94,21 @@ export function Tabs<T extends string>({ label, items, value, onChange, classNam
               onClick={() => onChange(it.value)}
               onKeyDown={onKeyDown}
               className={cn(
-                '-mb-0.5 min-h-touch border-b-4 px-5 font-bold',
-                selected ? 'border-navy text-ink' : 'border-transparent text-ink-muted',
+                buttons
+                  ? 'min-h-touch rounded-md border-2 border-navy px-4 text-lg font-bold'
+                  : '-mb-0.5 font-bold',
+                // sm: 관리자 화면의 작은 탭 (Figma 14px, 밑줄 2px)
+                !buttons &&
+                  (size === 'sm'
+                    ? 'min-h-11 border-b-2 px-3 text-sm'
+                    : 'min-h-touch border-b-4 px-5'),
+                buttons
+                  ? selected
+                    ? 'bg-navy text-cream focus-visible:bg-navy-deep'
+                    : 'bg-paper text-navy'
+                  : selected
+                    ? 'border-navy text-ink'
+                    : 'border-transparent text-ink-muted',
               )}
             >
               {it.label}
@@ -87,7 +121,7 @@ export function Tabs<T extends string>({ label, items, value, onChange, classNam
           role="tabpanel"
           id={panelId(active.value)}
           aria-labelledby={tabId(active.value)}
-          className="pt-6"
+          className={panelClassName ?? 'pt-6'}
         >
           {active.panel}
         </div>

@@ -10,11 +10,14 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 /**
  * 유튜브 검색 결과 캐시. search.list는 100 유닛이라 하루 약 100번밖에 못 부르므로 같은 검색어는 6시간 동안 다시 부르지 않는다.
  * 키는 youtube:search:{pageToken}:{검색어}. 해설 여부는 바뀌므로 캐시하지 않는다.
+ * 검색어는 공백을 하나로 줄이고 소문자로 바꿔 키를 만든다("BTS  노래"와 "bts 노래"는 같은 결과를 쓴다).
  */
 @Slf4j
 @Component
@@ -22,6 +25,7 @@ import java.util.Optional;
 public class YoutubeSearchCache {
     private static final String KEY_PREFIX = "youtube:search:";
     private static final Duration TTL = Duration.ofHours(6);
+    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
 
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
@@ -44,7 +48,8 @@ public class YoutubeSearchCache {
     }
 
     private String key(String query, String pageToken) {
-        return KEY_PREFIX + (pageToken == null ? "" : pageToken) + ":" + query;
+        String normalized = WHITESPACE.matcher(query.strip()).replaceAll(" ").toLowerCase(Locale.ROOT);
+        return KEY_PREFIX + (pageToken == null ? "" : pageToken) + ":" + normalized;
     }
 
     public record CachedPage(List<YoutubeVideo> videos, String nextPageToken) {

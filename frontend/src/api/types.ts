@@ -256,6 +256,138 @@ export interface FavoriteResult {
   isFavorite: boolean
 }
 
+/** GET /admin/users 항목 (가입 최신순) */
+export interface AdminUser {
+  userId: number
+  email: string
+  name: string
+  role: Role
+  /** 시각장애인 인증일. 인증 안 했으면 null */
+  verifiedAt: string | null
+  /** 탈퇴일. includeWithdrawn=true 일 때만 값이 있을 수 있다 */
+  withdrawnAt: string | null
+  createdAt: string
+}
+
+/** 신고 처리 상태 · 사유 */
+export type ReportStatus = 'PENDING' | 'RESOLVED' | 'REJECTED'
+export type ReportReason = 'WRONG' | 'MISSING' | 'OVERLAP' | 'OTHER'
+
+/** GET /admin/reports 항목. 신고 당시 문장과 지금 문장을 함께 준다 */
+export interface AdminReport {
+  reportId: number
+  status: ReportStatus
+  reason: ReportReason
+  reasonDetail: string | null
+  videoId: number
+  videoTitle: string
+  descriptionId: number
+  lineId: number
+  detailLevel: 1 | 2 | 3
+  lineStartMs: number
+  reportedAtMs: number
+  lineTextSnapshot: string
+  currentText: string
+  /** 같은 문장에 들어온 신고 수 (이 신고 포함) */
+  sameLineReportCount: number
+  reporterId: number
+  createdAt: string
+  handledAt: string | null
+}
+
+/** PATCH /admin/reports/{reportId} */
+export interface ReportHandleResult {
+  reportId: number
+  status: Exclude<ReportStatus, 'PENDING'>
+  handledAt: string
+  /** applyToSameLine 이면 같은 문장의 다른 신고 ID 도 들어온다 */
+  updatedReportIds: number[]
+}
+
+/** 해설 버전 상태 */
+export type DescriptionVersionStatus = 'GENERATING' | 'PUBLISHED' | 'FAILED' | 'ARCHIVED'
+
+/** GET /admin/videos/{videoId}/description — 검수용 해설 (장면·문장·대사·화면 글자) */
+export interface ReviewDescription {
+  descriptionId: number
+  videoId: number
+  status: DescriptionVersionStatus
+  versions: { descriptionId: number; status: DescriptionVersionStatus; createdAt: string }[]
+  scenes: ReviewScene[]
+  lines: ReviewLine[]
+  dialogues: ReviewDialogue[]
+  screenTexts: ReviewScreenText[]
+}
+export interface ReviewScene {
+  sceneId: number
+  sceneIndex: number
+  title: string
+  startMs: number
+  endMs: number
+  sceneDescription: string
+  /** 대표 프레임. 유튜브 영상은 null */
+  keyframeUrl: string | null
+}
+export interface ReviewLine {
+  lineId: number
+  lineIndex: number
+  detailLevel: 1 | 2 | 3
+  startMs: number
+  /** 이 문장을 읽을 수 있는 빈 구간의 끝 */
+  gapEndMs: number
+  importance: 1 | 2 | 3
+  text: string
+  /** 음성을 다시 만드는 중이거나 실패하면 null */
+  audioUrl: string | null
+  audioDurationMs: number | null
+  reportCount: number
+  pendingReportCount: number
+  updatedAt: string
+}
+export interface ReviewDialogue {
+  startMs: number
+  endMs: number
+  text: string
+  characterName: string | null
+}
+export interface ReviewScreenText {
+  screenTextId: number
+  startMs: number
+  endMs: number
+  textType: string
+  importance: string
+  headline: string | null
+  fullText: string
+  summaryText: string | null
+  sameAsDialogue: boolean
+}
+
+/** PATCH /admin/lines/{lineId} */
+export interface LineUpdateResult {
+  lineId: number
+  descriptionId: number
+  detailLevel: 1 | 2 | 3
+  startMs: number
+  importance: 1 | 2 | 3
+  text: string
+  audioUrl: string | null
+  updatedAt: string
+}
+
+/** POST /admin/lines/{lineId}/audio (202) */
+export interface LineAudioResult {
+  lineId: number
+  queued: boolean
+}
+
+/** POST /admin/videos/{videoId}/regenerate (202) */
+export interface RegenerateResult {
+  videoId: number
+  jobId: number
+  jobType: 'REGENERATE'
+  currentDescriptionId: number | null
+}
+
 /** 영상 공개 범위 */
 export type Visibility = 'PRIVATE' | 'PUBLIC'
 
@@ -289,4 +421,265 @@ export interface UploadCompleteResult {
   jobId: number
   result: 'NEW_JOB'
   remaining: number | null
+}
+
+/* ───────────── 시청 화면 ───────────── */
+
+/** GET /videos/{id}/playback 의 data */
+export interface Playback {
+  sourceType: 'UPLOAD' | 'YOUTUBE'
+  /** 업로드 영상: 1시간 유효한 S3 주소 */
+  playbackUrl: string | null
+  playbackFormat: 'MP4' | null
+  expiresAt: string | null
+  /** 유튜브 영상: IFrame 플레이어에 넣을 ID */
+  youtubeVideoId: string | null
+}
+
+/** 해설 문장 한 줄. 상세도별로 같은 lineIndex 가 여러 줄 온다 */
+export interface NarrationLine {
+  lineId: number
+  lineIndex: number
+  detailLevel: 1 | 2 | 3
+  startMs: number
+  /** 이 문장 뒤 다음 대사가 시작되기 전까지의 빈 구간 끝. 없으면 null */
+  gapEndMs: number | null
+  /** 1(낮음) ~ 3(높음). 시간이 모자라면 높은 것부터 남긴다 */
+  importance: number
+  text: string
+  /** S3 주소(6시간 유효). null 이면 브라우저 음성으로 읽는다 */
+  audioUrl: string | null
+  audioDurationMs: number | null
+}
+
+export interface Scene {
+  sceneId: number
+  sceneIndex: number
+  title: string
+  startMs: number
+  endMs: number
+}
+
+export interface Dialogue {
+  startMs: number
+  endMs: number
+  text: string
+  characterName: string | null
+}
+
+export type ScreenTextImportance = 'HIGH' | 'MEDIUM' | 'LOW'
+export interface ScreenText {
+  screenTextId: number
+  startMs: number
+  endMs: number
+  textType: string
+  importance: ScreenTextImportance
+  headline: string | null
+  fullText: string
+  summaryText: string | null
+  sameAsDialogue: boolean
+}
+
+/** GET /videos/{id}/description 의 data — 재생에 필요한 해설 전체 */
+export interface Description {
+  descriptionId: number
+  videoId: number
+  status: 'PUBLISHED'
+  /** 일부 구간만 해설이 있으면 그 끝. 전부 있으면 null */
+  coveredUntilMs: number | null
+  createdAt: string
+  lines: NarrationLine[]
+  scenes: Scene[]
+  dialogues: Dialogue[]
+  screenTexts: ScreenText[]
+}
+
+export interface Chapter {
+  chapterId: number
+  chapterIndex: number
+  title: string
+  startMs: number
+  endMs: number
+  summary: string
+}
+
+/** GET /videos/{id}/chapters 의 data */
+export interface Chapters {
+  descriptionId: number
+  chapters: Chapter[]
+}
+
+/** GET /videos/{id}/summary 의 data */
+export interface VideoSummary30 {
+  descriptionId: number
+  summary: { text: string; audioUrl: string | null; durationMs: number | null }
+  /** 대사가 많아 요약을 먼저 듣는 게 좋은 영상 */
+  recommendSummary: boolean
+}
+
+/** GET /videos/{id}/scenes/at 의 data */
+export interface SceneAt {
+  sceneId: number
+  title: string
+  startMs: number
+  endMs: number
+  sceneDescription: string
+}
+
+/* ───────────── 챗봇 ───────────── */
+
+export type ChatIntent =
+  'QUESTION' | 'SCENE_NOW' | 'SEEK_TIME' | 'SEEK_SCENE' | 'SETTING' | 'ACTION' | 'UNKNOWN'
+
+export type ChatActionCode =
+  | 'PLAY'
+  | 'PAUSE'
+  | 'CURRENT_POSITION'
+  | 'NEXT_SCENE'
+  | 'PREV_SCENE'
+  | 'PLAY_SUMMARY'
+  | 'READ_DETAIL'
+  | 'HELP'
+  | 'OPEN_CHAPTERS'
+  | 'OPEN_SCRIPT'
+  | 'OPEN_HISTORY'
+  | 'FAVORITE_ADD'
+  | 'FAVORITE_REMOVE'
+  | 'REPORT'
+  | 'REPLAY_TUTORIAL'
+
+export interface SceneCandidate {
+  chapterId: number
+  title: string
+  startMs: number
+  summary: string
+}
+
+/** POST /chat/messages 의 body */
+export interface ChatMessageBody {
+  videoId: number | null
+  descriptionId: number | null
+  videoTimeMs: number | null
+  utterance: string
+  inputMode: 'TEXT' | 'VOICE'
+}
+
+/** POST /chat/messages 의 data — intent 에 따라 result 모양이 다르다 */
+export type ChatMessageResult = {
+  chatLogId: number
+  inputMode: 'TEXT' | 'VOICE'
+  utterance: string
+} & (
+  | { intent: 'QUESTION' | 'SCENE_NOW'; result: { answerStreamUrl: string } }
+  | { intent: 'SEEK_TIME'; result: { targetMs: number } }
+  | {
+      intent: 'SEEK_SCENE'
+      result: { targetMs: number | null; chapterId: number | null; candidates: SceneCandidate[] }
+    }
+  | { intent: 'SETTING'; result: { settingKey: keyof UserSettings; settingValue: string } }
+  | { intent: 'ACTION'; result: { actionCode: ChatActionCode } }
+  | { intent: 'UNKNOWN'; result: { message: string } }
+)
+
+/** GET /chat/messages/{id}/stream 의 SSE 이벤트 */
+export type ChatStreamEvent =
+  | { event: 'delta'; data: { text: string } }
+  | { event: 'sentence'; data: { text: string; audioUrl: string | null } }
+  | {
+      event: 'done'
+      data: {
+        answerText: string
+        answerSource: 'STORED' | 'UNANSWERABLE' | string
+        firstAudioMs: number | null
+        totalLatencyMs: number | null
+      }
+    }
+  | { event: 'error'; data: { errorCode: string; message: string } }
+
+/** GET /videos/{id}/chat/messages 의 기록 한 건 */
+export interface ChatHistoryItem {
+  chatLogId: number
+  inputMode: 'TEXT' | 'VOICE'
+  utterance: string
+  intent: ChatIntent
+  videoTimeMs: number | null
+  targetMs: number | null
+  answerText: string | null
+  createdAt: string
+}
+
+export interface ChatHistory {
+  messages: ChatHistoryItem[]
+  nextCursor: number | null
+  hasNext: boolean
+}
+
+/* ───────────── 신고 ───────────── */
+
+/** 신고 사유(ReportReason)는 위 관리자 신고 타입과 같은 것을 쓴다 */
+export interface ReportBody {
+  reportedAtMs: number
+  reason: ReportReason
+  reasonDetail?: string
+}
+
+export interface ReportResult {
+  reportId: number
+  status: 'PENDING'
+}
+
+/* ───────────── 관리자 · AI 사용량 통계 ───────────── */
+
+/** 호출 묶음 공통 집계 */
+export interface AiUsageTotals {
+  calls: number
+  inputTokens: number
+  outputTokens: number
+  /** 모델 단가표 × 토큰으로 조회 시점에 계산. H200 호출은 0 */
+  estimatedCredits: number
+}
+
+export interface AiUsageByPurpose extends AiUsageTotals {
+  /** DESCRIBE, QUESTION, INTENT, STT, TTS, VERIFY … */
+  purpose: string
+  errorRate: number
+  p50LatencyMs: number | null
+  p95LatencyMs: number | null
+}
+
+export interface AiUsageByModel extends AiUsageTotals {
+  model: string
+}
+
+export interface AiUsageDaily extends AiUsageTotals {
+  /** YYYY-MM-DD (KST) */
+  date: string
+}
+
+/** GET /admin/stats/ai-usage 의 data */
+export interface AiUsageStats {
+  from: string
+  to: string
+  summary: AiUsageTotals & {
+    /** error_code 가 있는 호출 비율 (0 ~ 1) */
+    errorRate: number
+    /** 대체 응답(is_fallback) 비율 (0 ~ 1) */
+    fallbackRate: number
+  }
+  /** 크레딧 큰 순 */
+  byPurpose: AiUsageByPurpose[]
+  /** 크레딧 큰 순 */
+  byModel: AiUsageByModel[]
+  /** 날짜 순. 호출이 없는 날도 0 으로 온다 */
+  daily: AiUsageDaily[]
+  /** 유튜브 해설 재사용으로 아낀 크레딧 */
+  reuse: {
+    newJob: number
+    reused: number
+    joinedJob: number
+    avgCreditsPerVideo: number
+    savedCredits: number
+    /** savedCredits ÷ (savedCredits + 실제 생성 크레딧) */
+    savedRate: number
+  }
 }

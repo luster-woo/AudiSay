@@ -25,7 +25,18 @@ vi.mock('@/api/users', () => ({
 vi.mock('@/api/jobs', () => ({
   jobsApi: { get: vi.fn(), streamPath: (id: number) => `/jobs/${id}/stream` },
 }))
-vi.mock('@/api/videos', () => ({ videosApi: { get: vi.fn(), retry: vi.fn() } }))
+vi.mock('@/api/videos', () => ({
+  videosApi: {
+    get: vi.fn(),
+    retry: vi.fn(),
+    // 지금 보기 → /watch 로 넘어간 뒤 시청 화면이 부르는 것들 (여기서는 내용을 확인하지 않는다)
+    playback: vi.fn(() => new Promise(() => undefined)),
+    description: vi.fn(() => new Promise(() => undefined)),
+    chapters: vi.fn(() => new Promise(() => undefined)),
+    summary: vi.fn(() => new Promise(() => undefined)),
+    chatHistory: vi.fn(() => new Promise(() => undefined)),
+  },
+}))
 vi.mock('@/api/sse', () => ({ subscribeSse: vi.fn() }))
 
 const job = (over: Partial<Job> = {}): Job => ({
@@ -143,6 +154,8 @@ test('SSE 진행률은 10% 단위로만 읽고, 완료되면 준비 창의 지�
       finishedAt: '2026-11-02T01:02:12Z',
     }),
   )
+  // 해설이 생겼으니 영상 정보도 바뀐다 (완료 시 다시 받는다. 시청 화면이 해설 없음으로 보고 되돌려보내지 않게)
+  vi.mocked(videosApi.get).mockResolvedValue({ ...video, descriptionId: 20, activeJobId: null })
   act(() =>
     sse().onMessage({
       event: 'completed',
@@ -160,8 +173,10 @@ test('SSE 진행률은 10% 단위로만 읽고, 완료되면 준비 창의 지�
   )
   expect(await screen.findByText('다 만들었어요 · 2분 12초 걸렸어요')).toBeInTheDocument()
 
+  // 해설이 생겼으니 영상 정보도 바뀐다 (시청 화면이 해설 없음으로 보고 되돌려보내지 않게)
+  vi.mocked(videosApi.get).mockResolvedValue({ ...video, descriptionId: 20, activeJobId: null })
   await user.click(within(dialog).getByRole('button', { name: '지금 보기' }))
-  expect(router.state.location.pathname).toBe('/watch/15')
+  await waitFor(() => expect(router.state.location.pathname).toBe('/watch/15'))
 })
 
 test('나중에 보기를 고르면 창이 닫히고 화면에 지금 보기 링크가 남는다', async () => {

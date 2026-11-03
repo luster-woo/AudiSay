@@ -345,7 +345,8 @@ async def stt(request: Request, audio: UploadFile = File(...), videoId: int | No
             text = None
     if text is None and has_gms:
         try:
-            text, engine = await _whisper(cfg, wav, hint), "GMS"
+            text, seconds = await _whisper(cfg, wav, hint)
+            engine = "GMS"
         except Exception as e:  # noqa: BLE001
             if db:
                 await db.log_call(CallLog(purpose="STT", model="whisper-1", latency_ms=int((time.monotonic() - t0) * 1000),
@@ -353,7 +354,9 @@ async def stt(request: Request, audio: UploadFile = File(...), videoId: int | No
             log.warning("whisper 실패(videoId=%s): %s", videoId, str(e)[:200])
         else:
             if db:
-                await db.log_call(CallLog(purpose="STT", model="whisper-1", latency_ms=int((time.monotonic() - t0) * 1000)))
+                # whisper-1은 토큰이 아니라 녹음 1초 = 1크레딧(GMS trace creditUsed와 같음)
+                await db.log_call(CallLog(purpose="STT", model="whisper-1", latency_ms=int((time.monotonic() - t0) * 1000),
+                                          estimated_credits=float(seconds)))
     if text is None:
         raise _err(502, "GMS_ERROR", "음성 인식 서버에 연결하지 못했어요. 글자로 입력해 주세요.")
     if not text:
@@ -399,7 +402,8 @@ def openai_base(gemini_base_url: str) -> str:
     return gemini_base_url.split("/gmsapi/")[0] + "/gmsapi/api.openai.com/v1"
 
 
-async def _whisper(cfg, wav: bytes, hint: str = "") -> str:
+async def _whisper(cfg, wav: bytes, hint: str = "") -> tuple[str, int]:
+    """(받아쓴 글자, 과금된 녹음 초). 초는 GMS 응답 usage.seconds, 없으면 wav 길이(16kHz mono 16bit)로 올림"""
     import httpx
 
     data = {"model": "whisper-1", "language": "ko", **({"prompt": hint} if hint else {})}
@@ -408,7 +412,11 @@ async def _whisper(cfg, wav: bytes, hint: str = "") -> str:
                               headers={"Authorization": f"Bearer {cfg.gms_api_key}"},
                               data=data, files={"file": ("q.wav", wav, "audio/wav")})
         r.raise_for_status()
-    return (r.json().get("text") or "").strip()
+    body = r.json()
+    seconds = (body.get("usage") or {}).get("seconds")
+    if not isinstance(seconds, (int, float)):
+        seconds = -(-max(0, len(wav) - 44) // 32000)
+    return (body.get("text") or "").strip(), int(seconds)
 
 
 # ---------- 안내 목소리 ----------

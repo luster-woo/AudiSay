@@ -6,15 +6,13 @@ import { usersApi } from '@/api/users'
 import { queryKeys } from '@/api/queryKeys'
 import { ApiError } from '@/api/errors'
 import type { YoutubeSearchItem } from '@/api/types'
-import { Button } from '@/components/ui/Button'
-import { ButtonLink } from '@/components/ui/ButtonLink'
 import { Notice } from '@/components/ui/Notice'
 import { Pagination } from '@/components/ui/Pagination'
 import { useAnnouncer } from '@/features/announcer/context'
 import { usePageEntry } from '@/features/page/usePageEntry'
 import { HomeTop } from '@/features/search/HomeTop'
 import { VideoCard } from '@/features/video/VideoCard'
-import { useYoutubePlay } from '@/features/video/useYoutubePlay'
+import { youtubeShortUrl } from '@/utils/youtube'
 
 const PAGE_SIZE = 4
 
@@ -24,62 +22,25 @@ function shorterExample(q: string) {
   return words.length > 2 ? words.slice(0, 2).join(' ') : words[0]
 }
 
-type YoutubePlay = ReturnType<typeof useYoutubePlay>
-
 /**
- * 검색 결과 버튼: 모두 '재생'. 해설이 있으면 시청 화면으로, 없으면 해설을 요청하고 만드는 화면으로.
- * 지금 등급의 최대 길이를 넘는 영상만 '만들 수 없음' (해설이 이미 있으면 길이와 상관없이 재생).
+ * 카드 하나 = 링크 하나 (버튼 없음).
+ * - 해설 있음 → 시청 화면
+ * - 그 밖에는 주소 확인 화면으로. 거기서 '해설 만들기'(횟수 차감)를 따로 누르거나, 만들 수 없는 이유를 듣는다.
+ * 지금 등급의 최대 길이를 넘는 영상은 카드 이름에 '만들 수 없음'과 이유를 미리 넣는다.
  */
-function ResultAction({
-  item,
-  maxSec,
-  player,
-}: {
-  item: YoutubeSearchItem
-  maxSec: number | null
-  player: YoutubePlay
-}) {
+function cardOf(item: YoutubeSearchItem, maxSec: number | null) {
   if (item.hasDescription && item.videoId != null) {
-    return (
-      <ButtonLink
-        to={`/watch/${item.videoId}`}
-        variant="primary"
-        size="xl"
-        aria-label={`재생, ${item.title}`}
-        className="flex-1"
-      >
-        재생
-      </ButtonLink>
-    )
+    return { to: `/watch/${item.videoId}`, status: '해설 있음', tone: 'normal' as const }
   }
+  const to = `/search/youtube?url=${encodeURIComponent(youtubeShortUrl(item.youtubeVideoId))}`
   if (maxSec != null && item.durationSec > maxSec) {
-    // 누를 수 없지만 Tab 순서에는 남기고, 포커스가 오면 서버가 알려 준 이유를 읽어 준다
-    return (
-      <Button
-        variant="muted"
-        size="xl"
-        disabled
-        aria-label={`만들 수 없음, ${item.title}`}
-        onFocus={() => void player.explainReject(item)}
-        className="flex-1"
-      >
-        만들 수 없음
-      </Button>
-    )
+    return {
+      to,
+      status: `해설 만들 수 없음, ${Math.floor(maxSec / 60)}분 넘음`,
+      tone: 'danger' as const,
+    }
   }
-  const busy = player.pendingId === item.youtubeVideoId
-  return (
-    <Button
-      variant="primary"
-      size="xl"
-      loading={busy}
-      aria-label={`${busy ? '준비하는 중' : '재생'}, ${item.title}`}
-      onClick={() => void player.play(item)}
-      className="flex-1"
-    >
-      {busy ? '준비하는 중' : '재생'}
-    </Button>
-  )
+  return { to, status: '해설 만들 수 있어요', tone: 'normal' as const }
 }
 
 /** 검색 결과 (/search?q=) — 유튜브 검색, 해설 있는 영상이 먼저 */
@@ -128,7 +89,6 @@ function SearchResults({ q }: { q: string }) {
   })
 
   const maxSec = quota?.youtube.maxDurationSec ?? null
-  const player = useYoutubePlay(maxSec)
   const start = page * PAGE_SIZE
   const visible = items.slice(start, start + PAGE_SIZE)
   const hasMoreLoaded = start + PAGE_SIZE < items.length
@@ -167,7 +127,8 @@ function SearchResults({ q }: { q: string }) {
 
         {items.length > 0 && (
           <>
-            <div className="flex items-center justify-between gap-4">
+            {/* 홈의 제목 줄(카테고리 select 높이)과 같은 높이로 맞춰 카드 시작 위치를 통일한다 */}
+            <div className="flex min-h-touch items-center justify-between gap-4">
               <h2
                 id="search-result"
                 ref={headingRef}
@@ -189,7 +150,7 @@ function SearchResults({ q }: { q: string }) {
                     channelTitle={item.channelTitle}
                     durationSec={item.durationSec}
                     thumbnailUrl={item.thumbnailUrl}
-                    actions={<ResultAction item={item} maxSec={maxSec} player={player} />}
+                    {...cardOf(item, maxSec)}
                   />
                 </li>
               ))}

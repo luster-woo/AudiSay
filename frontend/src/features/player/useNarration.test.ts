@@ -39,7 +39,8 @@ const description: Description = {
     line(2, T(20), '긴 문장', { gapEndMs: T(21), audioDurationMs: 3000, importance: 3 }),
     line(3, T(30), '덜 중요한 문장', { importance: 1 }),
     line(4, T(32), '중요한 문장', { importance: 3 }),
-    line(9, T(10), '1단계 문장', { detailLevel: 1 }),
+    // 상세도는 누적이라 2 기본에서는 1·2단계만 들리고, 3단계 문장은 '자세히'에서만 더해진다
+    line(9, T(10), '3단계 문장', { detailLevel: 3 }),
   ],
   scenes: [
     { sceneId: 1, sceneIndex: 1, title: '시작', startMs: 0, endMs: T(15) },
@@ -134,7 +135,7 @@ test('문장 시각을 지나면 읽고, 지금 문장은 마지막으로 지난
   tick(T(10.2))
   expect(said()).toEqual(['첫 문장'])
   expect(hook.result.current.currentLine?.text).toBe('첫 문장')
-  // 지금 상세도(2)가 아닌 1단계 문장은 읽지도 보이지도 않는다
+  // 지금 상세도(2)보다 높은 3단계 문장은 읽지도 보이지도 않는다
   expect(hook.result.current.lines.map((l) => l.lineId)).toEqual([1, 2, 3, 4])
 })
 

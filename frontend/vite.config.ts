@@ -26,6 +26,7 @@ export default defineConfig(({ mode }) => {
     },
     test: {
       environment: 'jsdom',
+      pool: 'vmThreads',
       globals: true,
       setupFiles: ['./src/test/setup.ts'],
       css: false,

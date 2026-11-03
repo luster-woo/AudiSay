@@ -193,7 +193,9 @@ describe('회원가입', () => {
     await userEvent.click(screen.getByRole('checkbox', { name: /이용약관/ }))
     await userEvent.click(screen.getByRole('button', { name: '가입하기' }))
 
-    await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
+    // (startTransition) DOM 이 실제로 바뀔 때까지 기다린다
+    expect(await screen.findByRole('region', { name: '가입했어요' })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/login')
     expect(authApi.signup).toHaveBeenCalledWith({
       name: '김하늘',
       email: 'a@b.co',
@@ -201,7 +203,6 @@ describe('회원가입', () => {
       termsAgreed: true,
     })
     expect(authApi.login).not.toHaveBeenCalled()
-    expect(screen.getByRole('region', { name: '가입했어요' })).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: '이메일' })).toHaveValue('a@b.co')
     await waitFor(() => expect(screen.getByLabelText('비밀번호')).toHaveFocus())
   })

@@ -59,12 +59,17 @@
     --color-danger: #d50000;
     --color-success: #00661f;
   }
-  :focus-visible {
+  /*
+   * 포커스 표시는 Tab 으로 가는 조작 요소에만 칠한다.
+   * tabindex="-1" (화면 진입·쪽 이동 때 코드가 포커스를 옮기는 제목·<main>)은 조작 요소가 아니라서 칠하지 않는다.
+   * 칠하면 새로고침(F5)·방향키처럼 키보드를 쓴 직후 제목이나 화면 전체가 노랗게 깜빡인다.
+   */
+  :focus-visible:not([tabindex='-1']) {
     outline: 3px solid var(--color-navy);
     outline-offset: 2px;
     background-color: var(--color-yellow-soft);
   }
-  html[data-contrast='high'] :focus-visible {
+  html[data-contrast='high'] :focus-visible:not([tabindex='-1']) {
     outline: 4px solid #000;
     background-color: #ffff8d;
   }

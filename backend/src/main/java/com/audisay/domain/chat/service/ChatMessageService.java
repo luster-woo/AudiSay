@@ -9,7 +9,11 @@ import com.audisay.domain.chat.intent.ClassifiedIntent;
 import com.audisay.domain.chat.intent.LlmIntentClassifier;
 import com.audisay.domain.chat.intent.RuleIntentClassifier;
 import com.audisay.domain.chat.intent.SettingStepResolver;
+import com.audisay.domain.chat.ratelimit.ChatRateLimiter;
 import com.audisay.domain.chat.repository.ChatLogRepository;
+import com.audisay.domain.chat.seek.KeywordSceneScorer.Hit;
+import com.audisay.domain.chat.seek.SceneSeeker;
+import com.audisay.domain.chat.tuning.ChatTuningProperties;
 import com.audisay.domain.description.service.DescriptionService;
 import com.audisay.domain.description.service.VideoAccessValidator;
 import com.audisay.domain.video.entity.Video;
@@ -35,7 +39,7 @@ import java.util.Set;
 public class ChatMessageService {
     static final String UNKNOWN_MESSAGE = "다시 말씀해 주세요.";
     static final String OUTSIDE_VIDEO_MESSAGE = "영상을 연 뒤에 질문해 주세요.";
-    static final String SCENE_SEARCH_PENDING_MESSAGE = "장면 찾기는 준비 중이에요.";
+    static final String SCENE_NOT_FOUND_MESSAGE = "그런 장면을 찾지 못했어요. 다르게 말씀해 주세요.";
     private static final Set<ChatIntent> VIDEO_ONLY = EnumSet.of(ChatIntent.QUESTION, ChatIntent.SCENE_NOW,
             ChatIntent.SEEK_TIME, ChatIntent.SEEK_SCENE);
     private static final Set<ChatIntent> NEEDS_DESCRIPTION = EnumSet.of(ChatIntent.QUESTION, ChatIntent.SCENE_NOW,
@@ -46,26 +50,30 @@ public class ChatMessageService {
     private final RuleIntentClassifier ruleClassifier;
     private final LlmIntentClassifier llmClassifier;
     private final SettingStepResolver settingStepResolver;
+    private final SceneSeeker sceneSeeker;
+    private final ChatRateLimiter rateLimiter;
+    private final ChatTuningProperties tuning;
     private final VideoAccessValidator videoAccessValidator;
     private final DescriptionService descriptionService;
     private final TransactionTemplate transactionTemplate;
     private final MeterRegistry meterRegistry;
 
     public ChatMessageResponse receive(AuthUser authUser, ChatMessageRequest request) {
+        rateLimiter.acquireRequest(authUser.userId());
         Video video = request.videoId() == null ? null
                 : videoAccessValidator.getAccessibleVideo(authUser, request.videoId());
         Long descriptionId = video == null ? null
-                : request.descriptionId() != null ? request.descriptionId()
-                : descriptionService.findPublishedId(video.getId()).orElse(null);
+                : descriptionService.resolveForChat(video.getId(), request.descriptionId()).orElse(null);
         Integer videoTimeMs = video == null ? null : request.videoTimeMs();
         ChatLog chatLog = transactionTemplate.execute(status -> chatLogRepository.save(ChatLog.receive(
                 authUser.userId(), video == null ? null : video.getId(), descriptionId, videoTimeMs,
                 request.inputMode(), request.utterance().strip())));
 
         long startedAt = System.nanoTime();
-        ClassifiedIntent classified = ruleClassifier.classify(chatLog.getUtterance());
+        ClassifiedIntent classified = tuning.intentRules() ? ruleClassifier.classify(chatLog.getUtterance()) : null;
         String source = classified != null ? "RULE" : "LLM";
         if (classified == null) {
+            rateLimiter.acquireLlm(authUser.userId());
             classified = llmClassifier.classify(chatLog.getUtterance(), chatLog.getId());
         }
         classified = settingStepResolver.resolve(classified, authUser.userId());
@@ -82,7 +90,29 @@ public class ChatMessageService {
         meterRegistry.timer("audisay.chat.intent", "intent", intent.name(), "source", source).record(latency);
 
         ChatResult result = result(classified, chatLog.getId(), video, descriptionId, targetMs);
+        if (intent == ChatIntent.SEEK_SCENE && video != null) {
+            result = seekScene(authUser.userId(), classified.query(), chatLog.getId(), descriptionId, videoTimeMs);
+        }
         return new ChatMessageResponse(chatLog.getId(), chatLog.getInputMode(), chatLog.getUtterance(), intent, result);
+    }
+
+    /** 하나면 그곳으로(targetMs·chapterId), 여럿이면 후보 전부(지금 이후부터 시간순), 없으면 안내. 하나일 때만 이동 시각을 기록 */
+    private ChatResult seekScene(Long userId, String query, Long chatLogId, Long descriptionId, Integer videoTimeMs) {
+        SceneSeeker.Outcome outcome = sceneSeeker.seek(userId, descriptionId, query, chatLogId, videoTimeMs);
+        List<Hit> hits = outcome.hits();
+        Hit single = hits.size() == 1 ? hits.get(0) : null;
+        if (outcome.source() != null) {
+            transactionTemplate.executeWithoutResult(status -> chatLogRepository.findById(chatLogId).ifPresent(log ->
+                    log.target(single == null ? null : single.targetMs(),
+                            single == null ? null : single.scene().chapterId(), outcome.source())));
+        }
+        List<ChatResult.SceneCandidate> candidates = hits.stream()
+                .map(h -> new ChatResult.SceneCandidate(h.scene().chapterId(), h.scene().title(), h.targetMs(), h.snippet()))
+                .toList();
+        if (single != null) {
+            return ChatResult.seekScene(single.targetMs(), single.scene().chapterId(), candidates, null);
+        }
+        return ChatResult.seekScene(null, null, candidates, hits.isEmpty() ? SCENE_NOT_FOUND_MESSAGE : null);
     }
 
     private ChatResult result(ClassifiedIntent classified, Long chatLogId, Video video, Long descriptionId,
@@ -97,7 +127,7 @@ public class ChatMessageService {
         return switch (intent) {
             case QUESTION, SCENE_NOW -> ChatResult.answerStream(chatLogId);
             case SEEK_TIME -> ChatResult.seekTime(targetMs);
-            case SEEK_SCENE -> ChatResult.seekScene(null, null, List.of(), SCENE_SEARCH_PENDING_MESSAGE);
+            case SEEK_SCENE -> ChatResult.seekScene(null, null, List.of(), SCENE_NOT_FOUND_MESSAGE);
             case SETTING -> ChatResult.setting(classified.settingKey(), classified.settingValue(), classified.message());
             case ACTION -> ChatResult.action(classified.actionCode());
             case SEARCH_VIDEO -> ChatResult.searchVideo(classified.query());

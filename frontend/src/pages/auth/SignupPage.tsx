@@ -1,8 +1,8 @@
 import { useRef, useState, type FormEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { authApi } from '@/api/auth'
 import { ApiError, toUserMessage } from '@/api/errors'
 import { useAnnouncer } from '@/features/announcer/context'
-import { useAuth } from '@/features/auth/context'
 import { usePageEntry } from '@/features/page/usePageEntry'
 import { Button } from '@/components/ui/Button'
 import { ButtonLink } from '@/components/ui/ButtonLink'
@@ -20,7 +20,7 @@ type EmailCheck = 'idle' | 'checking' | 'available' | 'taken'
 const ORDER: Field[] = ['name', 'email', 'password', 'confirm', 'terms']
 
 export default function SignupPage() {
-  const { login } = useAuth()
+  const navigate = useNavigate()
   const { announce } = useAnnouncer()
   const nameRef = useRef<HTMLInputElement>(null)
   const emailRef = useRef<HTMLInputElement>(null)
@@ -115,8 +115,8 @@ export default function SignupPage() {
     setSubmitting(true)
     try {
       await authApi.signup({ name: name.trim(), email: email.trim(), password, termsAgreed: true })
-      // 가입 API 는 로그인을 하지 않는다 → 바로 로그인 (처음이라 사용법 1단계로 이동)
-      await login(email.trim(), password)
+      // 가입만 하고 로그인은 하지 않는다. 로그인 화면에서 직접 로그인하면 사용법이 시작된다
+      navigate('/login', { replace: true, state: { signedUpEmail: email.trim() } })
     } catch (err) {
       if (err instanceof ApiError && err.code === 'USER_001') {
         setEmailCheck('taken')

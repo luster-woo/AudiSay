@@ -64,6 +64,27 @@ test('관리자가 로그인 화면에 오면 신고 처리로 보내고 사이�
   expect(document.documentElement.dataset.fontScale).toBe('2')
 })
 
+test('관리자로 로그인한 채 사이트를 다시 열면(세션 복원) 사용자 홈이 아니라 신고 처리로 간다', async () => {
+  loginAs('ADMIN')
+  const { router } = renderRoute('/')
+  await waitFor(() => expect(router.state.location.pathname).toBe('/admin/reports'))
+  expect(await screen.findByRole('navigation', { name: '운영 관리 메뉴' })).toBeInTheDocument()
+  expect(screen.queryByRole('navigation', { name: '주 메뉴' })).not.toBeInTheDocument()
+})
+
+test('관리자가 사용자 화면 주소(/search)로 와도 관리자 화면으로 간다', async () => {
+  loginAs('ADMIN')
+  const { router } = renderRoute('/search')
+  await waitFor(() => expect(router.state.location.pathname).toBe('/admin/reports'))
+})
+
+test('일반 회원이 세션 복원으로 / 에 오면 홈 그대로', async () => {
+  loginAs('GENERAL')
+  const { router } = renderRoute('/')
+  expect(await screen.findByRole('navigation', { name: '주 메뉴' })).toBeInTheDocument()
+  expect(router.state.location.pathname).toBe('/')
+})
+
 test('현재 메뉴에 aria-current 가 붙는다 (/verify → 내 정보)', async () => {
   loginAs('VISUALLY_IMPAIRED')
   renderRoute('/verify')

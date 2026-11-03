@@ -145,7 +145,15 @@ export function Player({ video }: { video: VideoDetail }) {
   const start = useCallback(() => {
     setStarted(true)
     controls.play()
-    playRef.current?.focus()
+    // 요약 창이 닫히고(창이 포커스를 되돌린 뒤) 재생 버튼으로 옮긴다. 창이 열린 동안엔 바깥이 inert 라 포커스가 안 간다.
+    // 브라우저 기본 스크롤은 화면을 크게 끌어올리므로, 버튼이 가려질 때만 최소한으로 스크롤한다
+    requestAnimationFrame(() => {
+      const el = playRef.current
+      if (!el) return
+      el.focus({ preventScroll: true })
+      const r = el.getBoundingClientRect()
+      if (r.top < 0 || r.bottom > window.innerHeight) el.scrollIntoView({ block: 'nearest' })
+    })
   }, [controls])
 
   const toggle = useCallback(() => {
@@ -511,11 +519,12 @@ export function Player({ video }: { video: VideoDetail }) {
     >
       {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions -- 영역 단축키(1/2/3·Space). 포커스 가능한 자식들이 받는다 */}
       <div onKeyDown={onPlayerKeyDown} className="min-w-0">
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+        {/* 제목은 남는 폭에서 줄바꿈하고, 버튼은 늘 오른쪽에 고정 (버튼 글자가 바뀌어도 줄이 다시 나뉘지 않게) */}
+        <div className="flex items-start gap-5">
           <h1
             ref={headingRef}
             tabIndex={-1}
-            className="text-[1.75rem] leading-tight font-bold outline-none"
+            className="min-w-0 flex-1 text-[1.75rem] leading-tight font-bold outline-none"
           >
             {video.title}
           </h1>
@@ -523,6 +532,7 @@ export function Player({ video }: { video: VideoDetail }) {
             variant={video.isFavorite ? 'on' : 'secondary'}
             onClick={() => favorite.mutate()}
             disabled={favorite.isPending}
+            className="min-w-[11.5rem] shrink-0 whitespace-nowrap"
           >
             {video.isFavorite ? '즐겨찾기 해제' : '즐겨찾기에 넣기'}
           </Button>

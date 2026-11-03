@@ -1,66 +1,69 @@
 import { useRef, useState } from 'react'
 import { Tabs } from '@/components/ui/Tabs'
+import { ButtonLink } from '@/components/ui/ButtonLink'
 import { useAnnouncer } from '@/features/announcer/context'
 import { usePageEntry } from '@/features/page/usePageEntry'
-import { GettingStartedPanel } from './GettingStartedPanel'
 import { ShortcutHelpPanel } from './ShortcutHelpPanel'
 import { VoiceHelpPanel } from './VoiceHelpPanel'
-import { HelpTroubleshootingDialog, type HelpProblem } from './HelpTroubleshootingDialog'
+import '@fontsource/ibm-plex-sans-kr/400.css'
+import '@fontsource/ibm-plex-sans-kr/700.css'
+import './help.css'
 
-type HelpTab = 'start' | 'shortcuts' | 'voice'
+type HelpTab = 'shortcuts' | 'voice'
 const sections: Record<HelpTab, { label: string; description: string }> = {
-  start: {
-    label: '처음이라면',
-    description: '사용법을 듣고, 키보드와 음성으로 조작하는 방법을 확인해요.',
-  },
   shortcuts: { label: '단축키', description: '키보드로 화면을 이동하고 영상을 조작할 수 있어요.' },
   voice: {
     label: '말로 하는 명령',
-    description: '영상을 보면서 궁금한 점을 묻거나 재생과 이동을 말로 요청할 수 있어요.',
+    description: '궁금한 점을 묻거나, 영상 재생과 화면 이동을 말로 요청할 수 있어요.',
   },
 }
 
 export default function HelpPage() {
-  const [tab, setTab] = useState<HelpTab>('start')
-  const [problem, setProblem] = useState<HelpProblem | null>(null)
+  const [tab, setTab] = useState<HelpTab>('shortcuts')
   const headingRef = useRef<HTMLHeadingElement>(null)
   const { announce } = useAnnouncer()
   usePageEntry({
     title: '도움말',
-    announce: '도움말이에요. 처음이라면, 단축키, 말로 하는 명령 중에서 골라 주세요.',
+    announce:
+      '도움말, 단축키 탭이에요. 단축키와 말로 하는 명령을 확인하거나 튜토리얼로 이동할 수 있어요.',
     focusRef: headingRef,
   })
   return (
-    <div className="min-w-0 max-sm:-mx-10">
-      <h1 ref={headingRef} tabIndex={-1} className="text-4xl font-bold outline-none">
-        도움말
-      </h1>
-      <p className="mt-3 mb-5 text-lg leading-relaxed">{sections[tab].description}</p>
-      <Tabs<HelpTab>
-        label="도움말 종류"
-        variant="pills"
-        value={tab}
-        tabListClassName="gap-3"
-        panelClassName="pt-6"
-        onChange={(next) => {
-          setTab(next)
-          announce(`${sections[next].label} 도움말이에요. ${sections[next].description}`)
-        }}
-        items={[
-          { value: 'start', label: sections.start.label, panel: <GettingStartedPanel /> },
-          {
-            value: 'shortcuts',
-            label: sections.shortcuts.label,
-            panel: <ShortcutHelpPanel onProblem={() => setProblem('shortcut')} />,
-          },
-          {
-            value: 'voice',
-            label: sections.voice.label,
-            panel: <VoiceHelpPanel onProblem={() => setProblem('voice')} />,
-          },
-        ]}
-      />
-      <HelpTroubleshootingDialog problem={problem} onClose={() => setProblem(null)} />
+    <div className="help-page min-w-0 max-sm:-mx-10">
+      <div className="help-wireframe-view">
+        <h1 ref={headingRef} tabIndex={-1} className="help-title font-bold outline-none">
+          도움말
+        </h1>
+        <p className="help-description">{sections[tab].description}</p>
+        <Tabs<HelpTab>
+          label="도움말 종류"
+          variant="pills"
+          value={tab}
+          className="help-primary-tabs"
+          panelClassName="help-primary-panel"
+          navigationEnd={
+            <ButtonLink to="/tutorial/1" size="xl" className="help-tutorial-link">
+              튜토리얼 이동
+            </ButtonLink>
+          }
+          onChange={(next) => {
+            setTab(next)
+            announce(`${sections[next].label} 도움말이에요. ${sections[next].description}`)
+          }}
+          items={[
+            {
+              value: 'shortcuts',
+              label: sections.shortcuts.label,
+              panel: <ShortcutHelpPanel />,
+            },
+            {
+              value: 'voice',
+              label: sections.voice.label,
+              panel: <VoiceHelpPanel />,
+            },
+          ]}
+        />
+      </div>
     </div>
   )
 }

@@ -1,49 +1,69 @@
 import { useState } from 'react'
-import { Button } from '@/components/ui/Button'
-import { ButtonLink } from '@/components/ui/ButtonLink'
 import { Tabs } from '@/components/ui/Tabs'
 import { useAnnouncer } from '@/features/announcer/context'
 import { HelpReferenceTable } from './HelpReferenceTable'
+import { HelpReadableText } from './HelpReadableText'
 import { voiceCategories, type VoiceCategory } from './helpContent'
 
 const steps = [
-  { title: 'Alt+Shift+Q 누르기', description: '영상이 멈추고 마이크가 켜져요.' },
-  { title: '‘띠’ 소리 뒤에 말하기', description: '다 말하면 ‘말 끝내기’를 누르세요.' },
-  { title: '질문·명령 결과 확인', description: '다르면 입력칸을 고쳐 ‘보내기’를 누르세요.' },
+  {
+    title: 'Alt+Shift+V 누르기',
+    description: '음성 입력을 시작해요.',
+    spokenTitle: '일 단계. 알트와 시프트를 누른 상태에서 브이 키를 누르세요.',
+    spokenDescription: '음성 입력을 시작해요.',
+  },
+  {
+    title: '‘띵’ 소리 뒤에 말하기',
+    description: '원하는 요청을 말해 주세요.',
+    spokenTitle: '이 단계. 띵 소리가 나면 말하세요.',
+    spokenDescription: '원하는 요청을 말해 주세요.',
+  },
+  {
+    title: '들은 내용 확인',
+    description: '내용이 틀리면 ‘아니’라고 말해 주세요.',
+    spokenTitle: '삼 단계. 들은 내용을 확인하세요.',
+    spokenDescription: '내용이 틀리면 아니라고 말해 주세요.',
+  },
 ]
 
-export function VoiceHelpPanel({ onProblem }: { onProblem: () => void }) {
+export function VoiceHelpPanel() {
   const [category, setCategory] = useState<VoiceCategory>('playback')
   const { announce } = useAnnouncer()
   return (
-    <div className="space-y-5">
+    <div className="help-reference-panel">
       <section aria-labelledby="help-voice-order">
         <h2 id="help-voice-order" className="sr-only">
           영상을 보면서 말로 요청하는 순서
         </h2>
-        <ol className="grid gap-4 lg:grid-cols-3">
+        <ol className="help-voice-steps">
           {steps.map((step, i) => (
-            <li
-              key={step.title}
-              className="rounded-md border-2 border-line bg-paper px-5 py-4 text-lg leading-relaxed"
-            >
+            <li key={step.title} className="help-voice-step">
               <h3 className="font-bold">
-                {i + 1}. {step.title}
+                <HelpReadableText spoken={step.spokenTitle}>
+                  {['①', '②', '③'][i]} {step.title}
+                </HelpReadableText>
               </h3>
-              <p className="mt-3">{step.description}</p>
+              <p>
+                <HelpReadableText spoken={step.spokenDescription}>
+                  {step.description}
+                </HelpReadableText>
+              </p>
+              {i < steps.length - 1 && (
+                <span className="help-step-arrow" aria-hidden="true">
+                  →
+                </span>
+              )}
             </li>
           ))}
         </ol>
-        <p className="mt-3 text-lg">
-          영상의 ‘질문이나 명령’ 입력칸에 글자를 입력하고 ‘보내기’를 눌러도 돼요.
-        </p>
       </section>
       <Tabs
         label="음성 명령 분류"
         appearance="buttons"
+        className="help-category-tabs"
         value={category}
         tabListClassName="grid-cols-1 sm:grid-cols-3"
-        panelClassName="pt-5"
+        panelClassName="help-category-panel"
         onChange={(next) => {
           setCategory(next)
           announce(
@@ -62,14 +82,6 @@ export function VoiceHelpPanel({ onProblem }: { onProblem: () => void }) {
           ),
         }))}
       />
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Button variant="secondary" size="xl" onClick={onProblem}>
-          말을 알아듣지 못할 때
-        </Button>
-        <ButtonLink to="/tutorial/4" size="xl">
-          질문하기 사용법 다시 듣기
-        </ButtonLink>
-      </div>
     </div>
   )
 }

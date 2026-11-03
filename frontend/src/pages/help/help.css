@@ -1,0 +1,198 @@
+:root {
+  --color-help-background: #faf8f3;
+}
+
+body:has(.help-page) {
+  background-color: var(--color-help-background);
+}
+
+html[data-contrast='high'] body:has(.help-page) {
+  background-color: var(--color-cream);
+}
+
+.help-page {
+  --help-navy: #283b5e;
+  --help-ink: #16181d;
+  --help-table-heading: #242a42;
+  --help-border: #c7c5be;
+  --help-rule: #dddad2;
+  color: var(--help-ink);
+  font-family: 'IBM Plex Sans KR', var(--font-sans);
+  padding-top: 0.25rem;
+}
+
+html[data-contrast='high'] .help-page {
+  --help-navy: var(--color-navy);
+  --help-ink: var(--color-ink);
+  --help-table-heading: var(--color-ink);
+  --help-border: var(--color-line);
+  --help-rule: var(--color-line);
+}
+
+.help-title {
+  font-size: 2.25rem;
+  line-height: 3.375rem;
+}
+.help-description {
+  margin-top: -0.125rem;
+  font-size: 1.5rem;
+  line-height: 2.25rem;
+}
+.help-primary-tabs {
+  margin-top: 0.5rem;
+}
+.help-primary-tabs > div:first-child > [role='tablist'] {
+  gap: 1rem;
+  min-width: 0;
+  max-width: 100%;
+}
+.help-primary-tabs > div:first-child > [role='tablist'] > [role='tab'],
+.help-tutorial-link {
+  min-height: 3.5rem;
+  max-width: 100%;
+  border-radius: 0.5rem;
+  border-color: var(--help-navy);
+  color: var(--help-navy);
+  padding: 0 1rem;
+  font-size: 1.5rem;
+  line-height: 2.25rem;
+  font-weight: 700;
+}
+.help-primary-tabs > div:first-child > [role='tablist'] > [role='tab']:first-child {
+  width: 8rem;
+}
+.help-primary-tabs > div:first-child > [role='tablist'] > [role='tab']:nth-child(2) {
+  width: 14rem;
+}
+.help-primary-tabs > div:first-child > [role='tablist'] > [aria-selected='true'],
+.help-category-tabs > [role='tablist'] > [role='tab'][aria-selected='true'] {
+  background: var(--help-navy);
+  color: var(--color-paper);
+}
+.help-tutorial-link {
+  width: 11rem;
+}
+.help-primary-panel,
+.help-category-panel {
+  padding-top: 1.5rem;
+}
+.help-reference-panel {
+  display: grid;
+  gap: 1.5rem;
+}
+.help-shortcut-instructions,
+.help-voice-step {
+  min-height: 6.25rem;
+  border: 2px solid var(--help-border);
+  border-radius: 0.5rem;
+  background: var(--color-paper);
+}
+.help-shortcut-instructions {
+  padding: 0.5rem 1.25rem;
+  font-size: 1.5rem;
+  line-height: 2.25rem;
+}
+.help-shortcut-instructions > p + p {
+  margin-top: 0.5rem;
+  font-size: 1.375rem;
+  line-height: 2.0625rem;
+}
+.help-category-tabs > [role='tablist'] {
+  gap: 1rem;
+}
+.help-category-tabs > [role='tablist'] > [role='tab'] {
+  min-height: 3.5rem;
+  border-color: var(--help-navy);
+  border-radius: 0.5rem;
+  color: var(--help-navy);
+  padding: 0 1rem;
+  font-size: 1.5rem;
+  line-height: 2.25rem;
+}
+.help-reference-table {
+  border: 2px solid var(--help-border);
+  border-radius: 0.625rem;
+  background: var(--color-paper);
+  padding: 0.875rem;
+}
+.help-reference-table th,
+.help-reference-table td {
+  padding-inline: 1rem;
+  vertical-align: middle;
+}
+
+.help-reference-table table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.help-reference-table thead th {
+  height: 2.5rem;
+  border-bottom: 2px solid var(--help-table-heading);
+  color: var(--help-table-heading);
+  font-size: 1.375rem;
+  line-height: 2.0625rem;
+  padding-bottom: 0.25rem;
+}
+.help-reference-table tbody th,
+.help-reference-table tbody td {
+  height: 3.5rem;
+  border-bottom: 1px solid var(--help-rule);
+  font-size: 1.5rem;
+  line-height: 2.25rem;
+  padding-block: 0.5rem;
+}
+.help-reference-table tr > :first-child {
+  border-right: 1px solid var(--help-rule);
+}
+.help-reference-table kbd {
+  font: inherit;
+}
+.help-reference-table-five tbody th,
+.help-reference-table-five tbody td {
+  height: 3.25rem;
+  padding-block: 0.375rem;
+}
+.help-voice-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2.5rem;
+}
+.help-voice-step {
+  position: relative;
+  padding: 0.375rem 0.75rem;
+}
+.help-voice-step h3 {
+  font-size: 1.5rem;
+  line-height: 2.25rem;
+}
+.help-voice-step p {
+  margin-top: 0.5rem;
+  font-size: 1.375rem;
+  line-height: 2.0625rem;
+}
+.help-step-arrow {
+  position: absolute;
+  top: 50%;
+  right: -1.875rem;
+  transform: translateY(-50%);
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+@media (max-width: 64rem) {
+  .help-voice-steps {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+  }
+  .help-step-arrow {
+    display: none;
+  }
+}
+@media (max-width: 40rem) {
+  .help-reference-table {
+    padding: 0.5rem;
+  }
+  .help-reference-table th,
+  .help-reference-table td {
+    padding-inline: 0.375rem;
+  }
+}

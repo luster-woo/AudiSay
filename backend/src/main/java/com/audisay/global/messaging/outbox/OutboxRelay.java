@@ -110,8 +110,8 @@ public class OutboxRelay {
             return "unroutable: " + correlation.getReturned().getReplyText();
         }
         CorrelationData.Confirm confirm = correlation.getFuture().getNow(null);
-        if (confirm == null || !confirm.isAck()) {
-            return "nack: " + (confirm == null ? null : confirm.getReason());
+        if (confirm == null || !confirm.ack()) {
+            return "nack: " + (confirm == null ? null : confirm.reason());
         }
         return null;
     }

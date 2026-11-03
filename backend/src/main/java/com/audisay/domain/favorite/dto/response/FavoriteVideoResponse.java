@@ -22,12 +22,13 @@ public record FavoriteVideoResponse(
         boolean available,
         Instant favoritedAt
 ) {
-    public static FavoriteVideoResponse of(Video video, boolean hasDescription, boolean available, Instant favoritedAt) {
+    public static FavoriteVideoResponse of(Video video, String thumbnailUrl, boolean hasDescription, boolean available,
+                                           Instant favoritedAt) {
         return new FavoriteVideoResponse(
                 video.getId(),
                 video.getSourceType(),
                 video.getTitle(),
-                video.getThumbnailUrl(),
+                thumbnailUrl,
                 video.getDurationSec(),
                 video.getCategory(),
                 hasDescription,

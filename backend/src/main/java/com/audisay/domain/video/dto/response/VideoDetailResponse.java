@@ -27,14 +27,15 @@ public record VideoDetailResponse(
         Long descriptionId,
         Long activeJobId
 ) {
-    public static VideoDetailResponse of(Video video, boolean isOwner, boolean isFavorite, DescriptionState state) {
+    public static VideoDetailResponse of(Video video, String thumbnailUrl, boolean isOwner, boolean isFavorite,
+                                          DescriptionState state) {
         return new VideoDetailResponse(
                 video.getId(),
                 video.getSourceType(),
                 video.getYoutubeVideoId(),
                 video.getTitle(),
                 video.getChannelTitle(),
-                video.getThumbnailUrl(),
+                thumbnailUrl,
                 video.getDurationSec(),
                 video.getCategory(),
                 video.getVisibility(),

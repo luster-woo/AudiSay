@@ -14,13 +14,13 @@ public record VideoSummaryResponse(
         Category category,
         boolean isFavorite
 ) {
-    public static VideoSummaryResponse of(Video video, boolean isFavorite) {
+    public static VideoSummaryResponse of(Video video, String thumbnailUrl, boolean isFavorite) {
         return new VideoSummaryResponse(
                 video.getId(),
                 video.getSourceType(),
                 video.getTitle(),
                 video.getChannelTitle(),
-                video.getThumbnailUrl(),
+                thumbnailUrl,
                 video.getDurationSec(),
                 video.getCategory(),
                 isFavorite

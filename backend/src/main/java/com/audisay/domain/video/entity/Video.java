@@ -52,6 +52,7 @@ public class Video {
     @Column(length = 200)
     private String channelTitle;
 
+    /** 유튜브는 썸네일 주소, 업로드는 S3 키(비공개 버킷이라 응답 때 ThumbnailUrlResolver가 presigned 주소로 바꾼다) */
     @Column(length = 500)
     private String thumbnailUrl;
 
@@ -103,6 +104,13 @@ public class Video {
         video.visibility = Visibility.PUBLIC;
         video.status = VideoStatus.REGISTERED;
         return video;
+    }
+
+    /** 워커가 만든 업로드 영상 썸네일(LOCAL prepare 완료 때) */
+    public void attachUploadThumbnail(String thumbnailKey) {
+        if (sourceType == SourceType.UPLOAD) {
+            this.thumbnailUrl = thumbnailKey;
+        }
     }
 
     /** 업로드한 회원인지. 유튜브 영상은 올린 회원이 없어 항상 false다 */

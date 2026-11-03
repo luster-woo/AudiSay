@@ -20,6 +20,7 @@ import com.audisay.global.exception.ErrorCode;
 import com.audisay.global.external.s3.S3Properties;
 import com.audisay.global.external.s3.S3StorageClient;
 import com.audisay.global.external.s3.S3StorageClient.PresignedUrl;
+import com.audisay.global.external.s3.ThumbnailUrlResolver;
 import com.audisay.global.response.PageResponse;
 import com.audisay.global.security.AuthUser;
 import com.audisay.global.util.LikePattern;
@@ -45,6 +46,7 @@ public class VideoService {
     private final VideoUploadRepository videoUploadRepository;
     private final S3StorageClient s3StorageClient;
     private final S3Properties s3Properties;
+    private final ThumbnailUrlResolver thumbnailUrlResolver;
 
     /**
      * 공개 해설이 있는 공개 영상 목록. category가 null이면 전체 카테고리.
@@ -56,7 +58,8 @@ public class VideoService {
         Page<Video> videos = videoRepository.findPublished(category, LikePattern.contains(q), pageable);
         List<Long> videoIds = videos.map(Video::getId).getContent();
         Set<Long> favoriteIds = videoIds.isEmpty() ? Set.of() : favoriteRepository.findVideoIds(userId, videoIds);
-        return PageResponse.from(videos.map(video -> VideoSummaryResponse.of(video, favoriteIds.contains(video.getId()))));
+        return PageResponse.from(videos.map(video -> VideoSummaryResponse.of(video,
+                thumbnailUrlResolver.resolve(video.getThumbnailUrl()), favoriteIds.contains(video.getId()))));
     }
 
     @Transactional(readOnly = true)
@@ -64,6 +67,7 @@ public class VideoService {
         Video video = getAccessibleVideo(authUser, videoId);
         return VideoDetailResponse.of(
                 video,
+                thumbnailUrlResolver.resolve(video.getThumbnailUrl()),
                 video.isUploadedBy(authUser.userId()),
                 favoriteRepository.existsByUserIdAndVideoId(authUser.userId(), videoId),
                 descriptionStateReader.read(videoId)
@@ -114,8 +118,9 @@ public class VideoService {
         Map<Long, Video> videos = videoRepository.findAllById(videoIds).stream()
                 .collect(Collectors.toMap(Video::getId, Function.identity()));
         Map<Long, DescriptionState> states = descriptionStateReader.readAll(videoIds);
-        return PageResponse.from(rows.map(row -> MyVideoResponse.of(
-                videos.get(row.videoId()), states.get(row.videoId()), row.lastRequestedAt())));
+        return PageResponse.from(rows.map(row -> MyVideoResponse.of(videos.get(row.videoId()),
+                thumbnailUrlResolver.resolve(videos.get(row.videoId()).getThumbnailUrl()), states.get(row.videoId()),
+                row.lastRequestedAt())));
     }
 
     /**

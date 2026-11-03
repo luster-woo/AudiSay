@@ -9,6 +9,7 @@ import java.time.Duration;
  * @param uploadPartSize            업로드 조각 크기. 마지막 조각만 이보다 작을 수 있다(S3 최소 5MB)
  * @param uploadPartUrlExpiration   조각 업로드 주소(presigned PUT) 유효기간
  * @param playbackUrlExpiration     재생용 파일 주소(presigned GET) 유효기간
+ * @param thumbnailUrlExpiration    업로드 영상 썸네일 주소(presigned GET) 유효기간(없으면 6시간)
  */
 @ConfigurationProperties("audisay.s3")
 public record S3Properties(
@@ -19,8 +20,13 @@ public record S3Properties(
         Duration audioUrlExpiration,
         DataSize uploadPartSize,
         Duration uploadPartUrlExpiration,
-        Duration playbackUrlExpiration
+        Duration playbackUrlExpiration,
+        Duration thumbnailUrlExpiration
 ) {
+    public S3Properties {
+        thumbnailUrlExpiration = thumbnailUrlExpiration == null ? Duration.ofHours(6) : thumbnailUrlExpiration;
+    }
+
     public boolean hasBucket() {
         return bucket != null && !bucket.isBlank();
     }

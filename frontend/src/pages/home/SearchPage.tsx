@@ -14,7 +14,7 @@ import { useAnnouncer } from '@/features/announcer/context'
 import { usePageEntry } from '@/features/page/usePageEntry'
 import { HomeTop } from '@/features/search/HomeTop'
 import { VideoCard } from '@/features/video/VideoCard'
-import { youtubeShortUrl } from '@/utils/youtube'
+import { useYoutubePlay } from '@/features/video/useYoutubePlay'
 
 const PAGE_SIZE = 4
 
@@ -24,7 +24,21 @@ function shorterExample(q: string) {
   return words.length > 2 ? words.slice(0, 2).join(' ') : words[0]
 }
 
-function ResultAction({ item, maxSec }: { item: YoutubeSearchItem; maxSec: number | null }) {
+type YoutubePlay = ReturnType<typeof useYoutubePlay>
+
+/**
+ * 검색 결과 버튼: 모두 '재생'. 해설이 있으면 시청 화면으로, 없으면 해설을 요청하고 만드는 화면으로.
+ * 지금 등급의 최대 길이를 넘는 영상만 '만들 수 없음' (해설이 이미 있으면 길이와 상관없이 재생).
+ */
+function ResultAction({
+  item,
+  maxSec,
+  player,
+}: {
+  item: YoutubeSearchItem
+  maxSec: number | null
+  player: YoutubePlay
+}) {
   if (item.hasDescription && item.videoId != null) {
     return (
       <ButtonLink
@@ -39,29 +53,32 @@ function ResultAction({ item, maxSec }: { item: YoutubeSearchItem; maxSec: numbe
     )
   }
   if (maxSec != null && item.durationSec > maxSec) {
-    // 누를 수 없지만 Tab 순서에는 남겨 이유를 들을 수 있게 한다
+    // 누를 수 없지만 Tab 순서에는 남기고, 포커스가 오면 서버가 알려 준 이유를 읽어 준다
     return (
       <Button
         variant="muted"
         size="xl"
         disabled
-        aria-label={`만들 수 없음, ${item.title}, 지금 등급은 ${Math.floor(maxSec / 60)}분 이하 영상만 해설을 만들 수 있어요`}
+        aria-label={`만들 수 없음, ${item.title}`}
+        onFocus={() => void player.explainReject(item)}
         className="flex-1"
       >
         만들 수 없음
       </Button>
     )
   }
+  const busy = player.pendingId === item.youtubeVideoId
   return (
-    <ButtonLink
-      to={`/search/youtube?url=${encodeURIComponent(youtubeShortUrl(item.youtubeVideoId))}`}
+    <Button
       variant="primary"
       size="xl"
-      aria-label={`해설 만들기, ${item.title}`}
+      loading={busy}
+      aria-label={`${busy ? '준비하는 중' : '재생'}, ${item.title}`}
+      onClick={() => void player.play(item)}
       className="flex-1"
     >
-      해설 만들기
-    </ButtonLink>
+      {busy ? '준비하는 중' : '재생'}
+    </Button>
   )
 }
 
@@ -111,6 +128,7 @@ function SearchResults({ q }: { q: string }) {
   })
 
   const maxSec = quota?.youtube.maxDurationSec ?? null
+  const player = useYoutubePlay(maxSec)
   const start = page * PAGE_SIZE
   const visible = items.slice(start, start + PAGE_SIZE)
   const hasMoreLoaded = start + PAGE_SIZE < items.length
@@ -171,7 +189,7 @@ function SearchResults({ q }: { q: string }) {
                     channelTitle={item.channelTitle}
                     durationSec={item.durationSec}
                     thumbnailUrl={item.thumbnailUrl}
-                    actions={<ResultAction item={item} maxSec={maxSec} />}
+                    actions={<ResultAction item={item} maxSec={maxSec} player={player} />}
                   />
                 </li>
               ))}

@@ -86,11 +86,11 @@ export default function MyInfoPage() {
   }
 
   const verifiedDate = me?.verifiedAt ? new Date(me.verifiedAt) : null
-  const card = 'rounded-md border-2 border-line bg-paper px-6 py-3'
-  const row = 'grid items-center gap-x-6 gap-y-2 sm:grid-cols-[10.5rem_minmax(0,1fr)]'
+  const card = '@container rounded-md border-2 border-line bg-paper px-4 py-3 sm:px-6'
+  const row = 'grid items-center gap-x-6 gap-y-2 @min-[34rem]:grid-cols-[10.5rem_minmax(0,1fr)]'
 
   return (
-    <div className="grid min-w-0 items-start gap-10 lg:grid-cols-[minmax(0,55rem)_19.375rem] lg:justify-between lg:gap-16">
+    <div className="grid min-w-0 items-start gap-10 max-sm:-mx-10 lg:grid-cols-[minmax(0,55rem)_19.375rem] lg:justify-between lg:gap-16">
       <div className="min-w-0">
         <h1 ref={headingRef} tabIndex={-1} className="text-4xl font-bold outline-none">
           내 정보
@@ -150,7 +150,7 @@ export default function MyInfoPage() {
               </div>
               <div className={`${row} pt-2`}>
                 <dt className="font-bold">비밀번호</dt>
-                <dd className="flex flex-wrap items-center justify-between gap-4">
+                <dd className="flex min-w-0 flex-wrap items-center justify-between gap-4">
                   <span>
                     <span aria-hidden="true">••••••••</span>
                     <span className="sr-only">보안을 위해 표시하지 않음</span>
@@ -174,7 +174,7 @@ export default function MyInfoPage() {
             설정
           </h2>
           <dl className="mt-5 space-y-4 text-2xl">
-            <div className="grid items-center gap-4 sm:grid-cols-[minmax(0,1fr)_auto]">
+            <div className="grid items-center gap-4 @min-[26rem]:grid-cols-[minmax(0,1fr)_auto]">
               <dt className="font-bold">재생 설정</dt>
               <dd>
                 <Button
@@ -188,7 +188,7 @@ export default function MyInfoPage() {
                 </Button>
               </dd>
             </div>
-            <div className="grid items-center gap-4 sm:grid-cols-[minmax(0,1fr)_auto]">
+            <div className="grid items-center gap-4 @min-[26rem]:grid-cols-[minmax(0,1fr)_auto]">
               <dt className="font-bold">사용법</dt>
               <dd>
                 <ButtonLink to="/tutorial/1" variant="secondary" size="xl" className="w-full">

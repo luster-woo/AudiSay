@@ -37,7 +37,8 @@ log = logging.getLogger(__name__)
 
 MODELS = ("gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts")
 VOICE_NAME = "Kore"
-CONCURRENCY = 5
+# 음성 동시 요청 수. 데모 실측(2026-11-03): 5개씩 32개 18.5초(개당 0.58초) → 10개씩 47개 13.8초(개당 0.29초), 오류 0
+CONCURRENCY = 10
 PRE_TTS_LEVEL = 2  # job.tts가 미리 만드는 상세도. 3은 line.tts
 STAGE_START_PROGRESS, STAGE_END_PROGRESS = 80, 100
 PROGRESS_STEP = 10  # PROGRESS 이벤트는 10% 단위로(노션 워커 메시지 명세 7·9장)

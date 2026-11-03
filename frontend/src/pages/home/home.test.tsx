@@ -266,7 +266,7 @@ describe('음성으로 찾기', () => {
 })
 
 describe('검색 결과', () => {
-  test('해설 있는 영상은 재생, 없는 영상은 해설 만들기, 너무 긴 영상은 만들 수 없음', async () => {
+  const threeResults = () =>
     vi.mocked(videosApi.youtubeSearch).mockResolvedValue({
       items: [
         searchItem({
@@ -280,9 +280,16 @@ describe('검색 결과', () => {
       ],
       nextPageToken: null,
     })
-    const { container } = renderRoute(`/search?q=${encodeURIComponent('그래프 읽는 법')}`)
+  const openResults = async () => {
+    const r = renderRoute(`/search?q=${encodeURIComponent('그래프 읽는 법')}`)
     const heading = await screen.findByRole('heading', { name: '검색 결과' })
     await waitFor(() => expect(heading).toHaveFocus())
+    return r
+  }
+
+  test('버튼은 모두 재생, 너무 긴 영상만 만들 수 없음. 즐겨찾기 버튼은 없다', async () => {
+    threeResults()
+    const { container } = await openResults()
     expect(
       (
         await screen.findAllByText(
@@ -294,17 +301,98 @@ describe('검색 결과', () => {
       'href',
       '/watch/7',
     )
-    expect(screen.getByRole('link', { name: '해설 만들기, 엑셀 차트 기초' })).toHaveAttribute(
-      'href',
-      `/search/youtube?url=${encodeURIComponent('https://youtu.be/b2')}`,
+    expect(screen.getByRole('button', { name: '재생, 엑셀 차트 기초' })).toBeInTheDocument()
+    expect(screen.queryByText('해설 만들기')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '만들 수 없음, 통계 입문 전체 강의' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
     )
-    expect(
-      screen.getByRole('button', {
-        name: '만들 수 없음, 통계 입문 전체 강의, 지금 등급은 60분 이하 영상만 해설을 만들 수 있어요',
-      }),
-    ).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.queryByRole('button', { name: /즐겨찾기/ })).not.toBeInTheDocument()
     expect(screen.getByRole('searchbox')).toHaveValue('그래프 읽는 법')
     expect(await axe(container)).toHaveNoViolations()
+  })
+
+  test('해설이 없는 영상의 재생: 확인 후 해설을 요청하고 만드는 화면(/jobs/:id)으로 간다', async () => {
+    threeResults()
+    vi.mocked(videosApi.youtubeCheck).mockResolvedValue(
+      check({ youtubeVideoId: 'b2', videoId: null, descriptionStatus: 'NONE', willCount: true }),
+    )
+    vi.mocked(videosApi.youtubeRequest).mockResolvedValue({
+      videoId: 31,
+      result: 'NEW_JOB',
+      jobId: 77,
+      descriptionId: null,
+      counted: true,
+      remaining: 3,
+    })
+    const { router } = await openResults()
+    await userEvent.click(screen.getByRole('button', { name: '재생, 엑셀 차트 기초' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/jobs/77'))
+    expect(videosApi.youtubeCheck).toHaveBeenCalledWith('https://youtu.be/b2')
+    expect(videosApi.youtubeRequest).toHaveBeenCalledWith('https://youtu.be/b2')
+  })
+
+  test('검색 응답엔 해설이 없었지만 확인해 보니 이미 있으면 바로 시청 화면으로', async () => {
+    threeResults()
+    vi.mocked(videosApi.youtubeCheck).mockResolvedValue(
+      check({ youtubeVideoId: 'b2', videoId: 12, descriptionStatus: 'READY' }),
+    )
+    const { router } = await openResults()
+    await userEvent.click(screen.getByRole('button', { name: '재생, 엑셀 차트 기초' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/watch/12'))
+    expect(videosApi.youtubeRequest).not.toHaveBeenCalled()
+  })
+
+  test('지난번에 실패한 영상은 다시 요청(retry)해서 만드는 화면으로', async () => {
+    threeResults()
+    vi.mocked(videosApi.youtubeCheck).mockResolvedValue(
+      check({ youtubeVideoId: 'b2', videoId: 31, descriptionStatus: 'FAILED' }),
+    )
+    vi.mocked(videosApi.retry).mockResolvedValue({
+      videoId: 31,
+      jobId: 78,
+      result: 'NEW_JOB',
+      counted: false,
+      retryRemainingToday: 2,
+    })
+    const { router } = await openResults()
+    await userEvent.click(screen.getByRole('button', { name: '재생, 엑셀 차트 기초' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/jobs/78'))
+    expect(videosApi.retry).toHaveBeenCalledWith(31)
+    expect(videosApi.youtubeRequest).not.toHaveBeenCalled()
+  })
+
+  test('오늘 횟수를 다 썼으면 요청하지 않고 알려 준다', async () => {
+    threeResults()
+    vi.mocked(usersApi.quota).mockResolvedValue(quota(0))
+    vi.mocked(videosApi.youtubeCheck).mockResolvedValue(
+      check({ youtubeVideoId: 'b2', videoId: null, descriptionStatus: 'NONE', willCount: true }),
+    )
+    const { router } = await openResults()
+    await userEvent.click(screen.getByRole('button', { name: '재생, 엑셀 차트 기초' }))
+    expect(
+      (await screen.findAllByText('오늘 해설 만들기 횟수를 다 썼어요.')).length,
+    ).toBeGreaterThan(0)
+    expect(videosApi.youtubeRequest).not.toHaveBeenCalled()
+    expect(router.state.location.pathname).toBe('/search')
+  })
+
+  test('만들 수 없음에 포커스가 오면 서버가 알려 준 거절 이유를 읽어 준다', async () => {
+    threeResults()
+    vi.mocked(videosApi.youtubeCheck).mockResolvedValue(
+      check({ youtubeVideoId: 'c3', available: false, rejectReason: 'TOO_LONG', videoId: null }),
+    )
+    await openResults()
+    screen.getByRole('button', { name: '만들 수 없음, 통계 입문 전체 강의' }).focus()
+    expect(
+      (
+        await screen.findAllByText(
+          '영상이 너무 길어요. 지금 등급은 60분 이하 영상만 해설을 만들 수 있어요.',
+        )
+      ).length,
+    ).toBeGreaterThan(0)
+    expect(videosApi.youtubeCheck).toHaveBeenCalledWith('https://youtu.be/c3')
+    expect(videosApi.youtubeRequest).not.toHaveBeenCalled()
   })
 
   test('결과가 없으면 짧은 검색어 예시를 보여 주고 검색 칸으로 옮긴다', async () => {

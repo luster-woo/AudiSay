@@ -35,3 +35,10 @@ async def test_new_result_is_cached_for_next_job(tmp_path):
     assert gms.calls == 1 and (tmp_path / gemini_cache_key("AAAAAAAAAAA")).exists()
     await Prepare(storage, gms)(env(32, url, 190), FakeEvents())  # 다른 작업이 같은 영상을 요청
     assert gms.calls == 1 and (tmp_path / "jobs/32/full.json").exists()
+
+
+def test_cache_key_has_prompt_version():
+    """프롬프트를 고치면 같은 영상도 새로 받는다(2026-11-03 데모: 11/2 프롬프트 결과를 계속 씀)."""
+    from app.pipeline.narration_schema import PROMPT_VERSION
+
+    assert gemini_cache_key("to3sjq-CAvA") == f"cache/gemini/to3sjq-CAvA_p{PROMPT_VERSION}.json"

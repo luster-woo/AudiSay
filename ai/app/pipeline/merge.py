@@ -19,6 +19,7 @@ BE(MergePayload, 2026-10-29 develop)가 보내는 payload: {videoId, pipeline, s
 순수 변환(assemble)과 DB 쓰기(Merge)를 나눠 두어 assemble은 DB 없이 시험한다.
 """
 import logging
+import re
 from dataclasses import dataclass, field
 
 from app.db import Db
@@ -35,7 +36,9 @@ PRE_TTS_LEVEL = 2  # job.tts가 미리 음성을 만드는 상세도(1·2). 3은
 
 # 이름 근거로 인정하는 말(ai_pipeline_spec 2.1 + 데모 규칙): 이름 자막·제목·이름표, 대사 속 호명, 크레딧, 시리즈 등장인물 사전.
 # 이 말이 basis에 없으면 이름을 지운다. 실제로 걸러진 예: "외형", "대사 속 목소리", "가상 홀로그램 인물"
-NAME_EVIDENCE = ("자막", "제목", "이름표", "호명", "부름", "크레딧", "크레디트", "등장인물 사전")
+# "대사에서 '사토 히데오의 마음을 얻어라' 언급"처럼 대사에 나온 이름도 인정한다(2026-11-03 데모 드라마 하이라이트에서 주인공 이름이 빠짐).
+# 이름이 제목·대사·화면 글자에 실제로 있는지는 assemble에서 따로 확인한다
+NAME_EVIDENCE = ("자막", "제목", "이름표", "호명", "부름", "부른", "대사에서", "언급", "크레딧", "크레디트", "등장인물 사전")
 NAME_SOURCE_HINTS = (("SCREEN_TEXT", ("자막", "제목", "이름표", "화면")), ("DIALOGUE", ("대사", "부름", "호명", "말")))
 
 
@@ -81,12 +84,20 @@ def assemble(full: dict, chunks: list[dict], covered_until_ms: int | None = None
     plan = Plan(category=full.get("category") or "ETC", summary=full.get("summary30s"), model=model or full.get("model"),
                 dialogue_language=full.get("dialogueLanguage"))
 
-    # 인물: 근거 있는 이름만. 누가 누구인지는 Gemini 판단 그대로
+    # 인물: 근거 있는 이름만. 누가 누구인지는 Gemini 판단 그대로.
+    # 근거라고 적었어도 제목·대사·화면 글자 어디에도 없는 이름은 뺀다(시리즈 사전 이름은 사전이 근거). 2026-11-03 데모 드라마
+    # 영상에 프롬프트 예시 이름 '최유리'가 상대역으로 나왔다. 제목이 없는 예전 full.json은 이 확인을 건너뛴다
+    seen = None
+    if full.get("title"):
+        seen = re.sub(r"\s+", "", " ".join([full["title"]] + [d["text"] for d in full["dialogues"]]
+                                           + [t["text"] for s in full["scenes"] for t in s.get("screenTexts", [])]))
     names: dict[str, dict] = {}
     dropped: set[str] = set()
     for s in full["scenes"]:
         for p in s.get("people", []):
             name = trusted_name(p.get("name"), p.get("basis"))
+            if name and seen is not None and "사전" not in (p.get("basis") or "") and re.sub(r"\s+", "", name) not in seen:
+                name = None
             if p.get("name") and not name:
                 dropped.add(p["name"])
             if name and name not in names:
@@ -109,7 +120,7 @@ def assemble(full: dict, chunks: list[dict], covered_until_ms: int | None = None
             if text and int(x["startMs"]) <= duration:
                 lines.append({"detailLevel": int(x["detailLevel"]), "startMs": int(x["startMs"]), "gapEndMs": x.get("gapEndMs"),
                               "importance": int(x.get("importance") or 4 - int(x["detailLevel"])), "text": text,
-                              "flags": list(x.get("flags") or [])})
+                              "flags": list(x.get("flags") or []) + (["UNSUPPORTED_NAME"] if any(n in text for n in plan.dropped_names) else [])})
     lines.sort(key=lambda x: (x["startMs"], x["detailLevel"]))
     for i, x in enumerate(lines, 1):
         x["lineIndex"] = i

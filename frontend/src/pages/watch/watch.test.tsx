@@ -124,9 +124,10 @@ const description: Description = {
   coveredUntilMs: null,
   createdAt: '2026-11-01T00:00:00Z',
   lines: [
-    line(501, 1, 2, 8, '칠판이 보여요.'),
+    // 상세도는 누적: 1단계 문장은 늘, 2단계는 '기본' 이상, 3단계는 '자세히'에서만 더해진다
+    line(501, 1, 1, 8, '칠판이 보여요.'),
     line(502, 2, 2, 134, '세 개의 막대가 있는 그래프예요.'),
-    line(503, 2, 3, 134, '세 개의 막대가 있는 그래프예요. 가운데가 가장 높아요.'),
+    line(503, 3, 3, 137, '가운데가 가장 높아요.'),
   ],
   scenes: [
     { sceneId: 1, sceneIndex: 1, title: '그래프란 무엇일까', startMs: 0, endMs: T(48) },
@@ -280,18 +281,29 @@ test('재생 중 문장 시각을 지나면 읽고, 재생바로 건너뛴 문�
   expect(screen.getAllByText('세 개의 막대가 있는 그래프예요.').length).toBeGreaterThan(0)
 })
 
-test('상세도 3을 고르면 설정을 저장하고 대본이 3단계 문장으로 바뀐다', async () => {
+test('상세도는 누적이다: 기본은 1·2단계, 자세히를 고르면 3단계 문장이 더해지고 설정이 저장된다', async () => {
   const user = userEvent.setup()
   renderRoute('/watch/15')
   await screen.findByRole('button', { name: '재생' })
+  await user.click(screen.getByRole('tab', { name: '대본' }))
+  expect(await screen.findByText('해설 대본 · 2문장')).toBeInTheDocument()
+  expect(screen.queryByText('가운데가 가장 높아요.')).not.toBeInTheDocument()
+
   await user.click(screen.getByRole('radio', { name: '3 자세히' }))
   expect(usersApi.updateSettings).toHaveBeenCalledWith({ detailLevel: 3 })
   await waitFor(() => expect(band()).toHaveTextContent('해설 상세도 3 자세히.'))
-  await user.click(screen.getByRole('tab', { name: '대본' }))
+  expect(await screen.findByText('해설 대본 · 3문장')).toBeInTheDocument()
+  const texts = screen
+    .getAllByText(/칠판이 보여요|세 개의 막대가|가운데가 가장 높아요/)
+    .map((el) => el.textContent)
+  expect(texts).toEqual([
+    '칠판이 보여요.',
+    '세 개의 막대가 있는 그래프예요.',
+    '가운데가 가장 높아요.',
+  ])
+
+  await user.click(screen.getByRole('radio', { name: '1 짧게' }))
   expect(await screen.findByText('해설 대본 · 1문장')).toBeInTheDocument()
-  expect(
-    screen.getByText('세 개의 막대가 있는 그래프예요. 가운데가 가장 높아요.'),
-  ).toBeInTheDocument()
 })
 
 test('이 문장 신고: 지금 문장을 보여 주고 사유를 골라 보낸다. 여는 동안 영상을 멈춘다', async () => {

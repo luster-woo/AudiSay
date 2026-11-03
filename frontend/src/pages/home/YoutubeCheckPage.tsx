@@ -213,7 +213,7 @@ function CheckView({ url }: { url: string }) {
               to={`/watch/${d.videoId}`}
               variant="accent"
               size="xl"
-              className="min-w-[17.5rem]"
+              className="min-w-[16rem]"
             >
               바로 보기
             </ButtonLink>
@@ -224,7 +224,7 @@ function CheckView({ url }: { url: string }) {
               size="xl"
               loading={request.isPending}
               onClick={() => request.mutate()}
-              className="min-w-[17.5rem]"
+              className="min-w-[16rem]"
             >
               {request.isPending
                 ? '요청하는 중'
@@ -235,26 +235,27 @@ function CheckView({ url }: { url: string }) {
                     : '해설 다시 요청'}
             </Button>
           )}
-          {view === 'limit' && (
-            <ButtonLink to="/" variant="accent" size="xl" className="min-w-[17.5rem]">
-              홈으로 돌아가기
-            </ButtonLink>
-          )}
-          {(view === 'rejected' || check.isError) && (
-            <ButtonLink to="/" variant="accent" size="xl" className="min-w-[17.5rem]">
-              다른 영상 찾기
-            </ButtonLink>
-          )}
           {view && (
             <Button
               variant="secondary"
               size="xl"
               onClick={() => setRulesOpen(true)}
-              className="min-w-[17.5rem]"
+              className="min-w-[16rem]"
             >
               이용 조건 보기
             </Button>
           )}
+          {/* 어느 상태에서든 맨 끝에 홈(검색 칸)으로 돌아가는 길을 둔다. 할 수 있는 일이 없을 때는 이게 주 버튼 */}
+          <ButtonLink
+            to="/"
+            variant={
+              view === 'limit' || view === 'rejected' || check.isError ? 'accent' : 'secondary'
+            }
+            size="xl"
+            className="min-w-[16rem]"
+          >
+            다른 영상 찾기
+          </ButtonLink>
         </div>
       </div>
 

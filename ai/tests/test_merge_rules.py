@@ -87,3 +87,32 @@ def test_assemble_partial_stops_at_covered_until():
     assert [(s["startMs"], s["endMs"]) for s in plan.scenes] == [(0, 30_000)]  # 두 번째 장면(25~60초)은 0길이 → 제외
     assert len(plan.dialogues) == 1 and plan.dialogues[0]["text"] == "안녕"  # 40초 대사는 범위 밖
     assert plan.screen_texts == []
+
+
+def test_name_must_appear_in_title_dialogue_or_screen():
+    """근거라고 적었어도 제목·대사·화면 글자에 없는 이름은 뺀다(2026-11-03 데모: 프롬프트 예시 이름이 드라마 상대역으로 나옴).
+    대사에서 언급한 이름은 인정한다. 제목이 없는 예전 full.json은 이 확인을 건너뛴다."""
+    full = {**FULL, "title": "김유정X박진영의 첫 회식",
+            "dialogues": [{"startMs": 1000, "endMs": 3000, "speaker": None, "text": "사토 히데오의 마음을 얻어라"}],
+            "scenes": [{"startMs": 0, "endMs": 60_000, "title": "재즈 클럽", "screenTexts": [],
+                        "people": [{"name": "박진영", "basis": "영상 제목", "appearance": "코트"},
+                                   {"name": "최유리", "basis": "영상 제목", "appearance": "원피스"},
+                                   {"name": "사토 히데오", "basis": "대사에서 '사토 히데오의 마음을 얻어라' 언급", "appearance": "제복"}]}]}
+    chunks = [{"chunkIndex": 0, "screenTexts": [],
+               "lines": [{"detailLevel": 1, "startMs": 5000, "gapEndMs": None, "importance": 3, "text": "최유리가 맥주를 건넨다.", "flags": []}]}]
+    plan = assemble(full, chunks)
+    assert [c["name"] for c in plan.characters] == ["박진영", "사토 히데오"]
+    assert plan.dropped_names == ["최유리"]
+    assert plan.lines[0]["flags"] == ["UNSUPPORTED_NAME"]
+    old = assemble({**full, "title": None}, chunks)  # 제목 모르면 예전처럼 근거 말만 본다
+    assert [c["name"] for c in old.characters] == ["박진영", "최유리", "사토 히데오"]
+
+
+def test_check_flags_prompt_v4_rules():
+    """프롬프트 v4 점검 항목을 코드로: 쓰지 않는 표현, 대명사, 상세도별 글자 수(2026-11-03)."""
+    from app.pipeline.describe import check
+
+    assert "BANNED_PHRASE" in check("두 사람이 노래하는 모습이 보입니다.", 0, [], 1)
+    assert "PRONOUN" in check("그녀가 마이크 앞에 앉는다.", 0, [], 2)
+    assert "OVER_LEVEL_LENGTH" in check("가" * 31, 0, [], 1)
+    assert check("최유리가 마이크 앞에 앉는다.", 0, [], 1) == []

@@ -46,17 +46,17 @@ export function ChaptersPanel({
                   aria-current={isCurrent ? 'true' : undefined}
                   aria-label={`${c.chapterIndex}번, ${c.title}${isCurrent ? ', 지금' : ''}, ${formatPositionSpoken(c.startMs)}부터`}
                   className={cn(
-                    'flex min-h-touch w-full items-center gap-3 rounded-md px-3 text-left text-lg',
-                    isCurrent ? 'bg-yellow-soft font-bold' : 'hover:bg-cream',
+                    'flex min-h-touch w-full items-center gap-3 rounded-md border-2 px-3 text-left text-lg',
+                    // 지금 장면은 진한 노랑 + 검은 테두리로 눈에 띄게. 말로는 aria-label 의 '지금'이 알린다
+                    isCurrent
+                      ? 'border-ink bg-yellow font-bold'
+                      : 'border-transparent hover:bg-cream',
                   )}
                 >
                   <span className={cn('w-5 text-right', !isCurrent && 'text-ink-muted')}>
                     {c.chapterIndex}
                   </span>
-                  <span className="flex-1">
-                    {c.title}
-                    {isCurrent && ' · 지금'}
-                  </span>
+                  <span className="flex-1">{c.title}</span>
                   <Clock ms={c.startMs} className={cn(!isCurrent && 'text-ink-muted')} />
                 </button>
               </li>

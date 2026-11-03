@@ -159,9 +159,6 @@ export function ReportDialog({ open, line, reportedAtMs, onClose }: ReportDialog
               취소
             </Button>
           </div>
-          <p className="mt-5 text-ink-muted">
-            같은 문장은 한 번만 신고할 수 있어요. 보내면 &quot;신고했어요&quot;라고 읽어 줘요.
-          </p>
         </>
       ) : (
         <>

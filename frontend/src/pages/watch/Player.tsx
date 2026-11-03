@@ -134,12 +134,6 @@ export function Player({ video }: { video: VideoDetail }) {
   // 재생을 한 번이라도 했으면(또는 시각이 움직였으면) '해설' 상자에 문장을 보인다
   const started = startedFlag || state.playing || state.currentMs > 0
   const scene = sceneAtMs(description?.scenes, state.currentMs)
-  const currentChapter = [...chapters].reverse().find((c) => c.startMs <= state.currentMs) ?? null
-  const sceneLabel = scene
-    ? `${scene.sceneIndex}. ${scene.title}`
-    : currentChapter
-      ? `${currentChapter.chapterIndex}. ${currentChapter.title}`
-      : null
 
   /* ── 재생 조작 ── */
   const start = useCallback(() => {
@@ -542,10 +536,6 @@ export function Player({ video }: { video: VideoDetail }) {
           playback={playbackQ.data}
           videoRef={videoRef}
           ytHostRef={ytHostRef}
-          playing={state.playing}
-          ended={state.ended}
-          currentMs={state.currentMs}
-          durationMs={state.durationMs}
           volume={settings.originalVolume}
           className="mt-5"
         />
@@ -580,7 +570,6 @@ export function Player({ video }: { video: VideoDetail }) {
             currentMs={state.currentMs}
             durationMs={state.durationMs}
             stepSec={settings.seekStepSec}
-            sceneLabel={sceneLabel}
             onSeek={(ms) => {
               interrupt()
               controls.seek(ms)

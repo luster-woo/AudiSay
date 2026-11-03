@@ -39,7 +39,7 @@ export function PickStep({
   usePageEntry({
     title: '영상 등록',
     announce: noneLeft
-      ? '영상 등록이에요. 오늘 올리기 횟수를 다 썼어요. 밤 12시(한국 시간)에 다시 채워져요.'
+      ? '영상 등록이에요. 오늘 올리기 횟수를 다 썼어요. 밤 12시에 다시 채워져요.'
       : '영상 등록이에요. 파일 고르기 버튼에 있어요. Enter를 누르면 파일 창이 열려요.',
     focusRef: inputRef,
   })
@@ -91,7 +91,7 @@ export function PickStep({
 
       {noneLeft && (
         <Notice title="오늘 올리기 횟수를 다 썼어요" className="mt-6">
-          밤 12시(한국 시간)에 다시 채워져요. 이미 해설이 있는 영상은 계속 볼 수 있어요.
+          밤 12시에 다시 채워져요. 이미 해설이 있는 영상은 계속 볼 수 있어요.
         </Notice>
       )}
 

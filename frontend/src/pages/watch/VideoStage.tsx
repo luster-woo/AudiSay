@@ -1,16 +1,11 @@
 import type { RefObject } from 'react'
 import type { Playback } from '@/api/types'
 import { cn } from '@/components/ui/cn'
-import { formatClock } from '@/utils/time'
 
 export interface VideoStageProps {
   playback: Playback | undefined
   videoRef: RefObject<HTMLVideoElement | null>
   ytHostRef: RefObject<HTMLDivElement | null>
-  playing: boolean
-  ended: boolean
-  currentMs: number
-  durationMs: number
   /** 영상 소리 크기 0 ~ 100 (재생 설정) */
   volume: number
   className?: string
@@ -18,20 +13,9 @@ export interface VideoStageProps {
 
 /**
  * 영상이 나오는 검은 상자. 브라우저 기본 컨트롤은 숨기고 재생바·버튼은 바깥에서 만든다.
- * 상자 안 "재생 중 · 2:14 / 4:42" 는 눈으로 보는 용도라 낭독기에는 숨긴다 (시각은 재생바가 읽는다).
+ * 상자 안에는 글자를 겹치지 않는다 (시각·상태는 바깥 재생바·버튼이 보여 주고 읽는다).
  */
-export function VideoStage({
-  playback,
-  videoRef,
-  ytHostRef,
-  playing,
-  ended,
-  currentMs,
-  durationMs,
-  volume,
-  className,
-}: VideoStageProps) {
-  const status = ended ? '끝' : playing ? '재생 중' : '멈춤'
+export function VideoStage({ playback, videoRef, ytHostRef, volume, className }: VideoStageProps) {
   return (
     <div
       className={cn(
@@ -57,15 +41,6 @@ export function VideoStage({
       {playback?.sourceType === 'YOUTUBE' && (
         <div ref={ytHostRef} className="absolute inset-0 size-full [&>*]:size-full" />
       )}
-      <p
-        aria-hidden="true"
-        className={cn(
-          'pointer-events-none absolute inset-x-0 bottom-3 text-center text-sm text-cream/60',
-          !playback && 'top-1/2 -translate-y-1/2 text-base',
-        )}
-      >
-        {status} · {formatClock(currentMs)} / {formatClock(durationMs)}
-      </p>
     </div>
   )
 }

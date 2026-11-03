@@ -7,8 +7,6 @@ export interface SeekBarProps {
   durationMs: number
   /** 화살표 한 번에 옮길 초 (재생 설정 '앞뒤 이동 간격') */
   stepSec: number
-  /** 오른쪽 끝 보조 문구 ("2. 막대그래프 비교") */
-  sceneLabel?: string | null
   onSeek: (ms: number) => void
   /** 키를 뗀 뒤 한 번만 부른다 (화살표를 연달아 눌러도 한 번) */
   onSeekSettled?: (ms: number) => void
@@ -23,7 +21,6 @@ export function SeekBar({
   currentMs,
   durationMs,
   stepSec,
-  sceneLabel,
   onSeek,
   onSeekSettled,
   className,
@@ -111,11 +108,6 @@ export function SeekBar({
           style={{ left: `${percent}%` }}
         />
       </div>
-      {sceneLabel && (
-        <p aria-hidden="true" className="shrink-0 text-ink-muted">
-          {sceneLabel}
-        </p>
-      )}
     </div>
   )
 }

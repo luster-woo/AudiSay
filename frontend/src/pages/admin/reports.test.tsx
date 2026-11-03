@@ -15,6 +15,18 @@ vi.mock('@/api/client', async (importOriginal) => {
 vi.mock('@/api/users', () => ({
   usersApi: { me: vi.fn(), settings: vi.fn(), updateSettings: vi.fn() },
 }))
+// 장면 탭의 영상 플레이어 (업로드 영상)
+vi.mock('@/api/videos', () => ({
+  videosApi: {
+    playback: vi.fn(async () => ({
+      sourceType: 'UPLOAD',
+      playbackUrl: 'https://media.example/v12.mp4',
+      playbackFormat: 'MP4',
+      expiresAt: null,
+      youtubeVideoId: null,
+    })),
+  },
+}))
 vi.mock('@/api/admin', () => ({
   adminApi: {
     reports: vi.fn(),
@@ -148,6 +160,16 @@ describe('신고 처리', () => {
 
     expect(screen.getByRole('link', { name: /신고 처리/ })).toHaveTextContent('3')
     expect(await screen.findByText('막대 4개(A·B·C·D). B가 가장 높음.')).toBeInTheDocument()
+    // 장면 영상은 실제 플레이어(시청 화면과 같은 재생 주소)로 보여 주고, 화면 글자 목록은 없다
+    const sceneRegion = screen.getByRole('region', { name: '장면' })
+    await waitFor(() =>
+      expect(sceneRegion.querySelector('video')).toHaveAttribute(
+        'src',
+        'https://media.example/v12.mp4',
+      ),
+    )
+    expect(within(sceneRegion).queryByText(/화면 글자/)).not.toBeInTheDocument()
+    expect(within(sceneRegion).getByRole('button', { name: '▶ 구간 재생' })).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: '해설 문장 · 2단계' })).toHaveValue(
       '세 개의 막대가 있는 그래프예요',
     )

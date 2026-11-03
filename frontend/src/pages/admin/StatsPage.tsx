@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { adminApi } from '@/api/admin'
 import { toUserMessage } from '@/api/errors'
@@ -7,12 +7,12 @@ import type { AiUsageStats } from '@/api/types'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/components/ui/cn'
 import { DailyChart } from '@/features/admin/DailyChart'
+import { DateRangePicker } from '@/features/admin/DateRangePicker'
 import { Segmented } from '@/features/admin/Segmented'
 import {
   DAILY_METRICS,
   type DailyMetric,
   formatCredits,
-  formatDayLabel,
   formatDayLong,
   formatInt,
   formatLatency,
@@ -22,9 +22,7 @@ import {
   presetRange,
   purposeLabel,
   RANGE_PRESETS,
-  rangeDays,
   todayKst,
-  validateRange,
   type RangePreset,
 } from '@/features/admin/stats'
 import { useAnnouncer } from '@/features/announcer/context'
@@ -35,21 +33,13 @@ const CELL = 'px-[0.8rem] py-[0.6rem] text-left'
 const NUM = `${CELL} text-right whitespace-nowrap tabular-nums`
 const TH = 'font-normal'
 
-const DATE_INPUT =
-  'h-[2.5333rem] min-h-0 rounded-sm border-2 border-ink-muted/70 bg-paper px-[0.8rem] text-[0.9333rem] focus-visible:border-ink'
-
 /** 통계 (ADM-04): AI 호출 수·토큰·크레딧이 기간 동안 어디에 쓰였는지 본다 */
 export default function StatsPage() {
   const headingRef = useRef<HTMLHeadingElement>(null)
-  const fromId = useId()
-  const toId = useId()
-  const errorId = useId()
   const { announce } = useAnnouncer()
 
   const [preset, setPreset] = useState<RangePreset | null>('30d')
   const [range, setRange] = useState(() => presetRange('30d'))
-  const [draft, setDraft] = useState(range)
-  const [rangeError, setRangeError] = useState<string | null>(null)
   const [metric, setMetric] = useState<DailyMetric>('credits')
   const [asTable, setAsTable] = useState(false)
 
@@ -83,27 +73,22 @@ export default function StatsPage() {
 
   const applyRange = (next: { from: string; to: string }) => {
     setRange(next)
-    setDraft(next)
-    setRangeError(null)
     pendingAnnounce.current = true
   }
   const choosePreset = (p: RangePreset) => {
     setPreset(p)
     applyRange(presetRange(p))
   }
-  const submitDraft = (e: FormEvent) => {
-    e.preventDefault()
-    const problem = validateRange(draft.from, draft.to)
-    if (problem) {
-      setRangeError(problem)
-      announce(problem, { politeness: 'assertive' })
-      return
-    }
-    setPreset(null)
-    applyRange(draft)
+  const pickRange = (next: { from: string; to: string }) => {
+    // 고른 기간이 프리셋과 같으면 그 프리셋을 켜 둔다
+    setPreset(
+      RANGE_PRESETS.find((p) => {
+        const r = presetRange(p.value)
+        return r.from === next.from && r.to === next.to
+      })?.value ?? null,
+    )
+    applyRange(next)
   }
-
-  const days = rangeDays(range.from, range.to)
 
   // 치수는 다른 관리자 화면과 맞춤 (관리자 글자 크기 15px = 1rem)
   return (
@@ -121,65 +106,18 @@ export default function StatsPage() {
             AI 호출이 얼마나, 어디에 쓰였는지 봐요. 크레딧은 추정값이에요.
           </p>
         </div>
-        <p className="text-[0.9333rem] font-bold">
-          {formatDayLabel(range.from)} ~ {formatDayLabel(range.to)} ({days}일)
-        </p>
       </div>
 
       {/* 기간 고르기 */}
       <div className="mt-[1.2rem] flex flex-wrap items-end gap-[0.8667rem]">
         <Segmented legend="기간" options={RANGE_PRESETS} value={preset} onChange={choosePreset} />
-        <form
-          aria-label="기간 직접 고르기"
-          onSubmit={submitDraft}
-          className="flex items-end gap-[0.5333rem]"
-        >
-          <div className="flex flex-col">
-            <label htmlFor={fromId} className="text-[0.8667rem] text-ink-muted">
-              시작
-            </label>
-            <input
-              id={fromId}
-              type="date"
-              value={draft.from}
-              max={todayKst()}
-              onChange={(e) => setDraft((d) => ({ ...d, from: e.target.value }))}
-              aria-invalid={rangeError ? true : undefined}
-              aria-describedby={rangeError ? errorId : undefined}
-              className={cn(DATE_INPUT, 'mt-[0.5333rem]', rangeError && 'border-danger')}
-            />
-          </div>
-          <span aria-hidden="true" className="pb-[0.6rem] text-ink-muted">
-            ~
-          </span>
-          <div className="flex flex-col">
-            <label htmlFor={toId} className="text-[0.8667rem] text-ink-muted">
-              끝
-            </label>
-            <input
-              id={toId}
-              type="date"
-              value={draft.to}
-              max={todayKst()}
-              onChange={(e) => setDraft((d) => ({ ...d, to: e.target.value }))}
-              aria-invalid={rangeError ? true : undefined}
-              aria-describedby={rangeError ? errorId : undefined}
-              className={cn(DATE_INPUT, 'mt-[0.5333rem]', rangeError && 'border-danger')}
-            />
-          </div>
-          <Button type="submit" size="sm" className="min-h-[2.6667rem] px-[1rem]">
-            조회
-          </Button>
-        </form>
-        <p className="pb-[0.6rem] text-[0.8667rem] text-ink-muted">
-          한 번에 최대 {MAX_RANGE_DAYS}일, 한국 시간 기준
-        </p>
+        <DateRangePicker
+          value={range}
+          max={todayKst()}
+          maxDays={MAX_RANGE_DAYS}
+          onApply={pickRange}
+        />
       </div>
-      {rangeError && (
-        <p id={errorId} className="mt-[0.5333rem] text-[0.9333rem] font-bold text-danger">
-          {rangeError}
-        </p>
-      )}
 
       {isError && !data ? (
         <p className="mt-[1.4667rem] rounded-sm border border-line bg-paper px-[0.8rem] py-6">

@@ -140,7 +140,8 @@ export function ReportDetail({
   return (
     // 위는 스크롤, 아래 버튼 줄은 화면 맨 아래에 고정 (Figma)
     <section aria-labelledby="report-detail-title" className="flex h-full min-w-0 flex-col">
-      <div className="min-h-0 flex-1 overflow-y-auto px-[2.1333rem] pt-[1.4rem] pb-6">
+      {/* relative: 안쪽 sr-only(절대 위치) 요소가 스크롤 상자 밖 기준으로 잡혀 페이지 전체를 늘리지 않게 */}
+      <div className="relative min-h-0 flex-1 overflow-y-auto px-[2.1333rem] pt-[1.4rem] pb-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <h2

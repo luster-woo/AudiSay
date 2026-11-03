@@ -88,10 +88,12 @@ export default function ReportsPage() {
 
   // 바깥 여백 없이 화면을 꽉 채운다 (Figma: 목록 400px + 상세, 위쪽 줄 48px 아래 전체)
   const list = (
-    <div className="-m-8 grid h-[calc(100svh-3.2rem)] grid-cols-[26.6667rem_minmax(0,1fr)]">
+    // 행 높이를 화면 높이에 묶어야(minmax(0,1fr)) 목록·상세가 각자 안에서 스크롤되고
+    // 페이지 전체가 길어져 사이드바가 따라 올라가지 않는다
+    <div className="-m-8 grid h-[calc(100svh-3.2rem)] grid-cols-[26.6667rem_minmax(0,1fr)] grid-rows-[minmax(0,1fr)] overflow-hidden">
       <section
         aria-labelledby="report-list-title"
-        className="overflow-y-auto border-r border-line bg-paper"
+        className="relative overflow-y-auto border-r border-line bg-paper"
       >
         <div className="flex h-[3.4rem] items-center justify-between gap-2 px-[1.6rem]">
           <h2

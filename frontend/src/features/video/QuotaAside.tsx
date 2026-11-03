@@ -2,16 +2,16 @@ import { useQuery } from '@tanstack/react-query'
 import { usersApi } from '@/api/users'
 import { queryKeys } from '@/api/queryKeys'
 import type { QuotaItem } from '@/api/types'
-import { cn } from '@/components/ui/cn'
 import { Button } from '@/components/ui/Button'
+import { cn } from '@/components/ui/cn'
 
 function Row({ label, item }: { label: string; item: QuotaItem }) {
   const unlimited = item.limit == null
-  const empty = !unlimited && item.remaining === 0
   return (
     <div className="flex items-center justify-between gap-4 py-2">
-      <dt className="text-2xl">{label}</dt>
-      <dd className={cn('text-2xl font-bold', empty ? 'text-danger' : 'text-ink')}>
+      <dt className="text-2xl text-ink">{label}</dt>
+      {/* 숫자는 같은 폭(tabular-nums)으로 오른쪽 정렬해 두 줄의 숫자 위치를 맞춘다. 색은 늘 검정 */}
+      <dd className="min-w-[5.5rem] text-right text-2xl font-bold text-ink tabular-nums">
         {unlimited ? (
           '제한 없음'
         ) : (

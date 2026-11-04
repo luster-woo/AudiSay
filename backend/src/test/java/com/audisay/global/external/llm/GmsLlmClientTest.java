@@ -45,7 +45,7 @@ class GmsLlmClientTest {
 
     private GmsLlmClient client(boolean withFallback) {
         GmsProperties properties = new GmsProperties(GmsProperties.Mode.REAL, "key", "http://unused", "http://unused",
-                null, 0, new GmsProperties.Models(MODEL, MODEL, MODEL), null, null,
+                null, 0, null, new GmsProperties.Models(MODEL, MODEL, MODEL), null, null,
                 Map.of(MODEL, new GmsProperties.Price(new BigDecimal("0.0025"), new BigDecimal("0.015")),
                         FALLBACK_MODEL, new GmsProperties.Price(new BigDecimal("0.001"), new BigDecimal("0.005"))),
                 new GmsProperties.Breaker(50, 4, 4, Duration.ofMinutes(1), 1),

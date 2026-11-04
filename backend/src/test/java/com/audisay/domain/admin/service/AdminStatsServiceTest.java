@@ -37,7 +37,7 @@ class AdminStatsServiceTest {
     @BeforeEach
     void setUp() {
         repository = mock(AiUsageStatsRepository.class);
-        GmsProperties properties = new GmsProperties(null, null, null, null, null, null, null, null, null,
+        GmsProperties properties = new GmsProperties(null, null, null, null, null, null, null, null, null, null,
                 Map.of("gemini-3.5-flash", new GmsProperties.Price(new BigDecimal("0.015"), new BigDecimal("0.09")),
                         "gemini-3.8-flash-tts", new GmsProperties.Price(new BigDecimal("0.01"), new BigDecimal("0.18"))),
                 null, null, null);

@@ -15,7 +15,10 @@ public record AnswerContext(String videoTitle, String summary, int nowMs, List<S
         return scenes.isEmpty() ? null : scenes.get(scenes.size() - 1);
     }
 
-    /** @param narrations 이 장면에서 입력 시각까지 나온 해설 문장(v1~v3, 시간순) */
+    /**
+     * @param title      바로 하는 답(answer-past-only)이면 끝나지 않은 장면은 null
+     * @param narrations 이 장면에서 입력 시각까지 나온 해설 문장(v1~v3, 시간순)
+     */
     public record SceneInfo(int startMs, String title, String description, List<Narration> narrations,
                             List<String> screenTexts) {
     }

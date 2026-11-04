@@ -10,18 +10,27 @@ import java.util.regex.Pattern;
 
 /**
  * 규칙 발화 분류. 확실한 말만 분류하고 애매하면 null(LLM이 분류)을 돌려준다 — 틀리게 분류하는 것보다 LLM에 넘기는 게 낫다.
- * 순서: 신고 → 영상 검색 → 시각 이동 → 기능(ACTION) → 지금 장면 → 설정 → 장면 이동 → 질문.
+ * 순서: 신고 → 영상 검색 → 시각 이동 → 지금까지 줄거리(RECAP) → 기능(ACTION) → 지금 장면 → 설정 → 장면 이동 → 질문.
  * 참고: AI 서버 ai/app/chat/intent.py by_rules. 바꾼 점은 모델 비교(claude_AudiSay_GMS_모델비교.md 5장)에서 틀린
  * 한글 숫자 시각·"화면에 뭐가 보여"·"뭐라고 말하면 돼" 처리, actionCode 17개, SEARCH_VIDEO, 신고
  */
 @Component
 public class RuleIntentClassifier {
     static final String REPORT_MESSAGE = "신고는 신고 버튼으로 해 주세요.";
+    static final String SELF_MESSAGE = "저는 영상 내용을 알려 드리는 도우미예요. 영상에 대해 물어봐 주세요.";
 
     private static final Pattern TRAILING = Pattern.compile("[?!.~…\\s]+$");
     private static final Pattern SPACES = Pattern.compile("\\s+");
 
     private static final Pattern REPORT = Pattern.compile("신고");
+    /** "너는 누구야"처럼 챗봇 자신에 대한 말은 영상 질문이 아니다 */
+    private static final Pattern SELF = Pattern.compile("^(?:너|넌|당신)(?:은|는|이|가)?(?:누구|뭐야|뭐니|뭔데|이름)");
+    /** "시작할 때 요약 항상 들려줘"는 요약 재생이 아니라 summaryMode 설정 */
+    private static final Pattern SUMMARY_SETTING = Pattern.compile("항상|매번|자동|시작할때|시작하면|처음에|틀때마다|켤때마다");
+    /** "지금까지 줄거리"·"여태 무슨 일 있었어"·"앞에 내용 정리해 줘" — 영상 전체 요약(PLAY_SUMMARY)보다 먼저 본다 */
+    private static final Pattern RECAP_WHEN = Pattern.compile(
+            "지금까지|여태|이때까지|여기까지|아까까지|앞(?:에|의)?(?:내용|이야기|부분)|지난(?:내용|이야기|부분)");
+    private static final Pattern RECAP_WHAT = Pattern.compile("줄거리|요약|정리|무슨일|무슨이야기|어떻게됐|어떤내용|내용|이야기|있었");
     private static final Pattern SEARCH_VIDEO = Pattern.compile(
             "^(?:유튜브에서\\s*)?(.+?)\\s*(?:관련\\s*)?(?:영상|동영상)\\s*(?:을|를|좀|하나)?\\s*(?:찾아|검색|찾고|보고\\s*싶|틀어|보여)");
     private static final Pattern SEARCH_KEYWORD = Pattern.compile("^(?:유튜브에서\\s*)?(.+?)\\s*(?:을|를)?\\s*(?:유튜브에서\\s*)?검색");
@@ -35,14 +44,14 @@ public class RuleIntentClassifier {
     private static final Pattern TO_END = Pattern.compile("^(?:(?:이\\s*)?영상\\s*)?(?:맨\\s*끝|끝|마지막)\\s*(?:으로|까지)" + MOVE_TAIL);
     private static final Pattern AFTER_ABSOLUTE = Pattern.compile("^\\s*(?:으로|로)(?![가-힣])");
     private static final Pattern AFTER_BACKWARD = Pattern.compile(
-            "^\\s*(?:만\\s*)?(?:전으로|전|이전으로|앞으로|앞에|되감|돌려|돌아가|앞당겨)");
+            "^\\s*(?:만\\s*)?(?:전으로|전|이전으로|앞으로|앞에|되감|되돌|돌려|돌아가|앞당겨)");
     private static final Pattern AFTER_FORWARD = Pattern.compile(
             "^\\s*(?:만\\s*)?(?:뒤로|뒤에|후로|후에|이후로|지나서|넘겨|건너|빨리\\s*감)");
     private static final Pattern AFTER_MOVE = Pattern.compile(
             "^\\s*(?:에서|부터)?\\s*(?:다시\\s*)?(?:가|이동|넘어가|돌아가|틀어|재생|점프|옮겨|보여)");
 
     private static final Pattern SCENE_NOW = Pattern.compile(
-            "화면에(?:지금)?(?:뭐|무엇|무슨)|(?:지금|이)(?:장면|화면)(?:을|이|은)?(?:설명|묘사|뭐|어때|알려)"
+            "화면(?:에|엔)?(?:지금)?(?:뭐|무엇|무슨)|^(?:지금)?뭐(?:보여|나와|나오)(?:요|니|냐)?$|(?:지금|이)(?:장면|화면)(?:을|이|은)?(?:설명|묘사|뭐|어때|알려)"
                     + "|뭐가(?:보여|보이|나와)|무슨장면이야|어떤(?:상황|장면)이야|어떤상황인지|지금상황(?:이|을)?(?:어때|설명|알려|그려)");
     private static final Pattern SEEK_SCENE = Pattern.compile(
             "^(.+?)\\s*(?:장면|부분|데|곳|때)\\s*(?:으로|로)\\s*(?:다시\\s*)?(?:가|이동|넘어가|돌아가|보여|틀어|옮겨)");
@@ -58,9 +67,15 @@ public class RuleIntentClassifier {
         if (REPORT.matcher(c).find()) {
             return ClassifiedIntent.unknown(REPORT_MESSAGE);
         }
+        if (SELF.matcher(c).find()) {
+            return ClassifiedIntent.unknown(SELF_MESSAGE);
+        }
         ClassifiedIntent result = searchVideo(s);
         if (result == null) {
             result = seekTime(s);
+        }
+        if (result == null && RECAP_WHEN.matcher(c).find() && RECAP_WHAT.matcher(c).find()) {
+            result = ClassifiedIntent.of(ChatIntent.RECAP);
         }
         if (result == null) {
             result = action(c);
@@ -132,7 +147,7 @@ public class RuleIntentClassifier {
         if (!find(c, "자막") && find(c, "그만(?:읽|말)|읽지마|말하지마|조용히|음성(?:만)?(?:멈|꺼|그만)|해설그만|건너뛰어|그만해")) {
             return ActionCode.STOP_SPEAKING;
         }
-        if (find(c, "요약") && find(c, "들려|읽어|틀어|해줘|보여|말해|재생|요약해")) {
+        if (find(c, "요약") && !SUMMARY_SETTING.matcher(c).find() && find(c, "들려|읽어|틀어|해줘|보여|말해|재생|요약해")) {
             return ActionCode.PLAY_SUMMARY;
         }
         if (find(c, "다시(?:말|읽|들려)|한번더(?:말|읽|들려)|못들었|^(?:방금)?뭐라고(?:했|그랬)(?:어|지|나요|어요|니)?$")) {
@@ -179,6 +194,12 @@ public class RuleIntentClassifier {
 
     private static ClassifiedIntent setting(String c) {
         boolean question = QUESTION.matcher(c).find();
+        if (find(c, "요약") && SUMMARY_SETTING.matcher(c).find()) {
+            if (find(c, "안들|듣지않|들려주지마|꺼|끄|빼|없이|필요없|싫")) {
+                return ClassifiedIntent.setting("summaryMode", "NEVER");
+            }
+            return ClassifiedIntent.setting("summaryMode", find(c, "물어|묻(?!지말)") ? "ASK" : "ALWAYS");
+        }
         if (find(c, "고대비")) {
             return ClassifiedIntent.setting("highContrast", find(c, "꺼|끄|해제|없애") ? "false" : "true");
         }

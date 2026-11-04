@@ -13,6 +13,7 @@ import java.util.Map;
  *
  * @param mode                    real(기본) / mock(가짜 응답, 크레딧 0)
  * @param thinkingBudget          Gemini 추론 토큰 한도. 0이면 추론 끔, null이면 보내지 않음
+ * @param thinkingLevels          추론을 끌 수 없는 모델(thinkingBudget 0을 거부)에 대신 보낼 추론 단계(minimal 등)
  * @param timeouts                용도별 전체 시간 제한
  * @param streamFirstEventTimeout 스트리밍 첫 글자까지 시간 제한
  * @param prices                  모델별 토큰당 크레딧(GMS 단가). ai_call_logs.estimated_credits 계산
@@ -20,13 +21,15 @@ import java.util.Map;
  */
 @ConfigurationProperties("audisay.gms")
 public record GmsProperties(Mode mode, String apiKey, String geminiBaseUrl, String anthropicBaseUrl,
-                            Duration connectTimeout, Integer thinkingBudget, Models models, Timeouts timeouts,
+                            Duration connectTimeout, Integer thinkingBudget, Map<String, String> thinkingLevels,
+                            Models models, Timeouts timeouts,
                             Duration streamFirstEventTimeout, Map<String, Price> prices, Breaker circuitBreaker,
                             Fallback fallback, Mock mock) {
 
     public GmsProperties {
         mode = mode == null ? Mode.REAL : mode;
         connectTimeout = connectTimeout == null ? Duration.ofSeconds(2) : connectTimeout;
+        thinkingLevels = thinkingLevels == null ? Map.of() : thinkingLevels;
         models = models == null ? new Models(null, null, null) : models;
         timeouts = timeouts == null ? new Timeouts(null, null, null) : timeouts;
         streamFirstEventTimeout = streamFirstEventTimeout == null ? Duration.ofSeconds(10) : streamFirstEventTimeout;
@@ -92,6 +95,11 @@ public record GmsProperties(Mode mode, String apiKey, String geminiBaseUrl, Stri
             case ANSWER -> timeouts.answer();
         };
         return timeout == null ? Duration.ofSeconds(10) : timeout;
+    }
+
+    /** 추론을 끌 수 없는 모델이면 그 추론 단계, 아니면 null */
+    public String thinkingLevel(String model) {
+        return thinkingLevels.get(model);
     }
 
     /** 단가표에 없는 모델(mock 등)은 0 */

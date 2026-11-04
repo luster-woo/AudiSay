@@ -10,9 +10,14 @@ import com.audisay.domain.chat.entity.ChatLog;
 import com.audisay.domain.chat.entity.InputMode;
 import com.audisay.domain.chat.ratelimit.ChatRateLimiter;
 import com.audisay.domain.chat.repository.ChatLogRepository;
+import com.audisay.domain.chat.tuning.ChatTuningProperties;
 import com.audisay.domain.description.service.AnswerContext;
+import com.audisay.domain.description.service.AnswerContext.Narration;
 import com.audisay.domain.description.service.AnswerContext.SceneInfo;
 import com.audisay.domain.description.service.AnswerContextReader;
+import com.audisay.domain.description.service.FutureContext;
+import com.audisay.domain.description.service.RecapContext;
+import com.audisay.domain.description.service.RecapReader;
 import com.audisay.domain.user.entity.Role;
 import com.audisay.global.exception.BusinessException;
 import com.audisay.global.exception.ErrorCode;
@@ -56,6 +61,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -66,6 +72,9 @@ class ChatAnswerServiceTest {
     private final AnswerContext context = new AnswerContext("두산 대 LG", "두산이 이겼어요.", 200_000,
             List.of(new SceneInfo(180_000, "2회 초", "투수가 공을 던집니다. 타자가 기다립니다. 관중이 외칩니다.", List.of(),
                     List.of())), List.of(), List.of());
+    private final FutureContext future = new FutureContext("두산이 이겼어요.", List.of(new SceneInfo(300_000, "3회 초",
+            "감독이 더그아웃에서 박수를 칩니다.", List.of(new Narration(310_000, "김태형 감독이 박수를 칩니다")), List.of())),
+            List.of());
 
     private ChatLogRepository chatLogRepository;
     private AnswerContextReader contextReader;
@@ -73,6 +82,8 @@ class ChatAnswerServiceTest {
     private AiServerClient aiServerClient;
     private ChatRateLimiter rateLimiter;
     private AnswerInProgress inProgress;
+    private FutureOffer futureOffer;
+    private RecapReader recapReader;
     private SimpleMeterRegistry meterRegistry;
     private CapturingEmitter emitter;
     private ChatAnswerService service;
@@ -85,17 +96,20 @@ class ChatAnswerServiceTest {
         aiServerClient = mock(AiServerClient.class);
         rateLimiter = mock(ChatRateLimiter.class);
         inProgress = mock(AnswerInProgress.class);
+        futureOffer = mock(FutureOffer.class);
+        recapReader = mock(RecapReader.class);
         meterRegistry = new SimpleMeterRegistry();
         emitter = new CapturingEmitter();
         when(inProgress.start(anyLong(), any())).thenReturn(true);
-        when(contextReader.read(DESC, 200_000)).thenReturn(Optional.of(context));
+        when(contextReader.read(DESC, 200_000, true)).thenReturn(Optional.of(context));
         when(aiServerClient.synthesize(anyString(), eq("F1")))
                 .thenAnswer(invocation -> new TtsResult("https://s3/" + invocation.getArgument(0), "key", 900, false, null));
         service = new ChatAnswerService(chatLogRepository, contextReader, new AnswerPrompt(JsonMapper.builder().build()),
                 llmClient, aiServerClient, rateLimiter, inProgress,
                 new ChatAnswerExecutors(Runnable::run, Runnable::run),
                 new ChatAnswerProperties(null, null, null, null, Duration.ofSeconds(1)),
-                new TransactionTemplate(mock(PlatformTransactionManager.class)), meterRegistry) {
+                new TransactionTemplate(mock(PlatformTransactionManager.class)), meterRegistry,
+                ChatTuningProperties.DEFAULT, futureOffer, recapReader) {
             @Override
             SseEmitter newEmitter() {
                 return emitter;
@@ -176,11 +190,38 @@ class ChatAnswerServiceTest {
     }
 
     @Test
-    void 지금_장면은_제목을_먼저_읽고_LLM이_잇는다() {
+    void 지금_장면은_제목_없이_LLM이_질문한_시각까지_자료로_설명한다() {
         ChatLog chat = chatLog(31L, ChatIntent.SCENE_NOW, "지금 뭐가 나와?");
         stream("투수가 공을 던지려고 해요.");
 
         service.subscribe(USER, 31L);
+
+        assertThat(emitter.data(Sentence.class)).extracting(Sentence::text).containsExactly("투수가 공을 던지려고 해요.");
+        assertThat(chat.getAnswerText()).isEqualTo("투수가 공을 던지려고 해요.");
+        ArgumentCaptor<LlmRequest> captor = ArgumentCaptor.forClass(LlmRequest.class);
+        verify(llmClient).stream(captor.capture(), any());
+        assertThat(captor.getValue().system()).isEqualTo(AnswerPrompt.SCENE_NOW_PAST_SYSTEM);
+    }
+
+    @Test
+    void 바로_하는_답을_끄면_지금_장면은_제목을_먼저_읽고_LLM이_잇는다() {
+        ChatAnswerService old = new ChatAnswerService(chatLogRepository, contextReader,
+                new AnswerPrompt(JsonMapper.builder().build()), llmClient, aiServerClient, rateLimiter, inProgress,
+                new ChatAnswerExecutors(Runnable::run, Runnable::run),
+                new ChatAnswerProperties(null, null, null, null, Duration.ofSeconds(1)),
+                new TransactionTemplate(mock(PlatformTransactionManager.class)), meterRegistry,
+                new ChatTuningProperties(true, true, true, true, true, true, true, false, false), futureOffer,
+                recapReader) {
+            @Override
+            SseEmitter newEmitter() {
+                return emitter;
+            }
+        };
+        ChatLog chat = chatLog(31L, ChatIntent.SCENE_NOW, "지금 뭐가 나와?");
+        when(contextReader.read(DESC, 200_000, false)).thenReturn(Optional.of(context));
+        stream("투수가 공을 던지려고 해요.");
+
+        old.subscribe(USER, 31L);
 
         assertThat(emitter.data(Sentence.class)).extracting(Sentence::text)
                 .containsExactly("지금은 2회 초 장면이에요.", "투수가 공을 던지려고 해요.");
@@ -201,7 +242,7 @@ class ChatAnswerServiceTest {
 
         assertThat(emitter.names()).doesNotContain("error").endsWith("done");
         assertThat(emitter.data(Sentence.class)).extracting(Sentence::text)
-                .containsExactly("지금은 2회 초 장면이에요.", "투수가 공을 던집니다.", "타자가 기다립니다.");
+                .containsExactly("투수가 공을 던집니다.", "타자가 기다립니다.");
         assertThat(chat.getAnswerSource()).isEqualTo(AnswerSource.STORED);
     }
 
@@ -213,7 +254,7 @@ class ChatAnswerServiceTest {
         service.subscribe(USER, 31L);
 
         verify(llmClient, never()).stream(any(), any());
-        assertThat(emitter.data(Sentence.class)).hasSize(3);
+        assertThat(emitter.data(Sentence.class)).hasSize(2);
     }
 
     @Test
@@ -270,7 +311,7 @@ class ChatAnswerServiceTest {
         service.subscribe(USER, 31L);
 
         assertThat(emitter.names()).containsExactly("done");
-        assertThat(emitter.data(Done.class)).containsExactly(new Done("김광현이에요.", AnswerSource.STORED, 800, 1500));
+        assertThat(emitter.data(Done.class)).containsExactly(new Done("김광현이에요.", AnswerSource.STORED, 800, 1500, false));
         verify(llmClient, never()).stream(any(), any());
         verify(inProgress, never()).start(anyLong(), any());
     }
@@ -278,7 +319,7 @@ class ChatAnswerServiceTest {
     @Test
     void 해설이_없으면_답할_수_없다고_읽는다() {
         chatLog(31L, ChatIntent.QUESTION, "질문");
-        when(contextReader.read(DESC, 200_000)).thenReturn(Optional.empty());
+        when(contextReader.read(DESC, 200_000, true)).thenReturn(Optional.empty());
 
         service.subscribe(USER, 31L);
 
@@ -313,10 +354,150 @@ class ChatAnswerServiceTest {
                     throw new java.util.concurrent.RejectedExecutionException("full");
                 }, Runnable::run),
                 new ChatAnswerProperties(null, null, null, null, null),
-                new TransactionTemplate(mock(PlatformTransactionManager.class)), meterRegistry);
+                new TransactionTemplate(mock(PlatformTransactionManager.class)), meterRegistry,
+                ChatTuningProperties.DEFAULT, futureOffer, recapReader);
 
         assertError(31L, ErrorCode.CHAT_AI_UNAVAILABLE);
         verify(inProgress).finish(31L);
+    }
+
+    @Test
+    void 바로_답하지_못하고_뒤에_답이_있으면_자료에_없다는_말_대신_들을지_묻는다() {
+        ChatLog chat = chatLog(31L, ChatIntent.QUESTION, "감독 이름이 뭐야?");
+        stream("그건 해설 자료에 없어요.");
+        when(contextReader.readFuture(DESC, 200_000)).thenReturn(Optional.of(future));
+        when(llmClient.generate(any())).thenReturn(
+                new LlmResult("{\"evidence\": \"김태형 감독이 박수를 칩니다\"}", "gemini-3.1-flash-lite", 500, 12, 400, false, 2L));
+
+        service.subscribe(USER, 31L);
+
+        assertThat(emitter.data(Sentence.class)).extracting(Sentence::text).containsExactly(AnswerPrompt.FUTURE_PROMPT);
+        Done done = emitter.data(Done.class).get(0);
+        assertThat(done.answerSource()).isEqualTo(AnswerSource.UNANSWERABLE);
+        assertThat(done.futureAvailable()).isTrue();
+        assertThat(chat.getAnswerText()).isEqualTo(AnswerPrompt.FUTURE_PROMPT);
+        verify(futureOffer).offer(31L);
+        verify(rateLimiter, times(2)).acquireLlm(2L);
+        ArgumentCaptor<LlmRequest> captor = ArgumentCaptor.forClass(LlmRequest.class);
+        verify(llmClient).generate(captor.capture());
+        assertThat(captor.getValue().system()).isEqualTo(AnswerPrompt.FUTURE_CHECK_SYSTEM);
+        assertThat(captor.getValue().user()).contains("김태형 감독이 박수를 칩니다").endsWith("질문: 감독 이름이 뭐야?");
+        assertThat(meterRegistry.get("audisay.chat.answer.future").tag("result", "available").counter().count()).isEqualTo(1);
+    }
+
+    @Test
+    void 뒤에도_답이_없으면_자료에_없다고_읽는다() {
+        chatLog(31L, ChatIntent.QUESTION, "감독 이름이 뭐야?");
+        stream("그건 해설 자료에 없어요.");
+        when(contextReader.readFuture(DESC, 200_000)).thenReturn(Optional.of(future));
+        when(llmClient.generate(any())).thenReturn(
+                new LlmResult("{\"evidence\": \"\"}", "gemini-3.1-flash-lite", 500, 5, 400, false, 2L));
+
+        service.subscribe(USER, 31L);
+
+        assertThat(emitter.data(Sentence.class)).extracting(Sentence::text).containsExactly(AnswerPrompt.UNANSWERABLE);
+        assertThat(emitter.data(Done.class).get(0).futureAvailable()).isFalse();
+        verify(futureOffer, never()).offer(anyLong());
+    }
+
+    @Test
+    void 뒤_확인을_끄면_자료에_없다는_답을_그대로_읽는다() {
+        ChatAnswerService plain = new ChatAnswerService(chatLogRepository, contextReader,
+                new AnswerPrompt(JsonMapper.builder().build()), llmClient, aiServerClient, rateLimiter, inProgress,
+                new ChatAnswerExecutors(Runnable::run, Runnable::run),
+                new ChatAnswerProperties(null, null, null, null, Duration.ofSeconds(1)),
+                new TransactionTemplate(mock(PlatformTransactionManager.class)), meterRegistry,
+                new ChatTuningProperties(true, true, true, true, true, true, true, false, false), futureOffer,
+                recapReader) {
+            @Override
+            SseEmitter newEmitter() {
+                return emitter;
+            }
+        };
+        chatLog(31L, ChatIntent.QUESTION, "감독 이름이 뭐야?");
+        when(contextReader.read(DESC, 200_000, false)).thenReturn(Optional.of(context));
+        stream("그건 해설 자료에 없어요.");
+
+        plain.subscribe(USER, 31L);
+
+        assertThat(emitter.data(Sentence.class)).extracting(Sentence::text).containsExactly("그건 해설 자료에 없어요.");
+        verify(llmClient, never()).generate(any());
+        verify(contextReader, never()).readFuture(anyLong(), org.mockito.ArgumentMatchers.anyInt());
+    }
+
+    @Test
+    void 지금_이후_내용을_듣기로_하면_뒤_자료까지_넣어_답하고_FUTURE로_남긴다() {
+        ChatLog chat = chatLog(31L, ChatIntent.QUESTION, "감독 이름이 뭐야?");
+        chat.answer(AnswerPrompt.FUTURE_PROMPT, AnswerSource.UNANSWERABLE, 500, 900);
+        when(futureOffer.exists(31L)).thenReturn(true);
+        when(futureOffer.take(31L)).thenReturn(true);
+        when(contextReader.readFuture(DESC, 200_000)).thenReturn(Optional.of(future));
+        stream("감독은 김태형이에요.");
+
+        service.subscribe(USER, 31L, true);
+
+        Done done = emitter.data(Done.class).get(0);
+        assertThat(done.answerSource()).isEqualTo(AnswerSource.FUTURE);
+        assertThat(done.futureAvailable()).isFalse();
+        assertThat(chat.getAnswerSource()).isEqualTo(AnswerSource.FUTURE);
+        assertThat(chat.getAnswerText()).isEqualTo("감독은 김태형이에요.");
+        ArgumentCaptor<LlmRequest> captor = ArgumentCaptor.forClass(LlmRequest.class);
+        verify(llmClient).stream(captor.capture(), any());
+        assertThat(captor.getValue().system()).isEqualTo(AnswerPrompt.FUTURE_SYSTEM);
+        assertThat(captor.getValue().user()).contains("뒤 내용:").contains("김태형 감독이 박수를 칩니다");
+    }
+
+    @Test
+    void 들으시겠어요를_묻지_않은_답변이면_CHAT_010() {
+        ChatLog chat = chatLog(31L, ChatIntent.QUESTION, "질문");
+        chat.answer("김광현이에요.", AnswerSource.STORED, 800, 1500);
+
+        assertThatThrownBy(() -> service.subscribe(USER, 31L, true))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.FUTURE_NOT_AVAILABLE);
+        verify(llmClient, never()).stream(any(), any());
+    }
+
+    @Test
+    void 끝난_답변을_다시_구독하면_들을_수_있는지도_알려준다() {
+        ChatLog chat = chatLog(31L, ChatIntent.QUESTION, "감독 이름이 뭐야?");
+        chat.answer(AnswerPrompt.FUTURE_PROMPT, AnswerSource.UNANSWERABLE, 500, 900);
+        when(futureOffer.exists(31L)).thenReturn(true);
+
+        service.subscribe(USER, 31L);
+
+        assertThat(emitter.data(Done.class).get(0).futureAvailable()).isTrue();
+        verify(futureOffer, never()).take(anyLong());
+    }
+
+    @Test
+    void 지금까지_줄거리는_질문한_시각_전_목차로_정리한다() {
+        ChatLog chat = chatLog(31L, ChatIntent.RECAP, "지금까지 줄거리 알려 줘");
+        when(recapReader.read(DESC, 200_000)).thenReturn(Optional.of(new RecapContext("두산 대 LG", 200_000, List.of(
+                new RecapContext.Part(0, "1회 초", "두산이 선취점을 냅니다."),
+                new RecapContext.Part(180_000, "2회 초", "투수가 공을 던집니다.")))));
+        stream("두산이 1회에 먼저 점수를 냈어요. 지금은 2회 초예요.");
+
+        service.subscribe(USER, 31L);
+
+        assertThat(emitter.data(Done.class).get(0).answerSource()).isEqualTo(AnswerSource.STORED);
+        assertThat(chat.getAnswerText()).isEqualTo("두산이 1회에 먼저 점수를 냈어요. 지금은 2회 초예요.");
+        ArgumentCaptor<LlmRequest> captor = ArgumentCaptor.forClass(LlmRequest.class);
+        verify(llmClient).stream(captor.capture(), any());
+        assertThat(captor.getValue().system()).isEqualTo(AnswerPrompt.RECAP_SYSTEM);
+        assertThat(captor.getValue().user()).contains("두산이 선취점을 냅니다.").endsWith("요청: 지금까지 줄거리를 정리해 주세요.");
+        verify(contextReader, never()).read(anyLong(), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyBoolean());
+    }
+
+    @Test
+    void 지난_내용이_없으면_LLM_없이_안내() {
+        chatLog(31L, ChatIntent.RECAP, "지금까지 줄거리 알려 줘");
+        when(recapReader.read(DESC, 200_000)).thenReturn(Optional.of(new RecapContext("두산 대 LG", 200_000, List.of())));
+
+        service.subscribe(USER, 31L);
+
+        assertThat(emitter.data(Sentence.class)).extracting(Sentence::text).containsExactly(AnswerPrompt.NO_RECAP);
+        verify(llmClient, never()).stream(any(), any());
     }
 
     private void assertError(Long chatLogId, ErrorCode errorCode) {

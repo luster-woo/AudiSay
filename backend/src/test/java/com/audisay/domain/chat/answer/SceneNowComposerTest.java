@@ -14,12 +14,22 @@ class SceneNowComposerTest {
     void 첫_문장은_지금_장면_제목() {
         assertThat(SceneNowComposer.title(context(scene("투수가 공을 던집니다.")))).isEqualTo("지금은 2회 초 장면이에요.");
         assertThat(SceneNowComposer.title(empty())).isNull();
+        assertThat(SceneNowComposer.title(context(new SceneInfo(180_000, null, null, List.of(), List.of())))).isNull();
     }
 
     @Test
     void LLM을_못_쓰면_장면_설명_앞_2문장() {
         assertThat(SceneNowComposer.fallback(context(scene("투수가 공을 던집니다. 타자가 기다립니다. 관중이 외칩니다."))))
                 .containsExactly("투수가 공을 던집니다.", "타자가 기다립니다.");
+    }
+
+    @Test
+    void 장면_설명이_없으면_질문한_시각_직전_해설_문장_2개() {
+        SceneInfo scene = new SceneInfo(180_000, "2회 초", null, List.of(new AnswerContext.Narration(181_000, "타자가 섭니다."),
+                new AnswerContext.Narration(185_000, "투수가 공을 던집니다."), new AnswerContext.Narration(190_000, "타자가 칩니다.")),
+                List.of());
+
+        assertThat(SceneNowComposer.fallback(context(scene))).containsExactly("투수가 공을 던집니다.", "타자가 칩니다.");
     }
 
     @Test

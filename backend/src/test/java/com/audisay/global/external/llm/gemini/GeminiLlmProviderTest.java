@@ -22,6 +22,7 @@ import java.util.Map;
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath;
+import static com.github.tomakehurst.wiremock.client.WireMock.notMatching;
 import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
@@ -57,7 +58,7 @@ class GeminiLlmProviderTest {
     void setUp() {
         server.resetAll();
         GmsProperties properties = new GmsProperties(GmsProperties.Mode.REAL, "test-key", server.baseUrl(), null,
-                Duration.ofSeconds(1), 0,
+                Duration.ofSeconds(1), 0, null,
                 new GmsProperties.Models(MODEL, MODEL, MODEL),
                 new GmsProperties.Timeouts(TIMEOUT, TIMEOUT, TIMEOUT), TIMEOUT, Map.of(), null, null, null);
         provider = new GeminiLlmProvider(properties, JsonMapper.builder().build());
@@ -85,6 +86,26 @@ class GeminiLlmProviderTest {
                 .withRequestBody(matchingJsonPath("$.generationConfig.responseMimeType", equalTo("application/json")))
                 .withRequestBody(matchingJsonPath("$.generationConfig.thinkingConfig.thinkingBudget", equalTo("0")))
                 .withRequestBody(matchingJsonPath("$.systemInstruction.parts[0].text", equalTo("분류하세요"))));
+    }
+
+    @Test
+    void 추론을_끌_수_없는_모델은_thinkingBudget_대신_thinkingLevel을_보낸다() {
+        GeminiLlmProvider minimal = new GeminiLlmProvider(new GmsProperties(GmsProperties.Mode.REAL, "test-key",
+                server.baseUrl(), null, Duration.ofSeconds(1), 0, Map.of(MODEL, "minimal"),
+                new GmsProperties.Models(MODEL, MODEL, MODEL),
+                new GmsProperties.Timeouts(TIMEOUT, TIMEOUT, TIMEOUT), TIMEOUT, Map.of(), null, null, null),
+                JsonMapper.builder().build());
+        server.stubFor(post(urlPathEqualTo(GENERATE)).willReturn(okJson("""
+                {"candidates":[{"content":{"parts":[{"text":"파랑"}]},"finishReason":"STOP"}]}""")));
+
+        try {
+            assertThat(minimal.generate(intent(), MODEL).text()).isEqualTo("파랑");
+        } finally {
+            minimal.shutdown();
+        }
+        server.verify(postRequestedFor(urlPathEqualTo(GENERATE))
+                .withRequestBody(matchingJsonPath("$.generationConfig.thinkingConfig.thinkingLevel", equalTo("minimal")))
+                .withRequestBody(notMatching(".*thinkingBudget.*")));
     }
 
     @Test

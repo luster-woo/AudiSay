@@ -2,6 +2,7 @@ package com.audisay.domain.job.repository;
 
 import com.audisay.domain.job.entity.Job;
 import com.audisay.domain.job.entity.JobStatus;
+import com.audisay.domain.job.entity.Pipeline;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -25,6 +26,9 @@ public interface JobRepository extends JpaRepository<Job, Long> {
               and j.id = (select max(j2.id) from Job j2 where j2.video = j.video)
             """)
     List<Job> findLatestByVideoIds(@Param("videoIds") Collection<Long> videoIds);
+
+    /** 예상 시간 계산용: 같은 경로로 최근 끝난 작업(JobTimeEstimator) */
+    List<Job> findTop10ByPipelineAndStatusOrderByIdDesc(Pipeline pipeline, JobStatus status);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select j from Job j where j.id = :id")

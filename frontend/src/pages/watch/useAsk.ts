@@ -20,6 +20,12 @@ export interface PendingCandidates {
   candidates: SceneCandidate[]
 }
 
+/** "들으시겠어요?"를 물은 답변. 다음 말이 '네'면 같은 답변을 뒤 내용까지 넣어 다시 받는다 */
+export interface FutureOffer {
+  chatLogId: number
+  videoTimeMs: number
+}
+
 export interface AskContext {
   videoId: number
   descriptionId: number
@@ -30,12 +36,72 @@ export interface AskContext {
   holdWhile: (fn: () => Promise<unknown>) => Promise<void>
   seekTo: (ms: number, said?: string) => void
   updateSettings: (patch: Partial<UserSettings>) => Promise<void>
-  runAction: (code: ChatActionCode) => void
+  /** 기능 실행. 이 화면에서 처리하지 못한 기능이면 false */
+  runAction: (code: ChatActionCode) => boolean
+  /** 다른 영상 찾기 (SEARCH_VIDEO) */
+  searchVideos: (query: string) => void
   announce: (text: string, opts?: { politeness: 'assertive' }) => void
   /** 답이 끝난 뒤 포커스를 돌려보낼 입력칸 */
   focusInput: () => void
   /** 질문 기록 탭을 연다 (답·후보가 보이게) */
   showHistory: () => void
+}
+
+/** 설정 이름과 값을 말로 ("말하기 속도 1.4배") */
+const SETTING_LABEL: Partial<Record<keyof UserSettings, string>> = {
+  detailLevel: '해설 상세도',
+  speechRate: '말하기 속도',
+  originalVolume: '영상 소리 크기',
+  seekStepSec: '앞뒤 이동 간격',
+  fontSizeLevel: '글자 크기',
+  highContrast: '고대비 화면',
+  narrationMode: '해설 방식',
+  soundMix: '소리 구성',
+  subtitleReading: '자막 읽기',
+  summaryMode: '재생 전 요약',
+}
+const VALUE_LABEL: Record<string, string> = {
+  AUTO: '자동',
+  WITH_VIDEO: '영상과 함께',
+  PAUSE_AFTER: '멈춘 후 해설',
+  DIALOGUE_ONLY: '대사만',
+  DIALOGUE_AND_NARRATION: '대사와 해설',
+  ALL: '모두 읽기',
+  DIFFERENT_ONLY: '말과 다른 자막만',
+  OFF: '끄기',
+  ASK: '물어보기',
+  ALWAYS: '항상 듣기',
+  NEVER: '듣지 않기',
+}
+export function settingSpoken(key: keyof UserSettings, raw: string) {
+  const name = SETTING_LABEL[key] ?? '설정'
+  const value =
+    key === 'detailLevel'
+      ? ({ '1': '짧은 해설', '2': '기본 해설', '3': '자세한 해설' } as Record<string, string>)[raw]
+      : key === 'speechRate'
+        ? `${raw}배`
+        : key === 'originalVolume'
+          ? `${raw}퍼센트`
+          : key === 'seekStepSec'
+            ? `${raw}초`
+            : key === 'fontSizeLevel'
+              ? `${raw}단계`
+              : key === 'highContrast'
+                ? raw === 'true' || raw === '1'
+                  ? '켜기'
+                  : '끄기'
+                : VALUE_LABEL[raw]
+  return `${name}${value ? ` ${value}` : ''}`
+}
+
+/** "들으시겠어요?" 다음 말이 그러겠다는 뜻인지 / 아니라는 뜻인지. 둘 다 아니면 새 질문으로 처리한다 */
+const YES = /^(네|넵|예|응|웅|그래|좋아|좋아요|들을게|들려|들어|듣고|듣기|계속|ㅇㅇ|ok|오케이)/i
+const NO = /^(아니|아뇨|아냐|싫어|됐어|괜찮아|괜찮습니다|안 들|안들|나중에|ㄴㄴ|no)/i
+export function answerToOffer(utterance: string): 'yes' | 'no' | null {
+  const t = utterance.trim().replace(/^[\s"'“”‘’.,!?~]+/, '')
+  if (NO.test(t)) return 'no'
+  if (YES.test(t)) return 'yes'
+  return null
 }
 
 /** 설정 변경 명령의 값(문자열)을 설정 필드 타입에 맞춘다 */
@@ -82,6 +148,7 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
   const [local, setLocal] = useState<HistoryEntry[]>([])
   const [busy, setBusy] = useState(false)
   const [pending, setPending] = useState<PendingCandidates | null>(null)
+  const [offer, setOffer] = useState<FutureOffer | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const ctxRef = useRef(ctx)
   useEffect(() => {
@@ -89,21 +156,31 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
   })
 
   const push = useCallback((e: HistoryEntry) => setLocal((prev) => [...prev, e]), [])
+  // 같은 chatLogId 에 답이 두 번 올 수 있어("들으시겠어요?" → 네) 항목 key 로 고친다
   const patchAnswer = useCallback(
-    (chatLogId: number, fn: (a: Extract<HistoryEntry, { kind: 'answer' }>) => HistoryEntry) =>
-      setLocal((prev) =>
-        prev.map((e) => (e.kind === 'answer' && e.chatLogId === chatLogId ? fn(e) : e)),
-      ),
+    (key: string, fn: (a: Extract<HistoryEntry, { kind: 'answer' }>) => HistoryEntry) =>
+      setLocal((prev) => prev.map((e) => (e.kind === 'answer' && e.key === key ? fn(e) : e))),
     [],
   )
 
-  /** QUESTION·SCENE_NOW: 영상을 멈추고 답을 문장 단위로 듣는다 (ASK-01) */
+  /**
+   * QUESTION·SCENE_NOW·RECAP: 영상을 멈추고 답을 문장 단위로 듣는다 (ASK-01).
+   * includeFuture: "들으시겠어요?"에 '네'라고 해서 같은 질문을 뒤 내용까지 넣어 다시 받을 때
+   */
   const listenAnswer = useCallback(
-    async (chatLogId: number, utterance: string, videoTimeMs: number) => {
+    async (chatLogId: number, utterance: string, videoTimeMs: number, includeFuture = false) => {
       const c = ctxRef.current
-      push({ key: `me-${chatLogId}`, kind: 'me', chatLogId, videoTimeMs, text: utterance })
+      const suffix = includeFuture ? '-future' : ''
+      const ansKey = `ans-${chatLogId}${suffix}`
       push({
-        key: `ans-${chatLogId}`,
+        key: `me-${chatLogId}${suffix}`,
+        kind: 'me',
+        chatLogId,
+        videoTimeMs,
+        text: utterance,
+      })
+      push({
+        key: ansKey,
         kind: 'answer',
         chatLogId,
         videoTimeMs,
@@ -116,27 +193,29 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
       abortRef.current = controller
       let answerText = ''
       let failed: string | null = null
+      let futureAvailable = false
       await c.holdWhile(async () => {
         let chain: Promise<unknown> = Promise.resolve()
         await new Promise<void>((resolve) => {
           // 끊으면(Esc) subscribeSse 는 아무것도 알리지 않으므로 여기서 직접 끝낸다
           controller.signal.addEventListener('abort', () => resolve())
-          void subscribeSse(chatApi.streamPath(chatLogId), {
+          void subscribeSse(chatApi.streamPath(chatLogId, includeFuture), {
             signal: controller.signal,
             onMessage: ({ event, data }) => {
               const msg = parseStream(event, data)
               if (!msg) return
               if (msg.event === 'delta') {
                 answerText += msg.data.text
-                patchAnswer(chatLogId, (a) => ({ ...a, text: answerText }))
+                patchAnswer(ansKey, (a) => ({ ...a, text: answerText }))
               } else if (msg.event === 'sentence') {
                 const s = msg.data
-                patchAnswer(chatLogId, (a) => ({ ...a, sentences: [...a.sentences, s] }))
+                patchAnswer(ansKey, (a) => ({ ...a, sentences: [...a.sentences, s] }))
                 chain = chain.then(() =>
                   c.narrator.say({ text: s.text, audioUrl: s.audioUrl, rate: c.speechRate }),
                 )
               } else if (msg.event === 'done') {
                 answerText = msg.data.answerText || answerText
+                futureAvailable = msg.data.futureAvailable === true
                 resolve()
               } else {
                 failed = msg.data.message || '답을 만들지 못했어요.'
@@ -153,13 +232,18 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
       })
       abortRef.current = null
       const aborted = controller.signal.aborted
-      patchAnswer(chatLogId, (a) => ({
+      patchAnswer(ansKey, (a) => ({
         ...a,
         text: answerText || (failed ? `(${failed})` : a.text),
         done: true,
       }))
+      // 답변 끝의 "들으시겠어요?"에 대한 대답을 기다린다 (다음 말이 '네'면 다시 받는다)
+      const offering = !aborted && !failed && futureAvailable && !includeFuture
+      setOffer(offering ? { chatLogId, videoTimeMs } : null)
       if (aborted) c.announce('답변을 멈췄어요. 입력칸에 있어요.')
       else if (failed) c.announce(failed, { politeness: 'assertive' })
+      else if (offering)
+        c.announce(`${answerText} 들으려면 '네', 아니면 '아니요'라고 말하거나 적어 주세요.`)
       else c.announce(`답변이 끝났어요. ${answerText}`)
       c.focusInput()
     },
@@ -183,6 +267,7 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
       switch (res.intent) {
         case 'QUESTION':
         case 'SCENE_NOW':
+        case 'RECAP':
           await listenAnswer(chatLogId, utterance, videoTimeMs)
           return
         case 'SEEK_TIME':
@@ -210,19 +295,51 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
           return
         }
         case 'SETTING': {
-          const patch = coerceSetting(res.result.settingKey, res.result.settingValue)
-          command(null)
+          const { settingKey, settingValue, message } = res.result
+          const patch = coerceSetting(settingKey, settingValue)
           if (!patch) {
+            push({
+              key: `cmd-${chatLogId}`,
+              kind: 'command',
+              chatLogId,
+              videoTimeMs,
+              text: `"${utterance}" → 바꿀 수 없는 설정이에요`,
+              targetMs: null,
+            })
             c.announce('바꿀 수 없는 설정이에요.')
             return
           }
+          // 범위 끝이면 서버가 준 말("이미 가장 빠른 속도예요.")을 그대로 읽는다
+          push({
+            key: `cmd-${chatLogId}`,
+            kind: 'command',
+            chatLogId,
+            videoTimeMs,
+            text: `"${utterance}" → ${message || `${settingSpoken(settingKey, settingValue)}로 바꿨어요`}`,
+            targetMs: null,
+          })
           await c.updateSettings(patch)
-          c.announce(`설정을 바꿨어요. ${res.result.settingKey} ${res.result.settingValue}.`)
+          c.announce(message || `${settingSpoken(settingKey, settingValue)}로 바꿨어요.`)
           return
         }
-        case 'ACTION':
+        case 'ACTION': {
+          const done = c.runAction(res.result.actionCode)
+          push({
+            key: `cmd-${chatLogId}`,
+            kind: 'command',
+            chatLogId,
+            videoTimeMs,
+            text: done
+              ? commandText('ACTION', utterance, null)
+              : `"${utterance}" → 이 화면에서는 할 수 없는 기능이에요`,
+            targetMs: null,
+          })
+          if (!done) c.announce('이 화면에서는 할 수 없는 기능이에요.')
+          return
+        }
+        case 'SEARCH_VIDEO':
           command(null)
-          c.runAction(res.result.actionCode)
+          c.searchVideos(res.result.query)
           return
         default:
           command(null)
@@ -236,8 +353,33 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
     async (utterance: string, inputMode: 'TEXT' | 'VOICE') => {
       const c = ctxRef.current
       if (busy) return
+      // 바로 앞 답변이 "들으시겠어요?"를 물었으면 이 말이 그 대답인지 먼저 본다
+      const asked = offer
+      setOffer(null)
+      const reply = asked ? answerToOffer(utterance) : null
+      if (asked && reply === 'no') {
+        push({
+          key: `cmd-${asked.chatLogId}-future`,
+          kind: 'command',
+          chatLogId: asked.chatLogId,
+          videoTimeMs: asked.videoTimeMs,
+          text: `"${utterance}" → 뒤 내용은 듣지 않았어요`,
+          targetMs: null,
+        })
+        c.announce('알겠어요. 입력칸에 있어요.')
+        c.focusInput()
+        return
+      }
       setBusy(true)
       const videoTimeMs = c.getCurrentMs()
+      if (asked && reply === 'yes') {
+        try {
+          await listenAnswer(asked.chatLogId, utterance, asked.videoTimeMs, true)
+        } finally {
+          setBusy(false)
+        }
+        return
+      }
       try {
         const res = await chatApi.send({
           videoId: c.videoId,
@@ -254,7 +396,7 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
         setBusy(false)
       }
     },
-    [busy, handle],
+    [busy, offer, handle, listenAnswer, push],
   )
 
   /** 후보 중 하나로 이동 */
@@ -321,6 +463,7 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
     entries: [...initial, ...local],
     busy,
     pending,
+    offer,
     send,
     chooseCandidate,
     dismissCandidates,

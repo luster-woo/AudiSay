@@ -19,13 +19,20 @@ import type { PlayerControls, PlayerState } from '@/features/player/usePlayerSou
 import { renderRoute } from '@/test/renderWithProviders'
 
 /* ── 소리·영상은 jsdom 에 없으므로 흉내 낸다 ── */
-const say = vi.fn(async () => true)
+let lastSaid: unknown = null
+const say = vi.fn(async (item: unknown) => {
+  lastSaid = item
+  return true
+})
 const stopNarrator = vi.fn()
 vi.mock('@/features/player/Narrator', () => ({
   Narrator: class {
     busy = false
     say = say
     stop = stopNarrator
+    get last() {
+      return lastSaid
+    }
   },
   estimateSpeechMs: (t: string) => t.length * 180,
 }))
@@ -83,7 +90,11 @@ vi.mock('@/api/videos', () => ({
   },
 }))
 vi.mock('@/api/chat', () => ({
-  chatApi: { send: vi.fn(), streamPath: (id: number) => `/chat/messages/${id}/stream` },
+  chatApi: {
+    send: vi.fn(),
+    streamPath: (id: number, includeFuture = false) =>
+      `/chat/messages/${id}/stream${includeFuture ? '?includeFuture=true' : ''}`,
+  },
 }))
 vi.mock('@/api/reports', () => ({ reportsApi: { create: vi.fn() } }))
 vi.mock('@/api/favorites', () => ({ favoritesApi: { add: vi.fn(), remove: vi.fn() } }))
@@ -176,7 +187,6 @@ function mockAll(settings: Partial<UserSettings> = {}, v: Partial<VideoDetail> =
   vi.mocked(videosApi.summary).mockResolvedValue({
     descriptionId: 20,
     summary: { text: '그래프 수업 요약이에요.', audioUrl: null, durationMs: 3000 },
-    recommendSummary: true,
   })
   vi.mocked(videosApi.chatHistory).mockResolvedValue({
     messages: [],
@@ -211,7 +221,7 @@ test('요약 묻기: 창이 열리고 요약 듣고 시작에 포커스, 바로 
   const { container } = renderRoute('/watch/15')
   const dialog = await screen.findByRole('dialog', { name: '30초 요약을 먼저 들을까요?' })
   expect(
-    within(dialog).getByText('이 영상은 대사가 많아 요약을 먼저 듣는 걸 권해요.'),
+    within(dialog).getByText('요약을 들으면 무슨 내용인지 미리 알 수 있어요.'),
   ).toBeInTheDocument()
   expect(within(dialog).getByText('그래프 수업 요약이에요.')).toBeInTheDocument()
   await waitFor(() =>
@@ -521,4 +531,187 @@ test('해설이 아직 없고 만드는 중이면 해설 만들기 화면으로 
   mockAll({}, { descriptionId: null, activeJobId: 51 })
   const { router } = renderRoute('/watch/15')
   await waitFor(() => expect(router.state.location.pathname).toBe('/jobs/51'))
+})
+
+/* ── 챗봇: 지금까지 줄거리·"들으시겠어요?"·새 명령·설정 범위 끝 ── */
+
+/** 입력칸에 적어 보낸다 */
+async function ask(user: ReturnType<typeof userEvent.setup>, text: string) {
+  await user.type(screen.getByRole('textbox', { name: '질문하거나 명령하기' }), `${text}{Enter}`)
+}
+/** 답변 스트림을 문장 하나로 끝낸다 */
+function answer(text: string, futureAvailable = false) {
+  act(() => sse().onMessage({ event: 'sentence', data: JSON.stringify({ text, audioUrl: null }) }))
+  act(() =>
+    sse().onMessage({
+      event: 'done',
+      data: JSON.stringify({
+        answerText: text,
+        answerSource: 'STORED',
+        firstAudioMs: 1,
+        totalLatencyMs: 2,
+        futureAvailable,
+      }),
+    }),
+  )
+  act(() => sse().onClose('done'))
+}
+
+test('지금까지 줄거리(RECAP)는 질문처럼 답변을 받아 읽는다', async () => {
+  const user = userEvent.setup()
+  vi.mocked(chatApi.send).mockResolvedValue({
+    chatLogId: 90,
+    inputMode: 'TEXT',
+    utterance: '지금까지 줄거리',
+    intent: 'RECAP',
+    result: { answerStreamUrl: '/api/v1/chat/messages/90/stream' },
+  })
+  renderRoute('/watch/15')
+  await screen.findByRole('button', { name: '재생' })
+  await ask(user, '지금까지 줄거리')
+  await waitFor(() =>
+    expect(subscribeSse).toHaveBeenCalledWith('/chat/messages/90/stream', expect.anything()),
+  )
+  answer('막대그래프로 두 반을 비교했어요.')
+  await waitFor(() =>
+    expect(band()).toHaveTextContent('답변이 끝났어요. 막대그래프로 두 반을 비교했어요.'),
+  )
+  expect(band()).not.toHaveTextContent('알아듣지 못했어요')
+})
+
+test('"들으시겠어요?" 뒤에 네라고 하면 같은 질문을 뒤 내용까지 넣어 다시 받는다', async () => {
+  const user = userEvent.setup()
+  vi.mocked(chatApi.send).mockResolvedValue({
+    chatLogId: 91,
+    inputMode: 'TEXT',
+    utterance: '범인이 누구야?',
+    intent: 'QUESTION',
+    result: { answerStreamUrl: '/api/v1/chat/messages/91/stream' },
+  })
+  renderRoute('/watch/15')
+  await screen.findByRole('button', { name: '재생' })
+  await ask(user, '범인이 누구야?')
+  await waitFor(() => expect(subscribeSse).toHaveBeenCalledTimes(1))
+  answer('지금까지는 나오지 않았어요. 뒤에 나오는데, 들으시겠어요?', true)
+  await waitFor(() => expect(band()).toHaveTextContent("들으려면 '네', 아니면 '아니요'"))
+
+  await ask(user, '네 들을게요')
+  await waitFor(() =>
+    expect(subscribeSse).toHaveBeenLastCalledWith(
+      '/chat/messages/91/stream?includeFuture=true',
+      expect.anything(),
+    ),
+  )
+  expect(chatApi.send).toHaveBeenCalledTimes(1) // 새 질문으로 보내지 않는다
+  answer('범인은 B반 선생님이에요.')
+  await waitFor(() => expect(band()).toHaveTextContent('답변이 끝났어요. 범인은 B반 선생님이에요.'))
+})
+
+test('"들으시겠어요?" 뒤에 아니요라고 하면 다시 받지 않고, 다른 말이면 새 질문으로 보낸다', async () => {
+  const user = userEvent.setup()
+  vi.mocked(chatApi.send).mockResolvedValue({
+    chatLogId: 92,
+    inputMode: 'TEXT',
+    utterance: '범인이 누구야?',
+    intent: 'QUESTION',
+    result: { answerStreamUrl: '/api/v1/chat/messages/92/stream' },
+  })
+  renderRoute('/watch/15')
+  await screen.findByRole('button', { name: '재생' })
+  await ask(user, '범인이 누구야?')
+  await waitFor(() => expect(subscribeSse).toHaveBeenCalledTimes(1))
+  answer('뒤에 나오는데, 들으시겠어요?', true)
+  await waitFor(() => expect(band()).toHaveTextContent("'아니요'"))
+
+  await ask(user, '아니요')
+  await waitFor(() => expect(band()).toHaveTextContent('알겠어요.'))
+  expect(chatApi.send).toHaveBeenCalledTimes(1)
+  expect(subscribeSse).toHaveBeenCalledTimes(1)
+
+  // 한 번 답했으면 그 뒤의 '네'는 새 질문이다
+  await ask(user, '네')
+  await waitFor(() => expect(chatApi.send).toHaveBeenCalledTimes(2))
+})
+
+test('새 명령: 방금 거 다시 듣기 / 이동 되돌리기 / 읽기 멈추기', async () => {
+  const user = userEvent.setup()
+  const action = (chatLogId: number, actionCode: string) => ({
+    chatLogId,
+    inputMode: 'TEXT' as const,
+    utterance: actionCode,
+    intent: 'ACTION' as const,
+    result: { actionCode: actionCode as never },
+  })
+  renderRoute('/watch/15')
+  await screen.findByRole('button', { name: '재생' })
+
+  // 이동한 적이 없으면 되돌릴 게 없다고 알린다
+  vi.mocked(chatApi.send).mockResolvedValueOnce(action(93, 'UNDO_SEEK'))
+  await ask(user, '되돌려')
+  await waitFor(() => expect(band()).toHaveTextContent('되돌릴 이동이 없어요.'))
+
+  // 목차로 2분 30초에 갔다가 되돌리면 이동 전(0초)으로
+  act(() => setPlayerState?.({ currentMs: T(20) }))
+  await user.click(
+    screen.getByRole('button', { name: /3번, 선그래프로 보기|2번, 막대그래프 비교/ }),
+  )
+  vi.mocked(chatApi.send).mockResolvedValueOnce(action(94, 'UNDO_SEEK'))
+  await ask(user, '아까 거기로 돌아가')
+  await waitFor(() => expect(controls.seek).toHaveBeenLastCalledWith(T(20)))
+  await waitFor(() => expect(band()).toHaveTextContent('이동하기 전 위치, 20초로 돌아왔어요.'))
+
+  // 방금 읽은 소리를 다시
+  say.mockClear()
+  lastSaid = { text: '세 개의 막대가 있는 그래프예요.' }
+  vi.mocked(chatApi.send).mockResolvedValueOnce(action(95, 'REPEAT_LAST'))
+  await ask(user, '방금 거 다시')
+  await waitFor(() =>
+    expect(say).toHaveBeenCalledWith(
+      expect.objectContaining({ text: '세 개의 막대가 있는 그래프예요.' }),
+    ),
+  )
+
+  // 읽기만 멈춘다
+  stopNarrator.mockClear()
+  vi.mocked(chatApi.send).mockResolvedValueOnce(action(96, 'STOP_SPEAKING'))
+  await ask(user, '그만 읽어')
+  await waitFor(() => expect(band()).toHaveTextContent('읽던 소리를 멈췄어요.'))
+  expect(stopNarrator).toHaveBeenCalled()
+
+  // 이 화면에서 못 하는 기능은 '실행했어요'라고 남기지 않는다
+  vi.mocked(chatApi.send).mockResolvedValueOnce(action(97, 'SOMETHING_NEW'))
+  await ask(user, '새 기능')
+  await waitFor(() => expect(band()).toHaveTextContent('이 화면에서는 할 수 없는 기능이에요.'))
+  await user.click(screen.getByRole('tab', { name: '질문 기록' }))
+  expect(
+    await screen.findByText('"SOMETHING_NEW" → 이 화면에서는 할 수 없는 기능이에요'),
+  ).toBeInTheDocument()
+  expect(screen.queryByText('"SOMETHING_NEW" → 실행했어요')).not.toBeInTheDocument()
+})
+
+test('설정이 범위 끝이면 서버가 준 말을 읽고, 아니면 바꾼 설정을 말로 알린다', async () => {
+  const user = userEvent.setup()
+  renderRoute('/watch/15')
+  await screen.findByRole('button', { name: '재생' })
+
+  vi.mocked(chatApi.send).mockResolvedValueOnce({
+    chatLogId: 98,
+    inputMode: 'TEXT',
+    utterance: '더 빠르게',
+    intent: 'SETTING',
+    result: { settingKey: 'speechRate', settingValue: '2.5', message: '이미 가장 빠른 속도예요.' },
+  })
+  await ask(user, '더 빠르게')
+  await waitFor(() => expect(band()).toHaveTextContent('이미 가장 빠른 속도예요.'))
+  expect(band()).not.toHaveTextContent('설정을 바꿨어요')
+
+  vi.mocked(chatApi.send).mockResolvedValueOnce({
+    chatLogId: 99,
+    inputMode: 'TEXT',
+    utterance: '조금 느리게',
+    intent: 'SETTING',
+    result: { settingKey: 'speechRate', settingValue: '0.8', message: null },
+  })
+  await ask(user, '조금 느리게')
+  await waitFor(() => expect(band()).toHaveTextContent('말하기 속도 0.8배로 바꿨어요.'))
 })

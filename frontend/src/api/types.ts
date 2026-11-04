@@ -546,8 +546,6 @@ export interface Chapters {
 export interface VideoSummary30 {
   descriptionId: number
   summary: { text: string; audioUrl: string | null; durationMs: number | null }
-  /** 대사가 많아 요약을 먼저 듣는 게 좋은 영상 */
-  recommendSummary: boolean
 }
 
 /** GET /videos/{id}/scenes/at 의 data */
@@ -561,8 +559,17 @@ export interface SceneAt {
 
 /* ───────────── 챗봇 ───────────── */
 
+/** BE ChatIntent 와 같다. RECAP = 지금까지 줄거리, SEARCH_VIDEO = 다른 영상 찾기 */
 export type ChatIntent =
-  'QUESTION' | 'SCENE_NOW' | 'SEEK_TIME' | 'SEEK_SCENE' | 'SETTING' | 'ACTION' | 'UNKNOWN'
+  | 'QUESTION'
+  | 'SCENE_NOW'
+  | 'SEEK_TIME'
+  | 'SEEK_SCENE'
+  | 'SETTING'
+  | 'ACTION'
+  | 'SEARCH_VIDEO'
+  | 'RECAP'
+  | 'UNKNOWN'
 
 export type ChatActionCode =
   | 'PLAY'
@@ -580,6 +587,12 @@ export type ChatActionCode =
   | 'FAVORITE_REMOVE'
   | 'REPORT'
   | 'REPLAY_TUTORIAL'
+  /** 방금 읽은 해설·답변 다시 */
+  | 'REPEAT_LAST'
+  /** 이동하기 전 위치로 되돌리기 */
+  | 'UNDO_SEEK'
+  /** 읽는 소리만 멈춤 (영상은 그대로) */
+  | 'STOP_SPEAKING'
 
 export interface SceneCandidate {
   chapterId: number
@@ -603,14 +616,23 @@ export type ChatMessageResult = {
   inputMode: 'TEXT' | 'VOICE'
   utterance: string
 } & (
-  | { intent: 'QUESTION' | 'SCENE_NOW'; result: { answerStreamUrl: string } }
+  | { intent: 'QUESTION' | 'SCENE_NOW' | 'RECAP'; result: { answerStreamUrl: string } }
   | { intent: 'SEEK_TIME'; result: { targetMs: number } }
   | {
       intent: 'SEEK_SCENE'
       result: { targetMs: number | null; chapterId: number | null; candidates: SceneCandidate[] }
     }
-  | { intent: 'SETTING'; result: { settingKey: keyof UserSettings; settingValue: string } }
+  | {
+      intent: 'SETTING'
+      result: {
+        settingKey: keyof UserSettings
+        settingValue: string
+        /** 범위 끝에 닿았을 때 읽어 줄 말 ("가장 빠른 속도예요.", 이미 끝이면 "이미 가장 빠른 속도예요.") */
+        message?: string | null
+      }
+    }
   | { intent: 'ACTION'; result: { actionCode: ChatActionCode } }
+  | { intent: 'SEARCH_VIDEO'; result: { query: string } }
   | { intent: 'UNKNOWN'; result: { message: string } }
 )
 
@@ -625,6 +647,11 @@ export type ChatStreamEvent =
         answerSource: 'STORED' | 'UNANSWERABLE' | string
         firstAudioMs: number | null
         totalLatencyMs: number | null
+        /**
+         * 질문한 시각까지 자료로는 답하지 못했지만 그 뒤 내용에 답이 있다. 답변 끝에 "들으시겠어요?"를 묻는다.
+         * 사용자가 그러겠다고 하면 같은 chatLogId 를 includeFuture=true 로 한 번 더 구독한다.
+         */
+        futureAvailable?: boolean
       }
     }
   | { event: 'error'; data: { errorCode: string; message: string } }

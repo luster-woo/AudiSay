@@ -1,8 +1,9 @@
 import { cn } from './cn'
 
-export type ButtonVariant = 'primary' | 'secondary' | 'accent' | 'danger' | 'ghost' | 'on' | 'muted'
-/** sm 관리자 화면 (40px) · md 기본 · lg 폼 제출 · xl 홈·영상 화면 (22px) · 2xl 업로드·알림창 (26px) · hero 단계 진행 (36px) */
-export type ButtonSize = 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'hero'
+export type ButtonVariant =
+  'primary' | 'secondary' | 'accent' | 'danger' | 'ghost' | 'on' | 'starred' | 'muted'
+/** sm 관리자 화면 (40px) · panel 영상 화면 오른쪽 패널 (탭 버튼과 같은 18px) · md 기본 · lg 폼 제출 · xl 홈·영상 화면 (22px) · 2xl 업로드·알림창 (26px) · hero 단계 진행 (36px) */
+export type ButtonSize = 'sm' | 'panel' | 'md' | 'lg' | 'xl' | '2xl' | 'hero'
 
 const VARIANT: Record<ButtonVariant, string> = {
   // 남색 버튼은 전역 포커스 배경(연노랑)이 글자를 가리므로 배경을 유지한다
@@ -13,11 +14,14 @@ const VARIANT: Record<ButtonVariant, string> = {
   ghost: 'border-transparent bg-transparent text-navy underline underline-offset-4',
   // 켜진 상태(즐겨찾기 해제). 색만이 아니라 이름도 바뀐다 (원칙 4·10장)
   on: 'border-navy bg-yellow-soft text-navy',
+  // 영상 화면 즐겨찾기 해제 (켜진 상태). 이름도 '즐겨찾기 해제'로 바뀐다
+  starred: 'border-navy bg-[#ffc93c] text-navy focus-visible:bg-[#ffc93c]',
   // 누를 수 없는 안내용 ('만들 수 없음')
   muted: 'border-line bg-cream text-ink',
 }
 const SIZE: Record<ButtonSize, string> = {
   sm: 'min-h-[2.6rem] px-4 text-[0.9333rem]',
+  panel: 'min-h-touch px-2 text-lg',
   md: 'min-h-touch px-5 text-base',
   lg: 'min-h-14 px-8 text-lg',
   xl: 'min-h-touch px-6 text-[1.375rem]',

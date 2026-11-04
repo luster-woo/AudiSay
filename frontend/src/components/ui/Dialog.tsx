@@ -12,6 +12,10 @@ export interface DialogProps {
   alert?: boolean
   /** 열릴 때 포커스를 줄 요소. 없으면 브라우저 기본(첫 번째 포커스 가능한 요소) */
   initialFocusRef?: RefObject<HTMLElement | null>
+  /** 열릴 때 제목(h2)에 포커스. 긴 글 창처럼 처음부터 읽어 내려가야 할 때 */
+  focusTitle?: boolean
+  /** 긴 글 창: 창 전체가 스크롤되고(안쪽 스크롤 상자 없음) 제목 줄과 버튼 줄은 위·아래에 붙어 있다 */
+  longForm?: boolean
   hideCloseButton?: boolean
   /** 제목 위 작은 머리말 ('● 업로드 불가'). 제목과 함께 창 이름으로 읽히지 않게 따로 둔다 */
   kicker?: ReactNode
@@ -34,12 +38,15 @@ export function Dialog({
   footer,
   alert = false,
   initialFocusRef,
+  focusTitle = false,
+  longForm = false,
   hideCloseButton = false,
   kicker,
   titleClassName,
   className,
 }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null)
+  const titleRef = useRef<HTMLHeadingElement>(null)
   const returnFocusRef = useRef<HTMLElement | null>(null)
   const titleId = useId()
   const descId = useId()
@@ -50,11 +57,12 @@ export function Dialog({
     if (open && !el.open) {
       returnFocusRef.current = document.activeElement as HTMLElement | null
       el.showModal()
-      initialFocusRef?.current?.focus()
+      if (focusTitle) titleRef.current?.focus()
+      else initialFocusRef?.current?.focus()
     } else if (!open && el.open) {
       el.close()
     }
-  }, [open, initialFocusRef])
+  }, [open, initialFocusRef, focusTitle])
 
   // 닫히면 열기 전에 포커스가 있던 곳(보통 이 창을 연 버튼)으로 돌려보낸다
   useEffect(() => {
@@ -75,15 +83,26 @@ export function Dialog({
         onClose()
       }}
       className={cn(
-        'm-auto max-h-[90svh] w-[min(48rem,calc(100%-2rem))] rounded-lg bg-paper p-8 text-ink',
-        'backdrop:bg-ink/60',
+        'm-auto max-h-[90svh] w-[min(48rem,calc(100%-2rem))] rounded-lg bg-paper text-ink',
+        'backdrop:bg-ink/60 hc:backdrop:bg-black/80',
+        longForm ? 'overflow-y-auto p-0' : 'p-8',
         className,
       )}
     >
-      <div className="flex items-start justify-between gap-6">
+      <div
+        className={cn(
+          'flex items-start justify-between gap-6',
+          longForm && 'sticky top-0 z-10 border-b-2 border-line bg-paper px-8 pt-6 pb-5',
+        )}
+      >
         <div>
           {kicker && <div className="mb-3">{kicker}</div>}
-          <h2 id={titleId} className={cn('text-2xl font-bold', titleClassName)}>
+          <h2
+            id={titleId}
+            ref={titleRef}
+            tabIndex={focusTitle ? -1 : undefined}
+            className={cn('text-2xl font-bold outline-none', titleClassName)}
+          >
             {title}
           </h2>
           {description && (
@@ -102,8 +121,17 @@ export function Dialog({
           </button>
         )}
       </div>
-      {children && <div className="mt-6">{children}</div>}
-      {footer && <div className="mt-8 flex flex-wrap justify-end gap-3">{footer}</div>}
+      {children && <div className={longForm ? 'px-8 py-6' : 'mt-6'}>{children}</div>}
+      {footer && (
+        <div
+          className={cn(
+            'flex flex-wrap justify-end gap-3',
+            longForm ? 'sticky bottom-0 border-t-2 border-line bg-paper px-8 py-5' : 'mt-8',
+          )}
+        >
+          {footer}
+        </div>
+      )}
     </dialog>
   )
 }

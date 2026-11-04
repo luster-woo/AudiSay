@@ -4,15 +4,14 @@ import { Button } from '@/components/ui/Button'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { ChoiceGroup } from '@/components/ui/ChoiceGroup'
 import { Dialog } from '@/components/ui/Dialog'
-import { Select } from '@/components/ui/Select'
 import { Stepper } from '@/components/ui/Stepper'
 import { useAnnouncer } from '@/features/announcer/context'
 import { useSettings } from '@/features/settings/context'
 
 const DETAIL: { value: UserSettings['detailLevel']; label: string }[] = [
-  { value: 1, label: '1 짧게' },
-  { value: 2, label: '2 기본' },
-  { value: 3, label: '3 자세히' },
+  { value: 1, label: '1 짧은 해설' },
+  { value: 2, label: '2 기본 해설' },
+  { value: 3, label: '3 자세한 해설' },
 ]
 const MODE: { value: UserSettings['narrationMode']; label: string }[] = [
   { value: 'AUTO', label: '자동' },
@@ -58,7 +57,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 export interface SettingsDialogProps {
   open: boolean
   onClose: () => void
-  /** '미리 듣기' — 지금 속도·목소리로 한 문장 읽기 */
+  /** '미리 듣기' — 지금 속도로 한 문장 읽기 */
   onPreview: () => void
 }
 
@@ -104,22 +103,16 @@ export function SettingsDialog({ open, onClose, onPreview }: SettingsDialogProps
             onChange={(v) => set('narrationMode', v, `해설 방식 ${labelOf(MODE, v)}.`)}
             className={row}
           />
-          <Stepper
-            label="말하기 속도"
-            value={settings.speechRate}
-            min={0.5}
-            max={2.5}
-            step={0.1}
-            format={(v) => `${v.toFixed(1)}배`}
-            onChange={(v) => void update({ speechRate: v }).catch(() => {})}
-            className={row}
-          />
+          {/* 해설 목소리 줄은 뺐다 (고를 목소리가 하나뿐). 미리 듣기는 속도를 바로 들어 보도록 속도 줄로 옮겼다 */}
           <div className={row}>
-            <Select
-              label="해설 목소리"
-              options={[{ value: '', label: '기본 목소리' }]}
-              value={settings.voiceCode ?? ''}
-              onChange={(e) => set('voiceCode', e.target.value || null, '해설 목소리를 바꿨어요.')}
+            <Stepper
+              label="말하기 속도"
+              value={settings.speechRate}
+              min={0.5}
+              max={2.5}
+              step={0.1}
+              format={(v) => `${v.toFixed(1)}배`}
+              onChange={(v) => void update({ speechRate: v }).catch(() => {})}
               className="flex-1 justify-between"
             />
             <Button variant="ghost" onClick={onPreview}>

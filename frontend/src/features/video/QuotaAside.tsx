@@ -51,7 +51,8 @@ export function QuotaAside({
       {data ? (
         <dl className="mt-4">
           <Row label="유튜브 해설" item={data.youtube} />
-          <Row label="영상 올리기" item={data.upload} />
+          {/* 업로드 영상의 해설 요청 횟수 (업로드를 마쳐 해설 만들기가 시작될 때 차감) */}
+          <Row label="내 영상 해설" item={data.upload} />
         </dl>
       ) : (
         <div className="mt-4 space-y-3">

@@ -1,71 +1,8 @@
-import { Button } from '@/components/ui/Button'
-import { cn } from '@/components/ui/cn'
+import { PageNumbers, type PageNumbersProps } from '@/components/ui/PageNumbers'
 
-/** 한 번에 보이는 쪽 번호 개수 */
-const BLOCK = 5
+export type AdminPaginationProps = Omit<PageNumbersProps, 'size'>
 
-export interface AdminPaginationProps {
-  /** 지금 쪽 (0부터) */
-  page: number
-  /** 전체 쪽 수 */
-  totalPages: number
-  onChange: (page: number) => void
-  className?: string
-}
-
-/**
- * 관리자 표 아래 가운데 '이전 1 2 3 4 5 다음'.
- * 번호는 5개씩 묶어서 보인다: 1~5쪽 → 1 2 3 4 5, 6쪽으로 넘어가면 6 (6~10 묶음, 있는 쪽까지만).
- */
-export function AdminPagination({ page, totalPages, onChange, className }: AdminPaginationProps) {
-  const pages = Math.max(1, totalPages)
-  const start = Math.floor(page / BLOCK) * BLOCK
-  const numbers = Array.from({ length: Math.min(BLOCK, pages - start) }, (_, i) => start + i)
-
-  return (
-    <nav
-      aria-label="페이지"
-      className={cn('flex items-center justify-center gap-[0.6667rem]', className)}
-    >
-      <Button
-        variant="secondary"
-        size="sm"
-        aria-label="이전 페이지"
-        disabled={page <= 0}
-        onClick={() => onChange(page - 1)}
-      >
-        이전
-      </Button>
-      <ul className="flex items-center gap-[0.2667rem]">
-        {numbers.map((n) => {
-          const current = n === page
-          return (
-            <li key={n}>
-              <button
-                type="button"
-                aria-label={`${n + 1}쪽`}
-                aria-current={current ? 'page' : undefined}
-                onClick={() => !current && onChange(n)}
-                className={cn(
-                  'flex size-[2.2667rem] min-h-0 items-center justify-center rounded-sm text-[0.9333rem]',
-                  current ? 'bg-navy font-bold text-paper' : 'text-ink hover:bg-cream',
-                )}
-              >
-                {n + 1}
-              </button>
-            </li>
-          )
-        })}
-      </ul>
-      <Button
-        variant="secondary"
-        size="sm"
-        aria-label="다음 페이지"
-        disabled={page >= pages - 1}
-        onClick={() => onChange(page + 1)}
-      >
-        다음
-      </Button>
-    </nav>
-  )
+/** 관리자 표 아래 가운데 쪽 넘김 (작은 크기). 홈 영상 목록과 같은 부품을 쓴다 */
+export function AdminPagination(props: AdminPaginationProps) {
+  return <PageNumbers {...props} size="sm" />
 }

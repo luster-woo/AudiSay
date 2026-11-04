@@ -68,7 +68,7 @@ beforeEach(() => {
 async function goToVisibility(user: ReturnType<typeof userEvent.setup>) {
   const input = await screen.findByLabelText('파일 고르기')
   await user.upload(input, videoFile())
-  await user.click(await screen.findByRole('button', { name: '다음' }))
+  await user.click(await screen.findByRole('button', { name: '다음 단계' }))
   await screen.findByRole('heading', { name: '누구에게 보일까요?' })
 }
 
@@ -83,7 +83,7 @@ test('1단계: 파일 고르기에 포커스, 남은 횟수와 조건을 알려 
   const input = await screen.findByLabelText('파일 고르기')
   await waitFor(() => expect(input).toHaveFocus())
   expect(input).toHaveAccessibleDescription('MP4 · MOV · WebM 파일 · 60분 · 2MB 이하')
-  expect(screen.getByText('오늘 3개 더 올릴 수 있어요.')).toBeInTheDocument()
+  expect(screen.getByText('오늘 내 영상 해설을 3번 더 요청할 수 있어요.')).toBeInTheDocument()
   expect(screen.getByRole('link', { name: '영상 등록' })).toHaveAttribute('aria-current', 'page')
   expect(await axe(container)).toHaveNoViolations()
 })
@@ -108,7 +108,7 @@ test('제목은 파일 이름으로 채워지고, 권리 동의 없이 올리면
   expect(title).toHaveValue('학습영상_3주차')
   expect(screen.getByText(/학습영상_3주차\.mp4 · 4분 10초 · 1MB/)).toBeInTheDocument()
 
-  await user.click(screen.getByRole('button', { name: '다음' }))
+  await user.click(screen.getByRole('button', { name: '다음 단계' }))
   const privateRadio = await screen.findByRole('radio', { name: /비공개/ })
   await waitFor(() => expect(privateRadio).toHaveFocus())
   expect(privateRadio).toBeChecked()
@@ -120,7 +120,49 @@ test('제목은 파일 이름으로 채워지고, 권리 동의 없이 올리면
   expect(uploadsApi.start).not.toHaveBeenCalled()
 })
 
-test('다 올리면 완료 창이 뜨고, 해설 만들기 보기를 누르면 해설 만들기 화면으로 간다', async () => {
+test('제목 단계에서 수정하기를 누르면 바로 파일 창이 열리고, 새 파일 이름으로 제목을 다시 채운다', async () => {
+  const user = userEvent.setup()
+  renderRoute('/register')
+  await user.upload(await screen.findByLabelText('파일 고르기'), videoFile())
+  await screen.findByRole('textbox', { name: '제목' })
+
+  const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')!
+  const opened = vi.spyOn(fileInput, 'click')
+  await user.click(screen.getByRole('button', { name: '파일 수정하기' }))
+  expect(opened).toHaveBeenCalled()
+  // 1단계로 돌아가지 않는다
+  expect(screen.getByRole('textbox', { name: '제목' })).toBeInTheDocument()
+
+  await user.upload(fileInput, videoFile(MB, '새영상.mp4'))
+  const title = await screen.findByRole('textbox', { name: '제목' })
+  await waitFor(() => expect(title).toHaveValue('새영상'))
+  expect(screen.getByText(/새영상\.mp4 · 4분 10초 · 1MB/)).toBeInTheDocument()
+})
+
+test('제목 단계의 이전 단계를 누르면 파일 고르기로 돌아간다', async () => {
+  const user = userEvent.setup()
+  renderRoute('/register')
+  await user.upload(await screen.findByLabelText('파일 고르기'), videoFile())
+  await screen.findByRole('textbox', { name: '제목' })
+  await user.click(screen.getByRole('button', { name: '이전 단계' }))
+  expect(await screen.findByLabelText('파일 고르기')).toBeInTheDocument()
+  expect(screen.queryByRole('textbox', { name: '제목' })).not.toBeInTheDocument()
+})
+
+test('공개 범위 단계의 이전 단계를 누르면 적은 제목 그대로 제목 단계로 돌아간다', async () => {
+  const user = userEvent.setup()
+  renderRoute('/register')
+  await user.upload(await screen.findByLabelText('파일 고르기'), videoFile())
+  const title = await screen.findByRole('textbox', { name: '제목' })
+  await user.clear(title)
+  await user.type(title, '바꾼 제목')
+  await user.click(screen.getByRole('button', { name: '다음 단계' }))
+  await screen.findByRole('radio', { name: /비공개/ })
+  await user.click(screen.getByRole('button', { name: '이전 단계' }))
+  expect(await screen.findByRole('textbox', { name: '제목' })).toHaveValue('바꾼 제목')
+})
+
+test('다 올리면 완료 창 없이 해설 만들기 화면으로 바로 간다', async () => {
   vi.mocked(uploadParts).mockResolvedValue([{ partNumber: 1, eTag: '"a"' }])
   vi.mocked(uploadsApi.complete).mockResolvedValue({
     videoId: 15,
@@ -144,30 +186,10 @@ test('다 올리면 완료 창이 뜨고, 해설 만들기 보기를 누르면 �
     visibility: 'PUBLIC',
     copyrightAgreed: true,
   })
-  expect(uploadsApi.complete).toHaveBeenCalledWith(15, [{ partNumber: 1, eTag: '"a"' }])
-  const dialog = await screen.findByRole('dialog', { name: '업로드가 완료되었어요' })
-  expect(within(dialog).getByText('해설 만들기를 시작했어요.')).toBeInTheDocument()
-  const go = within(dialog).getByRole('button', { name: '해설 만들기 보기' })
-  expect(go).toHaveFocus()
-  expect(router.state.location.pathname).toBe('/register')
-  await user.click(go)
   await waitFor(() => expect(router.state.location.pathname).toBe('/jobs/31'))
-})
-
-test('완료 창에서 홈으로 돌아가기를 고르면 묻지 않고 홈으로 간다', async () => {
-  vi.mocked(uploadParts).mockResolvedValue([{ partNumber: 1, eTag: '"a"' }])
-  vi.mocked(uploadsApi.complete).mockResolvedValue({
-    videoId: 15,
-    jobId: 31,
-    result: 'NEW_JOB',
-    remaining: 2,
-  })
-  const user = userEvent.setup()
-  const { router } = renderRoute('/register')
-  await startUpload(user)
-  const dialog = await screen.findByRole('dialog', { name: '업로드가 완료되었어요' })
-  await user.click(within(dialog).getByRole('button', { name: '홈으로 돌아가기' }))
-  await waitFor(() => expect(router.state.location.pathname).toBe('/'))
+  expect(uploadsApi.complete).toHaveBeenCalledWith(15, [{ partNumber: 1, eTag: '"a"' }])
+  expect(screen.queryByRole('dialog', { name: '업로드가 완료되었어요' })).not.toBeInTheDocument()
+  // 다 올린 영상은 화면을 떠나도 지우지 않는다
   expect(uploadsApi.abort).not.toHaveBeenCalled()
 })
 
@@ -177,7 +199,18 @@ test('업로드 멈추기 → 확인 → 멈추기: 올린 조각을 지우고 �
   renderRoute('/register')
   await startUpload(user)
   expect(await screen.findByRole('heading', { name: '영상을 올리고 있어요' })).toBeInTheDocument()
-  expect(screen.getByRole('progressbar', { name: '업로드 진행률' })).toBeInTheDocument()
+  expect(screen.getByRole('progressbar', { name: '해설 만들기 진행률' })).toHaveAttribute(
+    'aria-valuenow',
+    '0',
+  )
+  const steps = within(screen.getByRole('list', { name: '진행 단계' })).getAllByRole('listitem')
+  expect(steps.map((li) => li.textContent)).toEqual([
+    '영상 업로드, 진행 중',
+    '영상 분석, 대기',
+    '장면 해설 만들기, 대기',
+    '해설 합치고 다듬기, 대기',
+    '해설 음성 만들기, 대기',
+  ])
 
   await user.click(screen.getByRole('button', { name: '업로드 멈추기' }))
   const dialog = await screen.findByRole('dialog', { name: '업로드를 멈출까요?' })
@@ -218,7 +251,9 @@ test('오늘 횟수를 다 썼으면 파일을 고를 수 없다', async () => {
   vi.mocked(usersApi.quota).mockResolvedValue(quota(0))
   renderRoute('/register')
   expect(await screen.findByLabelText('파일 고르기')).toBeDisabled()
-  expect(screen.getByRole('region', { name: '오늘 올리기 횟수를 다 썼어요' })).toBeInTheDocument()
+  expect(
+    screen.getByRole('region', { name: '오늘 내 영상 해설 횟수를 다 썼어요' }),
+  ).toBeInTheDocument()
 })
 
 test('올리는 중에 다른 메뉴를 누르면 먼저 묻고, 계속 올리기를 고르면 머문다', async () => {

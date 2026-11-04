@@ -30,9 +30,9 @@ import { useAsk } from './useAsk'
 import { VideoStage } from './VideoStage'
 
 const DETAIL_OPTIONS: { value: 1 | 2 | 3; label: string }[] = [
-  { value: 1, label: '1 짧게' },
-  { value: 2, label: '2 기본' },
-  { value: 3, label: '3 자세히' },
+  { value: 1, label: '1 짧은 해설' },
+  { value: 2, label: '2 기본 해설' },
+  { value: 3, label: '3 자세한 해설' },
 ]
 type Tab = 'chapters' | 'script' | 'history'
 /** 영상을 열고 요약을 어떻게 할지 정하는 단계 */
@@ -41,10 +41,16 @@ type SummaryPhase = 'loading' | 'asking' | 'playing' | 'done'
 const isTyping = (el: EventTarget | null) =>
   el instanceof HTMLElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName)
 
+/** 재생·해설 상세도·신고·설정·크게 보기: 같은 높이·폭·글자 크기 (글자가 바뀌어도 폭이 그대로) */
+const CONTROL = 'w-[6.75rem] px-2! text-base whitespace-nowrap'
+/** '전체 화면 끝내기'는 글자가 길어 조금 넓게 */
+const CONTROL_WIDE = 'w-[9.5rem] px-2! text-base whitespace-nowrap'
+
 /**
  * 시청 화면 본체. 영상 정보(해설 있음)를 받아 재생 주소·해설·목차·요약을 불러오고,
  * 플레이어 + 질문 패널을 그린다. 읽는 순서: 제목 → 플레이어 컨트롤 → 상세도 → 신고·설정·크게 보기 → 질문 → 패널 탭 (원칙 3장)
  */
+
 export function Player({ video }: { video: VideoDetail }) {
   const videoId = video.videoId
   const navigate = useNavigate()
@@ -368,10 +374,13 @@ export function Player({ video }: { video: VideoDetail }) {
           setHelpOpen(true)
           return
         case 'OPEN_CHAPTERS':
+          // 크게 보기에는 목차 탭이 없으니 작게 보기로 돌아가 연다
+          setEnlarged(false)
           setTab('chapters')
           announce('장면 목차를 열었어요.')
           return
         case 'OPEN_SCRIPT':
+          setEnlarged(false)
           setTab('script')
           announce('해설 대본을 열었어요.')
           return
@@ -458,21 +467,76 @@ export function Player({ video }: { video: VideoDetail }) {
   )
 
   /* ── 크게 보기 / Esc ── */
+  /* ── 전체 화면: 영상 + 검은 하단 바(해설·재생·재생바·끝내기)만 화면을 채운다 (저시력) ── */
+  const fsRef = useRef<HTMLDivElement>(null)
+  const fsButtonRef = useRef<HTMLButtonElement>(null)
+  const [fullscreen, setFullscreen] = useState(false)
+  const canFullscreen = typeof document !== 'undefined' && document.fullscreenEnabled === true
+  const fsWasOn = useRef(false)
+  useEffect(() => {
+    const onChange = () => {
+      const on = fsRef.current != null && document.fullscreenElement === fsRef.current
+      if (on === fsWasOn.current) return // 우리 영역이 아닌 전체 화면(예: YouTube 자체) 은 건드리지 않는다
+      fsWasOn.current = on
+      setFullscreen(on)
+      if (on) {
+        announce('전체 화면이에요. 영상과 해설, 재생 버튼만 보여요. Esc를 누르면 끝나요.')
+      } else {
+        announce('전체 화면을 끝냈어요.')
+        fsButtonRef.current?.focus()
+      }
+    }
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
+  }, [announce])
+  // 전체 화면 중에는 보이지 않는 바깥(질문 칸·탭 등)으로 포커스가 빠지지 않게 되돌린다
+  useEffect(() => {
+    if (!fullscreen) return
+    const onFocusIn = (e: FocusEvent) => {
+      if (fsRef.current && !fsRef.current.contains(e.target as Node)) fsButtonRef.current?.focus()
+    }
+    document.addEventListener('focusin', onFocusIn)
+    return () => document.removeEventListener('focusin', onFocusIn)
+  }, [fullscreen])
+  const toggleFullscreen = useCallback(async () => {
+    if (document.fullscreenElement) {
+      await document.exitFullscreen().catch(() => undefined)
+      return
+    }
+    try {
+      await fsRef.current?.requestFullscreen()
+    } catch {
+      announce('이 브라우저에서는 전체 화면을 쓸 수 없어요.', { politeness: 'assertive' })
+    }
+  }, [announce])
+
+  // 크게/작게 보기 버튼은 자리가 바뀌며 새로 그려진다. 포커스가 사라졌으면 새 버튼으로 옮긴다
+  const enlargeRef = useRef<HTMLButtonElement>(null)
+  const enlargedBefore = useRef(enlarged)
+  useEffect(() => {
+    if (enlargedBefore.current === enlarged) return
+    enlargedBefore.current = enlarged
+    const lost = !document.activeElement || document.activeElement === document.body
+    if (lost) enlargeRef.current?.focus()
+  }, [enlarged])
+
   const toggleEnlarge = () => {
     setEnlarged((v) => !v)
     announce(
       enlarged
-        ? '작게 보기로 돌아왔어요. 패널이 다시 보여요.'
-        : '크게 보기로 바꿨어요. 패널은 숨겼어요. Esc를 누르면 원래대로 돌아가요.',
+        ? '작게 보기로 돌아왔어요. 목차와 대본이 다시 보여요.'
+        : '크게 보기로 바꿨어요. 목차와 대본은 숨기고 질문만 오른쪽에 남겼어요. Esc를 누르면 원래대로 돌아가요.',
     )
   }
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (e.key !== 'Escape' || document.querySelector('dialog[open]')) return
+      // 전체 화면의 Esc 는 브라우저가 '전체 화면 끝내기'로 쓴다
+      if (document.fullscreenElement) return
       if (ask.stopAnswer()) return
       if (enlarged) {
         setEnlarged(false)
-        announce('작게 보기로 돌아왔어요. 패널이 다시 보여요.')
+        announce('작게 보기로 돌아왔어요. 목차와 대본이 다시 보여요.')
       }
     }
     window.addEventListener('keydown', onKey)
@@ -485,6 +549,11 @@ export function Player({ video }: { video: VideoDetail }) {
     if (e.key === '1' || e.key === '2' || e.key === '3') {
       e.preventDefault()
       setDetail(Number(e.key) as 1 | 2 | 3)
+      return
+    }
+    if ((e.key === 'f' || e.key === 'F') && !e.altKey && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault()
+      void toggleFullscreen()
       return
     }
     const onButton = e.target instanceof HTMLElement && e.target.closest('button, [role="slider"]')
@@ -504,118 +573,179 @@ export function Player({ video }: { video: VideoDetail }) {
   const descError = descriptionQ.error
   const playbackError = playbackQ.error
 
+  const historyPanel = ask.pending ? (
+    <CandidatesPanel
+      utterance={ask.pending.utterance}
+      videoTimeMs={ask.pending.videoTimeMs}
+      candidates={ask.pending.candidates}
+      onChoose={ask.chooseCandidate}
+      onNone={ask.dismissCandidates}
+    />
+  ) : (
+    <HistoryPanel entries={ask.entries} onReplay={ask.replay} onGoTo={seekTo} />
+  )
+
   return (
     <div
       className={cn(
-        'grid gap-10',
-        enlarged ? 'mx-auto max-w-[70rem]' : 'lg:grid-cols-[minmax(0,1fr)_27.5rem]',
+        'grid',
+        // 크게 보기: 화면 양옆 여백까지 써서 영상을 넓게, 오른쪽 좁은 칸에는 질문(챗봇)만
+        enlarged
+          ? 'gap-[49px] lg:-mx-10 lg:grid-cols-[minmax(0,1fr)_380px]'
+          : 'gap-10 lg:grid-cols-[minmax(0,1fr)_27.5rem]',
       )}
     >
       {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions -- 영역 단축키(1/2/3·Space). 포커스 가능한 자식들이 받는다 */}
       <div onKeyDown={onPlayerKeyDown} className="min-w-0">
-        {/* 제목은 남는 폭에서 줄바꿈하고, 버튼은 늘 오른쪽에 고정 (버튼 글자가 바뀌어도 줄이 다시 나뉘지 않게) */}
-        <div className="flex items-start gap-5">
-          <h1
-            ref={headingRef}
-            tabIndex={-1}
-            className="min-w-0 flex-1 text-[1.75rem] leading-tight font-bold outline-none"
-          >
-            {video.title}
-          </h1>
-          <Button
-            variant={video.isFavorite ? 'on' : 'secondary'}
-            onClick={() => favorite.mutate()}
-            disabled={favorite.isPending}
-            className="min-w-[11.5rem] shrink-0 whitespace-nowrap"
-          >
-            {video.isFavorite ? '즐겨찾기 해제' : '즐겨찾기에 넣기'}
-          </Button>
-        </div>
+        <h1
+          ref={headingRef}
+          tabIndex={-1}
+          className="text-[1.75rem] leading-tight font-bold outline-none"
+        >
+          {video.title}
+        </h1>
 
-        <VideoStage
-          playback={playbackQ.data}
-          videoRef={videoRef}
-          ytHostRef={ytHostRef}
-          volume={settings.originalVolume}
-          className="mt-5"
-        />
-        {playbackError && (
-          <p role="alert" className="mt-3 text-lg text-danger">
-            영상을 불러오지 못했어요. {toUserMessage(playbackError)}
-          </p>
-        )}
-        {descError && (
-          <p role="alert" className="mt-3 text-lg text-danger">
-            해설을 불러오지 못했어요. {toUserMessage(descError)}
-          </p>
-        )}
-
-        <div className="mt-3">
-          <NarrationBox line={currentLine} started={started} enlarged={enlarged} />
-        </div>
-
-        {/* 플레이어 컨트롤: 재생·멈춤 + 재생바 */}
-        <div className="mt-3 flex items-center gap-4">
-          <Button
-            ref={playRef}
-            variant="primary"
-            onClick={toggle}
-            aria-keyshortcuts="Space"
-            disabled={phase === 'asking' || phase === 'playing'}
-            className="min-w-[6.5rem]"
-          >
-            {state.playing ? '일시정지' : '재생'}
-          </Button>
-          <SeekBar
-            currentMs={state.currentMs}
-            durationMs={state.durationMs}
-            stepSec={settings.seekStepSec}
-            onSeek={(ms) => {
-              interrupt()
-              controls.seek(ms)
-            }}
-            onSeekSettled={(ms) => {
-              const at = sceneAtMs(description?.scenes, ms)
-              announce(`${formatPositionSpoken(ms)}로 옮겼어요.${at ? ` ${at.title} 장면.` : ''}`)
-            }}
-            className="min-w-0 flex-1"
+        {/* 전체 화면이 되는 영역. 평소에는 모양이 없고, 전체 화면이면 영상이 위를 채우고 아래에 검은 하단 바가 붙는다 */}
+        <div
+          ref={fsRef}
+          className={cn(
+            fullscreen ? 'flex flex-col bg-black [&_*:focus-visible]:outline-yellow' : 'mt-5',
+          )}
+        >
+          <VideoStage
+            playback={playbackQ.data}
+            videoRef={videoRef}
+            ytHostRef={ytHostRef}
+            volume={settings.originalVolume}
+            fill={fullscreen}
           />
-        </div>
+          <div className={cn(fullscreen && 'shrink-0 px-6 pb-5')}>
+            {!fullscreen && playbackError && (
+              <p role="alert" className="mt-3 text-lg text-danger">
+                영상을 불러오지 못했어요. {toUserMessage(playbackError)}
+              </p>
+            )}
+            {!fullscreen && descError && (
+              <p role="alert" className="mt-3 text-lg text-danger">
+                해설을 불러오지 못했어요. {toUserMessage(descError)}
+              </p>
+            )}
 
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-x-6 gap-y-4">
-          <ChoiceGroup
-            legend="해설 상세도"
-            options={DETAIL_OPTIONS}
-            value={settings.detailLevel}
-            onChange={setDetail}
-          />
-          <div className="flex flex-wrap gap-3">
-            <Button variant="secondary" onClick={openReport}>
-              이 문장 신고
-            </Button>
-            <Button variant="secondary" onClick={() => setSettingsOpen(true)}>
-              재생 설정
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={toggleEnlarge}
-              aria-keyshortcuts={enlarged ? 'Escape' : undefined}
-            >
-              {enlarged ? '작게 보기' : '크게 보기'}
-            </Button>
+            <div className="mt-3">
+              <NarrationBox
+                line={currentLine}
+                started={started}
+                enlarged={enlarged}
+                fullscreen={fullscreen}
+              />
+            </div>
+
+            {/* 플레이어 컨트롤: 재생·멈춤 + 재생바. 폭이 좁으면 화면 크기 버튼만 다음 줄로 내린다 */}
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-3">
+              <Button
+                ref={playRef}
+                // 재생 중(일시정지 버튼)은 흰 바탕으로 바꿔 글자뿐 아니라 모양으로도 상태가 보이게 한다
+                variant={state.playing ? 'secondary' : 'primary'}
+                onClick={toggle}
+                aria-keyshortcuts="Space"
+                disabled={phase === 'asking' || phase === 'playing'}
+                className={cn(CONTROL, state.playing && 'text-[#1f2a44]! hc:text-navy!')}
+              >
+                {state.playing ? '일시정지' : '재생'}
+              </Button>
+              <SeekBar
+                currentMs={state.currentMs}
+                durationMs={state.durationMs}
+                stepSec={settings.seekStepSec}
+                onSeek={(ms) => {
+                  interrupt()
+                  controls.seek(ms)
+                }}
+                onSeekSettled={(ms) => {
+                  const at = sceneAtMs(description?.scenes, ms)
+                  announce(
+                    `${formatPositionSpoken(ms)}로 옮겼어요.${at ? ` ${at.title} 장면.` : ''}`,
+                  )
+                }}
+                tone={fullscreen ? 'dark' : 'light'}
+                className="min-w-[14rem] flex-1"
+              />
+              {/* 화면 크기 버튼 둘은 아래 줄의 신고·설정 버튼과 같은 크기·간격이라 세로로 줄이 맞는다 */}
+              <div className="ml-auto flex gap-2">
+                {!fullscreen && (
+                  <Button
+                    ref={enlargeRef}
+                    variant="secondary"
+                    onClick={toggleEnlarge}
+                    aria-keyshortcuts={enlarged ? 'Escape' : undefined}
+                    className={CONTROL}
+                  >
+                    {enlarged ? '작게 보기' : '크게 보기'}
+                  </Button>
+                )}
+                <Button
+                  ref={fsButtonRef}
+                  variant="secondary"
+                  onClick={() => void toggleFullscreen()}
+                  disabled={!canFullscreen}
+                  aria-keyshortcuts={fullscreen ? 'Escape' : 'F'}
+                  className={fullscreen ? CONTROL_WIDE : CONTROL}
+                >
+                  {fullscreen ? '전체 화면 끝내기' : '전체 화면'}
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
+
+        {/* 크게 보기에서는 아래 줄을 숨긴다. 상세도 묶음 이름은 낭독기에만 읽힌다 (버튼 글자에 '해설'이 있어 화면에서는 뺐다) */}
+        {!enlarged && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-x-6 gap-y-4">
+            <ChoiceGroup
+              legend="해설 상세도"
+              hideLegend
+              className="relative"
+              options={DETAIL_OPTIONS}
+              value={settings.detailLevel}
+              onChange={setDetail}
+              optionClassName={CONTROL}
+            />
+            <div className="flex gap-2">
+              <Button variant="secondary" onClick={openReport} className={CONTROL}>
+                이 문장 신고
+              </Button>
+              <Button variant="secondary" onClick={() => setSettingsOpen(true)} className={CONTROL}>
+                재생 설정
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
-      {!enlarged && (
-        <aside aria-label="질문과 패널" className="min-w-0">
-          <AskPanel
-            inputRef={inputRef}
-            busy={ask.busy}
-            onSubmit={onAsk}
-            onListenStart={onListenStart}
-            onListenAbort={onListenAbort}
-          />
+      <aside aria-label={enlarged ? '질문' : '질문과 패널'} className="min-w-0">
+        <AskPanel
+          inputRef={inputRef}
+          busy={ask.busy}
+          onSubmit={onAsk}
+          onListenStart={onListenStart}
+          onListenAbort={onListenAbort}
+          extraAction={
+            !enlarged && (
+              <Button
+                variant={video.isFavorite ? 'starred' : 'secondary'}
+                size="panel"
+                onClick={() => favorite.mutate()}
+                disabled={favorite.isPending}
+                className="whitespace-nowrap"
+              >
+                {video.isFavorite ? '즐겨찾기 해제' : '즐겨찾기'}
+              </Button>
+            )
+          }
+        />
+        {enlarged ? (
+          <div className="mt-6">{historyPanel}</div>
+        ) : (
           <Tabs
             label="패널"
             appearance="buttons"
@@ -648,22 +778,12 @@ export function Player({ video }: { video: VideoDetail }) {
               {
                 value: 'history',
                 label: '질문 기록',
-                panel: ask.pending ? (
-                  <CandidatesPanel
-                    utterance={ask.pending.utterance}
-                    videoTimeMs={ask.pending.videoTimeMs}
-                    candidates={ask.pending.candidates}
-                    onChoose={ask.chooseCandidate}
-                    onNone={ask.dismissCandidates}
-                  />
-                ) : (
-                  <HistoryPanel entries={ask.entries} onReplay={ask.replay} onGoTo={seekTo} />
-                ),
+                panel: historyPanel,
               },
             ]}
           />
-        </aside>
-      )}
+        )}
+      </aside>
 
       <SummaryDialog
         open={phase === 'asking'}

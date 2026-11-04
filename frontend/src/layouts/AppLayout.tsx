@@ -5,8 +5,9 @@ import { SkipLink } from './parts/SkipLink'
 import { BrandLogo } from './parts/BrandLogo'
 import { MainNav } from './parts/MainNav'
 import { AnnounceBar } from './parts/AnnounceBar'
+import { LogoutButton } from './parts/LogoutButton'
 
-/** 로그인한 일반 사용자 화면: 헤더(로고·주 메뉴·이름) + 방금 안내 띠 + 본문 */
+/** 로그인한 일반 사용자 화면: 헤더(로고·주 메뉴·이름·로그아웃) + 방금 안내 띠 + 본문 */
 export function AppLayout() {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -17,12 +18,16 @@ export function AppLayout() {
   return (
     <>
       <SkipLink />
-      <header className="bg-paper">
+      <header data-layout="user" className="bg-paper hc:border-b-2 hc:border-yellow">
         <div className="mx-auto flex min-h-18 max-w-[90rem] items-center justify-between gap-6 px-16">
           <BrandLogo subtitle="화면해설 플레이어" />
           <div className="flex items-center gap-6">
             <MainNav />
-            <p className="border-l border-line pl-6 text-ink-muted">{user?.name} 님</p>
+            {/* 이름은 글자, 로그아웃은 헤더의 마지막 조작 요소 */}
+            <div className="flex items-center gap-4 border-l border-line pl-6">
+              <p className="text-ink-muted">{user?.name} 님</p>
+              <LogoutButton />
+            </div>
           </div>
         </div>
       </header>

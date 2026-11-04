@@ -2,6 +2,7 @@ package com.audisay.domain.job.stream;
 
 import com.audisay.domain.job.dto.JobNotice;
 import com.audisay.domain.job.service.JobProgressNotifier;
+import com.audisay.domain.job.service.JobTimeEstimator;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,6 +23,7 @@ public class JobEventSubscriber implements MessageListener {
     private final RedisMessageListenerContainer container;
     private final JobSseEmitters emitters;
     private final ObjectMapper objectMapper;
+    private final JobTimeEstimator timeEstimator;
 
     @PostConstruct
     void subscribe() {
@@ -34,7 +36,10 @@ public class JobEventSubscriber implements MessageListener {
         try {
             Long jobId = Long.valueOf(channel.substring(channel.lastIndexOf(':') + 1));
             JobNotice notice = objectMapper.readValue(message.getBody(), JobNotice.class);
-            emitters.send(jobId, JobStreamEvent.from(notice));
+            JobTimeEstimator.Estimate estimate = JobNotice.COMPLETED.equals(notice.event()) || JobNotice.FAILED.equals(notice.event())
+                    ? JobTimeEstimator.Estimate.NONE
+                    : timeEstimator.estimate(jobId, notice.progress());
+            emitters.send(jobId, JobStreamEvent.from(notice, estimate));
         } catch (RuntimeException e) {
             log.warn("job 알림 처리 실패 channel={}: {}", channel, e.getMessage());
         }

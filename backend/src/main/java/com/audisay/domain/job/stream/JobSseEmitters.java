@@ -48,6 +48,19 @@ public class JobSseEmitters {
         }
     }
 
+    /** 구독자가 있는 작업 */
+    Set<Long> jobIds() {
+        return Set.copyOf(subscribers.keySet());
+    }
+
+    /** 남은 시간만 새로 담은 progress 를 10% 구간과 상관없이 보낸다(화면의 남은 시간이 이벤트 사이에도 줄게) */
+    void refresh(Long jobId, JobStreamEvent event) {
+        Set<Subscriber> set = subscribers.get(jobId);
+        if (set != null && !event.isFinished()) {
+            set.forEach(s -> s.write(event));
+        }
+    }
+
     @Scheduled(fixedRate = 15_000)
     public void heartbeat() {
         subscribers.values().forEach(set -> set.forEach(Subscriber::heartbeat));
@@ -85,6 +98,10 @@ public class JobSseEmitters {
                 lastStage = event.stage();
                 lastStep = step;
             }
+            write(event);
+        }
+
+        synchronized void write(JobStreamEvent event) {
             try {
                 emitter.send(SseEmitter.event().name(event.name()).data(event.data()));
                 if (event.isFinished()) {

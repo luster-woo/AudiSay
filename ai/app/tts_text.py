@@ -88,7 +88,10 @@ def read_english(word: str) -> str:
         return " ".join(read_english(p) for p in parts)
     # 약어(GPU·TTS)와 모음 없는 말만 알파벳으로 읽는다. 보통 단어까지 알파벳으로 읽어 영상 제목 "Caminandes Llamigos"가
     # "씨에이엠아이…"로 나왔다(2026-11-03, 화면 쪽은 단어째 넘겨도 Supertonic 앞에서 이 함수가 다시 철자로 바꿨다)
-    if (word.isupper() and len(word) <= 5) or not re.search(r"[aeiouy]", low):
+    # 대문자 4~5자는 첫 글자 말고도 모음이 있으면 단어로 읽는다(BEST·BREAD). 모두 철자로 읽어 화면 제목 "THE BEST BARBER"가
+    # "더 비이에스티 바버"로 나왔다(데모 2026-11-04). ESPN처럼 모음이 첫 글자뿐이거나 3자 이하(KBS)면 약어
+    acronym = word.isupper() and (len(word) <= 3 or (len(word) <= 5 and not re.search(r"[AEIOUY]", word[1:])))
+    if acronym or not re.search(r"[aeiouy]", low):
         return "".join(LETTERS[c.upper()] for c in word)
     return transliterate(low)
 

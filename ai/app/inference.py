@@ -63,6 +63,21 @@ class MockInference:
                                   {"atMs": s["startMs"] + 2500, "level": 2, "text": "추론 서버를 연결하면 실제 해설로 바뀝니다."}]})
         return {"scenes": out, "model": "mock"}
 
+    async def describe_video(self, mp4: Path, prompt: str, schema: dict) -> dict:
+        return {"model": "mock", "result": {
+            "category": "기타", "summary_30s": "시험용 요약입니다.", "dialogue": [],
+            "scenes": [{"start": "00:00", "end": "00:02", "title": "시험용 장면", "people": [], "screen_text": []}],
+            "lines": [{"at": "00:00", "level": 1, "text": "시험용 해설입니다. 영상 보기 경로입니다."}]}}
+
+    async def generate_json(self, prompt: str, schema: dict, max_tokens: int = 2000) -> dict:
+        return {"model": "mock", "result": {"chapters": [{"start": "00:00", "title": "시험용 장면"}], "items": []}}
+
+    async def sounds(self, wav: Path | None) -> dict:
+        return {"events": [], "model": "mock"}
+
+    async def speakers(self, wav: Path | None, segs: list[dict]) -> dict:
+        return {"speakers": [], "model": "mock"}
+
     async def summarize(self, payload: dict) -> dict:
         return {"summary": f"{payload['title']} 영상의 시험용 요약입니다. 추론 서버를 연결하면 실제 요약이 나옵니다.",
                 "category": "기타", "model": "mock"}
@@ -123,6 +138,36 @@ class RemoteInference:
 
     async def summarize(self, payload: dict) -> dict:
         return await self._post("/summarize", json=payload)
+
+    # ---------- 업로드 영상 32B 영상 보기 엔진(app/pipeline/video.py, H200 gpu_server 버전 22) ----------
+    async def describe_video(self, mp4: Path, prompt: str, schema: dict) -> dict:
+        """저해상도 영상 + 프롬프트 + JSON 스키마 → {"result", "model"}(32B). 32B가 꺼져 있으면 실패."""
+        return await self._post("/describe_video", timeout=1300, files={"video": (mp4.name, mp4.read_bytes(), "video/mp4")},
+                                data={"prompt": prompt, "schema": json.dumps(schema, ensure_ascii=False)})
+
+    async def generate_json(self, prompt: str, schema: dict, max_tokens: int = 2000) -> dict:
+        """글만으로 32B에 JSON 하나(장면 목차 고르기·지어낸 이름 호칭 등)."""
+        return await self._post("/generate_json", timeout=300, json={"prompt": prompt, "json_schema": schema, "max_tokens": max_tokens})
+
+    async def sounds(self, wav: Path | None) -> dict:
+        """효과음·음악 구간. 소리가 없거나 옛 서버면 빈 목록(해설은 계속 만든다)."""
+        if not wav:
+            return {"events": [], "model": None}
+        try:
+            return await self._post("/sounds", files={"audio": (wav.name, wav.read_bytes(), "audio/wav")})
+        except InferenceError:
+            return {"events": [], "model": None}
+
+    async def speakers(self, wav: Path | None, segs: list[dict]) -> dict:
+        """{"speakers": 대사 줄마다 화자 번호(목소리로 나눔), "model"}. 소리가 없거나 옛 서버면 빈 목록(화자 없이 계속)."""
+        if not wav or not segs:
+            return {"speakers": [], "model": None}
+        try:
+            r = await self._post("/speakers", files={"audio": (wav.name, wav.read_bytes(), "audio/wav")},
+                                 data={"segments": json.dumps([{"startMs": x["startMs"], "endMs": x["endMs"]} for x in segs])})
+            return r if len(r.get("speakers", [])) == len(segs) else {"speakers": [], "model": None}
+        except InferenceError:
+            return {"speakers": [], "model": None}
 
     async def translate(self, texts: list[str], source: str | None = None, title: str | None = None) -> dict:
         """외국어 대사 → 한국어. 제목은 고유명사·주제 맥락."""

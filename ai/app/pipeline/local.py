@@ -379,13 +379,16 @@ async def analyze_gemini(gms: GmsClient, title: str | None, playback: Path, dura
 
 async def analyze(engine: str, inf, gms: GmsClient | None, has_gms: bool, title: str | None, files: dict, work: Path,
                   duration_ms: int, progress, job_id: int | None, db=None) -> tuple[dict, str, list[str]]:
-    """UPLOAD_ENGINE=opensource(기본)|gemini. 고른 엔진이 실패하면 다른 엔진으로(둘 다 안 되면 실패).
+    """UPLOAD_ENGINE=video(32B 영상 보기)|opensource(장면별)|gemini. 고른 엔진이 실패하면 다른 엔진으로(모두 안 되면 실패).
     반환 (raw, 모델 이름, 실패한 엔진 목록)."""
-    order = ["gemini", "opensource"] if engine == "gemini" else ["opensource", "gemini"]
+    from app.pipeline import video
+    order = {"gemini": ["gemini", "opensource"], "video": ["video", "opensource", "gemini"]}.get(engine, ["opensource", "gemini"])
     errors: list[str] = []
     for eng in order:
         try:
-            if eng == "gemini":
+            if eng == "video":
+                raw, model = await video.analyze_video(inf, title, files, work, duration_ms, progress, None, job_id)
+            elif eng == "gemini":
                 if not (gms and has_gms):
                     errors.append("gemini: GMS 꺼짐")
                     continue

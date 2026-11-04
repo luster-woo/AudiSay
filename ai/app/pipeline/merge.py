@@ -42,6 +42,11 @@ NAME_EVIDENCE = ("자막", "제목", "이름표", "호명", "부름", "부른", 
 NAME_SOURCE_HINTS = (("SCREEN_TEXT", ("자막", "제목", "이름표", "화면")), ("DIALOGUE", ("대사", "부름", "호명", "말")))
 
 
+def voiced_label_ok(label: str, seen_text: str) -> bool:
+    """"빵 이발사"·"작은 컵케이크들"처럼 낱말 하나(끝의 '들'·'님' 뺀 2자 이상)가 제목·대사·화면 글자(공백 뺀)에 있으면 참."""
+    return any(len(w) >= 2 and w in seen_text for w in (re.sub(r"(들|님)$", "", x) for x in label.split()))
+
+
 def trusted_name(name: str | None, basis: str | None) -> str | None:
     """근거가 있는 이름만 돌려준다. 없으면 None(이름 모르는 인물로 적는다)."""
     if not name or not basis:
@@ -93,11 +98,16 @@ def assemble(full: dict, chunks: list[dict], covered_until_ms: int | None = None
                                            + [t["text"] for s in full["scenes"] for t in s.get("screenTexts", [])]))
     names: dict[str, dict] = {}
     dropped: set[str] = set()
+    voiced = set(full.get("voiceNames") or [])
     for s in full["scenes"]:
         for p in s.get("people", []):
             name = trusted_name(p.get("name"), p.get("basis"))
             if name and seen is not None and "사전" not in (p.get("basis") or "") and re.sub(r"\s+", "", name) not in seen:
                 name = None
+            if not name and seen is not None and p.get("name") in voiced and voiced_label_ok(p["name"], seen):
+                # 목소리로 대사와 짝지은 겉모습 호칭("빵 이발사")은 이름 근거가 없어도 남긴다(대사의 말한 사람이 되게).
+                # 호칭의 낱말 하나는 제목·대사·화면 글자에 있어야 한다(지어낸 이름 "김진수"는 여전히 뺌)
+                name = p["name"]
             if p.get("name") and not name:
                 dropped.add(p["name"])
             if name and name not in names:
@@ -126,7 +136,23 @@ def assemble(full: dict, chunks: list[dict], covered_until_ms: int | None = None
         x["lineIndex"] = i
     plan.lines = lines
 
-    # 장면·목차: 겹치지 않게(scenes의 EXCLUDE 제약) 앞 장면 끝 이후부터
+    def chapter(idx: int, a: int, b: int, title: str) -> None:
+        in_range = [x for x in lines if a <= x["startMs"] < b]
+        plan.chapters.append({"chapterIndex": idx, "startMs": a, "endMs": b, "title": title[:100],
+                              "summary": " ".join(x["text"] for x in in_range if x["detailLevel"] <= 2) or None,
+                              "keywords": extract(title, [x["text"] for x in in_range])})
+
+    # 목차: 줄거리가 바뀌는 메인 장면(full["chapters"], 32B 영상 보기 엔진)이 있으면 그것으로, 없으면 장면마다 하나.
+    # 장면마다 하나면 7분 애니가 장면 40개 목차가 돼 줄거리로 찾아가기 어려웠다(데모 2026-11-04)
+    story = sorted({min(int(c["startMs"]), duration - 1): c["title"] for c in full.get("chapters") or [] if c.get("title")}.items())
+    if story:
+        story[0] = (0, story[0][1])  # 처음부터 덮게
+        ends = [a for a, _ in story[1:]] + [duration]
+        for i, ((a, title), b) in enumerate(zip(story, ends), 1):
+            if b > a:
+                chapter(i, a, b, title)
+
+    # 장면: 겹치지 않게(scenes의 EXCLUDE 제약) 앞 장면 끝 이후부터
     prev_end, n = 0, 0
     for s in sorted(full["scenes"], key=lambda s: s["startMs"]):
         a, b = max(int(s["startMs"]), prev_end), min(int(s["endMs"]), duration)
@@ -144,9 +170,8 @@ def assemble(full: dict, chunks: list[dict], covered_until_ms: int | None = None
             desc = (desc + " " if desc else "") + "등장: " + ", ".join(people)
         title = (s.get("title") or "")[:100]
         plan.scenes.append({"sceneIndex": n, "startMs": a, "endMs": b, "title": title, "sceneDescription": desc or title})
-        plan.chapters.append({"chapterIndex": n, "startMs": a, "endMs": b, "title": title,
-                              "summary": " ".join(x["text"] for x in in_scene if x["detailLevel"] <= 2) or None,
-                              "keywords": extract(title, [x["text"] for x in in_scene])})
+        if not story:
+            chapter(n, a, b, title)
 
     # 화면 글자: describe가 이미 '해설 문장에 들어간 글자'를 뺐다. 그대로 모은다
     for c in chunks:

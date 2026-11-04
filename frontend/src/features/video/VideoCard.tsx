@@ -68,7 +68,12 @@ export function VideoCard(props: VideoCardProps) {
   )
   const details = metadata ?? (
     <>
-      {channelTitle && <p className="mt-1 text-xl text-ink">{channelTitle}</p>}
+      {/* 채널 이름은 한 줄. 길면 … 으로 줄이고 전체는 마우스를 올리면 보인다 (링크 이름에는 전체가 읽힌다) */}
+      {channelTitle && (
+        <p className="mt-1 truncate text-xl text-ink" title={channelTitle}>
+          {channelTitle}
+        </p>
+      )}
       <p className="text-xl text-ink">{formatDurationShort(durationSec)}</p>
     </>
   )

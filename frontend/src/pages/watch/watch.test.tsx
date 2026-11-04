@@ -289,9 +289,9 @@ test('상세도는 누적이다: 기본은 1·2단계, 자세히를 고르면 3�
   expect(await screen.findByText('해설 대본 · 2문장')).toBeInTheDocument()
   expect(screen.queryByText('가운데가 가장 높아요.')).not.toBeInTheDocument()
 
-  await user.click(screen.getByRole('radio', { name: '3 자세히' }))
+  await user.click(screen.getByRole('radio', { name: '3 자세한 해설' }))
   expect(usersApi.updateSettings).toHaveBeenCalledWith({ detailLevel: 3 })
-  await waitFor(() => expect(band()).toHaveTextContent('해설 상세도 3 자세히.'))
+  await waitFor(() => expect(band()).toHaveTextContent('해설 상세도 3 자세한 해설.'))
   expect(await screen.findByText('해설 대본 · 3문장')).toBeInTheDocument()
   const texts = screen
     .getAllByText(/칠판이 보여요|세 개의 막대가|가운데가 가장 높아요/)
@@ -302,7 +302,7 @@ test('상세도는 누적이다: 기본은 1·2단계, 자세히를 고르면 3�
     '가운데가 가장 높아요.',
   ])
 
-  await user.click(screen.getByRole('radio', { name: '1 짧게' }))
+  await user.click(screen.getByRole('radio', { name: '1 짧은 해설' }))
   expect(await screen.findByText('해설 대본 · 1문장')).toBeInTheDocument()
 })
 
@@ -345,7 +345,7 @@ test('질문: 영상을 멈추고 답을 문장 단위로 읽은 뒤 끝났다�
   renderRoute('/watch/15')
   await screen.findByRole('button', { name: '재생' })
   act(() => setPlayerState?.({ playing: true, currentMs: T(134) }))
-  const input = screen.getByRole('textbox', { name: '질문이나 명령' })
+  const input = screen.getByRole('textbox', { name: '질문하거나 명령하기' })
   await user.type(input, '지금 화면에 숫자도 나와?{Enter}')
   await waitFor(() =>
     expect(chatApi.send).toHaveBeenCalledWith({
@@ -392,7 +392,7 @@ test('질문: 영상을 멈추고 답을 문장 단위로 읽은 뒤 끝났다�
     expect(band()).toHaveTextContent('답변이 끝났어요. 네. 막대 위에 12, 30, 21이 적혀 있어요.'),
   )
   expect(controls.play).toHaveBeenCalled()
-  expect(screen.getByRole('textbox', { name: '질문이나 명령' })).toHaveFocus()
+  expect(screen.getByRole('textbox', { name: '질문하거나 명령하기' })).toHaveFocus()
   expect(screen.getByText('질문 기록 · 2개')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: /그 장면 보기, 2분 14초/ })).toBeInTheDocument()
 })
@@ -426,7 +426,7 @@ test('장면 이동 후보가 여럿이면 번호를 읽어 주고, 고르면 �
   renderRoute('/watch/15')
   await screen.findByRole('button', { name: '재생' })
   await user.type(
-    screen.getByRole('textbox', { name: '질문이나 명령' }),
+    screen.getByRole('textbox', { name: '질문하거나 명령하기' }),
     'B반 나오는 장면으로 가 줘{Enter}',
   )
   const group = await screen.findByRole('radiogroup', { name: '장면 후보' })
@@ -448,11 +448,60 @@ test('크게 보기: 패널을 숨기고 Esc 로 돌아온다', async () => {
   renderRoute('/watch/15')
   await screen.findByRole('button', { name: '재생' })
   await user.click(screen.getByRole('button', { name: '크게 보기' }))
-  expect(screen.queryByRole('textbox', { name: '질문이나 명령' })).not.toBeInTheDocument()
-  expect(screen.getByRole('button', { name: '작게 보기' })).toBeInTheDocument()
+  // 크게 보기: 질문 입력칸과 질문 기록만 오른쪽에 남고, 목차·대본 탭과 즐겨찾기는 숨긴다
+  expect(screen.getByRole('textbox', { name: '질문하거나 명령하기' })).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: /질문 기록/ })).toBeInTheDocument()
+  expect(screen.queryByRole('tab', { name: '목차' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /즐겨찾기/ })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '작게 보기' })).toHaveFocus()
+  expect(screen.queryByRole('button', { name: '이 문장 신고' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('group', { name: '해설 상세도' })).not.toBeInTheDocument()
   await user.keyboard('{Escape}')
-  expect(await screen.findByRole('textbox', { name: '질문이나 명령' })).toBeInTheDocument()
+  expect(await screen.findByRole('tab', { name: '목차' })).toBeInTheDocument()
   await waitFor(() => expect(band()).toHaveTextContent('작게 보기로 돌아왔어요.'))
+  expect(screen.getByRole('button', { name: '크게 보기' })).toHaveFocus()
+})
+
+test('전체 화면: 영상·해설·재생줄만 남기고, 끝내면 전체 화면 버튼으로 돌아온다', async () => {
+  const user = userEvent.setup()
+  let fsEl: Element | null = null
+  const fire = () => document.dispatchEvent(new Event('fullscreenchange'))
+  Object.defineProperty(document, 'fullscreenEnabled', { configurable: true, value: true })
+  Object.defineProperty(document, 'fullscreenElement', { configurable: true, get: () => fsEl })
+  const request = vi.fn((el: Element) => {
+    fsEl = el
+    fire()
+    return Promise.resolve()
+  })
+  HTMLElement.prototype.requestFullscreen = function () {
+    return request(this)
+  }
+  document.exitFullscreen = vi.fn(() => {
+    fsEl = null
+    fire()
+    return Promise.resolve()
+  })
+  try {
+    mockAll()
+    renderRoute('/watch/15')
+    await screen.findByRole('button', { name: '재생' })
+    // 진입 안내(요약·해설을 다 받은 뒤 한 프레임 늦게 나옴)가 끝난 뒤에 눌러야 한다.
+    // 먼저 누르면 뒤늦게 온 진입 안내가 '전체 화면이에요.'를 덮어 써서 가끔 실패했다
+    await waitFor(() => expect(band()).toHaveTextContent('재생 버튼에 있어요.'))
+    await user.click(screen.getByRole('button', { name: '전체 화면' }))
+    expect(await screen.findByRole('button', { name: '전체 화면 끝내기' })).toBeInTheDocument()
+    expect(fsEl).toContainElement(screen.getByRole('slider', { name: '재생 위치' }))
+    expect(screen.queryByRole('button', { name: '크게 보기' })).not.toBeInTheDocument()
+    await waitFor(() => expect(band()).toHaveTextContent('전체 화면이에요.'))
+
+    await user.click(screen.getByRole('button', { name: '전체 화면 끝내기' }))
+    expect(await screen.findByRole('button', { name: '전체 화면' })).toHaveFocus()
+    expect(screen.getByRole('button', { name: '크게 보기' })).toBeInTheDocument()
+    await waitFor(() => expect(band()).toHaveTextContent('전체 화면을 끝냈어요.'))
+  } finally {
+    Reflect.deleteProperty(document, 'fullscreenEnabled')
+    Reflect.deleteProperty(document, 'fullscreenElement')
+  }
 })
 
 test('볼 수 없는 영상: 안내와 즐겨찾기에서 빼기', async () => {

@@ -74,7 +74,7 @@ test('음성 파일이 없으면 안내 목소리(Supertonic)로 읽는다', asy
     latencyMs: 10,
   })
   expect(await new Narrator().say({ text: '장면 설명이에요.' })).toBe(true)
-  expect(synthesize).toHaveBeenCalledWith('장면 설명이에요.')
+  expect(synthesize).toHaveBeenCalledWith('장면 설명이에요.', undefined, expect.any(AbortSignal))
   expect(played).toEqual(['https://s3/guide/a.mp3'])
   expect(spoken).toEqual([])
 })

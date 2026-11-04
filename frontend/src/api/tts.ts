@@ -9,10 +9,11 @@ export interface TtsResult {
 
 /** 안내 목소리(H200 Supertonic). 화면에서 소리로 읽는 안내·대체 음성 (POST /tts) */
 export const ttsApi = {
-  synthesize: (text: string, voice?: string) =>
+  synthesize: (text: string, voice?: string, signal?: AbortSignal) =>
     request<TtsResult>({
       method: 'POST',
       url: '/tts',
       data: { text, ...(voice ? { voice } : {}) },
+      signal,
     }),
 }

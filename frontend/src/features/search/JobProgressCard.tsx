@@ -6,6 +6,7 @@ import { usersApi } from '@/api/users'
 import { queryKeys } from '@/api/queryKeys'
 import type { MyVideo } from '@/api/types'
 import { useAnnouncer } from '@/features/announcer/context'
+import { jobOverallPercent, toDisplayProgress } from '@/features/job/stages'
 import { Thumbnail } from '@/features/video/Thumbnail'
 
 const DONE = ['SUCCEEDED', 'PARTIAL', 'FAILED'] as const
@@ -68,7 +69,8 @@ function ProgressLink({ video }: { video: MyVideo & { jobId: number } }) {
     void queryClient.invalidateQueries({ queryKey: ['me', 'videos'] })
   }, [job, video.title, announce, queryClient])
 
-  const percent = Math.round(job?.progress ?? 0)
+  // 해설 만들기 화면과 같은 숫자를 보이도록 업로드 영상은 업로드 몫(15%)을 더해 계산한다
+  const percent = jobOverallPercent(video.sourceType, toDisplayProgress(job?.progress ?? 0))
   const remain = remainingText(job?.estimatedRemainingSec ?? null)
 
   return (

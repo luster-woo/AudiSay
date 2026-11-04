@@ -6,6 +6,7 @@ import { useAnnouncer } from '@/features/announcer/context'
 import { useShortcut } from '@/features/shortcuts/context'
 import { formatClock } from '@/utils/time'
 import { isYoutubeUrl } from '@/utils/youtube'
+import { MIC_MESSAGES } from './micPermission'
 import { MAX_RECORD_SEC, useVoiceRecorder } from './useVoiceRecorder'
 
 /** 듣는 중 파형. 장식이라 숨기고, 움직임 줄이기 설정이면 멈춘다 */
@@ -52,8 +53,12 @@ export function SearchBar({
     },
     onUnavailable: (reason) => {
       ownInputRef.current?.focus()
-      announce(`${reason} 검색 칸에 글자로 적어 주세요.`, { politeness: 'assertive' })
+      announce(`${reason} 글자로 찾기는 그대로 쓸 수 있어요. 검색 칸에 있어요.`, {
+        politeness: 'assertive',
+      })
     },
+    onAsking: () => announce(MIC_MESSAGES.asking, { politeness: 'assertive' }),
+    onRecovered: () => announce(`${MIC_MESSAGES.recovered} 음성으로 찾기를 다시 눌러 주세요.`),
   })
 
   const startVoice = useCallback(async () => {

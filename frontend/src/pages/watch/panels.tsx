@@ -15,6 +15,9 @@ export function Clock({ ms, className }: { ms: number; className?: string }) {
   )
 }
 
+/** 패널 글자는 단어 단위로 줄을 바꾼다 (띄어쓰기 없는 아주 긴 글자만 어디서든 끊는다). 안쪽 글자에 그대로 이어진다 */
+const WRAP = 'break-keep [overflow-wrap:anywhere]'
+
 /* ───────────── 목차 ───────────── */
 
 export function ChaptersPanel({
@@ -28,7 +31,7 @@ export function ChaptersPanel({
 }) {
   const current = [...chapters].reverse().find((c) => c.startMs <= currentMs) ?? null
   return (
-    <section aria-labelledby="chapters-title">
+    <section aria-labelledby="chapters-title" className={WRAP}>
       <h2 id="chapters-title" className="text-lg font-bold">
         장면 목차 · {chapters.length}개
       </h2>
@@ -81,19 +84,27 @@ export function ScriptPanel({
 }) {
   const listRef = useRef<HTMLUListElement>(null)
   // 지금 문장이 바뀌면 눈에 보이게 따라간다 (포커스는 옮기지 않는다)
+  // 지금 문장이 목록에서(또는 브라우저 창에서) 조금이라도 벗어나 있으면 목록 맨 위로 올린다
   useEffect(() => {
     const list = listRef.current
     const el = current ? list?.querySelector<HTMLElement>(`[data-line="${current.lineId}"]`) : null
     if (!list || !el) return
-    // 목록 안에서만 움직인다 (scrollIntoView 는 페이지 전체를 끌어올릴 수 있다)
-    const top = el.offsetTop - list.offsetTop
-    if (top < list.scrollTop || top + el.offsetHeight > list.scrollTop + list.clientHeight) {
-      list.scrollTop = Math.max(0, top - list.clientHeight / 2 + el.offsetHeight / 2)
+    // 화면 위치로 잰다. 목록이 relative 라 offsetTop 은 이미 목록 기준이어서 빼면 엉뚱한 곳으로 간다
+    const box = list.getBoundingClientRect()
+    const line = el.getBoundingClientRect()
+    const visibleTop = Math.max(box.top, 0)
+    const visibleBottom = Math.min(box.bottom, window.innerHeight)
+    if (line.top < visibleTop || line.bottom > visibleBottom) {
+      // 목록 안에서만 움직인다 (scrollIntoView 는 페이지 전체를 끌어올릴 수 있다)
+      list.scrollTop += line.top - box.top
     }
   }, [current])
 
   return (
-    <section aria-labelledby="script-title" className="rounded-lg border-2 border-navy p-4">
+    <section
+      aria-labelledby="script-title"
+      className={cn(WRAP, 'rounded-lg border-2 border-navy p-4')}
+    >
       <h2 id="script-title" className="text-lg font-bold">
         해설 대본 · {lines.length}문장
       </h2>
@@ -148,7 +159,10 @@ export function HistoryPanel({
   }, [lastKey, lastText])
 
   return (
-    <section aria-labelledby="history-title" className="rounded-lg border-2 border-navy p-4">
+    <section
+      aria-labelledby="history-title"
+      className={cn(WRAP, 'rounded-lg border-2 border-navy p-4')}
+    >
       <div className="flex items-baseline justify-between">
         <h2 id="history-title" className="text-lg font-bold">
           질문 기록 · {entries.length}개
@@ -250,7 +264,10 @@ export function CandidatesPanel({
   }
 
   return (
-    <section aria-labelledby="cands-title" className="rounded-lg border-2 border-navy p-4">
+    <section
+      aria-labelledby="cands-title"
+      className={cn(WRAP, 'rounded-lg border-2 border-navy p-4')}
+    >
       <h2 id="cands-title" className="text-lg font-bold">
         장면 찾기 · 후보 {candidates.length}곳
       </h2>

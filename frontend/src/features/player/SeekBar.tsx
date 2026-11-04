@@ -10,6 +10,8 @@ export interface SeekBarProps {
   onSeek: (ms: number) => void
   /** 키를 뗀 뒤 한 번만 부른다 (화살표를 연달아 눌러도 한 번) */
   onSeekSettled?: (ms: number) => void
+  /** 검은 바탕(전체 화면 하단 바) 위에 놓을 때 dark */
+  tone?: 'light' | 'dark'
   className?: string
 }
 
@@ -23,8 +25,10 @@ export function SeekBar({
   stepSec,
   onSeek,
   onSeekSettled,
+  tone = 'light',
   className,
 }: SeekBarProps) {
+  const dark = tone === 'dark'
   const trackRef = useRef<HTMLDivElement>(null)
   const settleTimer = useRef<number | null>(null)
   const [pending, setPending] = useState<number | null>(null)
@@ -79,7 +83,7 @@ export function SeekBar({
 
   return (
     <div className={cn('flex items-center gap-4', className)}>
-      <p className="shrink-0 font-mono text-lg text-ink-muted">
+      <p className={cn('shrink-0 font-mono text-lg', dark ? 'text-on-stage' : 'text-ink-muted')}>
         <span aria-hidden="true">
           {formatClock(shown)} / {formatClock(durationMs)}
         </span>
@@ -94,7 +98,7 @@ export function SeekBar({
         onClick={onClick}
         className="relative flex h-14 min-w-0 flex-1 cursor-pointer items-center"
       >
-        <div className="h-2.5 w-full rounded-full bg-line" />
+        <div className={cn('h-2.5 w-full rounded-full', dark ? 'bg-cream/40' : 'bg-line')} />
         <div
           role="slider"
           tabIndex={0}
@@ -104,7 +108,10 @@ export function SeekBar({
           aria-valuenow={shown}
           aria-valuetext={`${formatPositionSpoken(shown)}, 전체 ${formatPositionSpoken(durationMs)}`}
           onKeyDown={onKeyDown}
-          className="absolute top-1/2 h-9 w-4 -translate-x-1/2 -translate-y-1/2 rounded-sm border-2 border-navy bg-yellow outline-offset-4 focus-visible:bg-yellow"
+          className={cn(
+            'absolute top-1/2 h-9 w-4 -translate-x-1/2 -translate-y-1/2 rounded-sm border-2 bg-yellow outline-offset-4 focus-visible:bg-yellow',
+            dark ? 'border-cream' : 'border-navy',
+          )}
           style={{ left: `${percent}%` }}
         />
       </div>

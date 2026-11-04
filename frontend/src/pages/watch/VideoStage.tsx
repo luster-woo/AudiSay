@@ -8,6 +8,8 @@ export interface VideoStageProps {
   ytHostRef: RefObject<HTMLDivElement | null>
   /** 영상 소리 크기 0 ~ 100 (재생 설정) */
   volume: number
+  /** 전체 화면: 테두리·비율 없이 남는 자리를 다 채운다 (영상은 비율을 지켜 가운데) */
+  fill?: boolean
   className?: string
 }
 
@@ -15,11 +17,21 @@ export interface VideoStageProps {
  * 영상이 나오는 검은 상자. 브라우저 기본 컨트롤은 숨기고 재생바·버튼은 바깥에서 만든다.
  * 상자 안에는 글자를 겹치지 않는다 (시각·상태는 바깥 재생바·버튼이 보여 주고 읽는다).
  */
-export function VideoStage({ playback, videoRef, ytHostRef, volume, className }: VideoStageProps) {
+export function VideoStage({
+  playback,
+  videoRef,
+  ytHostRef,
+  volume,
+  fill = false,
+  className,
+}: VideoStageProps) {
   return (
     <div
       className={cn(
-        'relative aspect-video w-full overflow-hidden rounded-lg border-4 border-ink bg-ink',
+        'relative w-full overflow-hidden',
+        fill
+          ? 'min-h-0 flex-1 bg-black'
+          : 'aspect-video rounded-lg border-4 border-stage bg-stage hc:border-yellow',
         className,
       )}
     >

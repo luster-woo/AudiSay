@@ -1,21 +1,11 @@
 import { useId, useRef, useState, type DragEvent } from 'react'
-import { useAnnouncer } from '@/features/announcer/context'
 import { usePageEntry } from '@/features/page/usePageEntry'
 import { Notice } from '@/components/ui/Notice'
 import { cn } from '@/components/ui/cn'
-import {
-  checkFile,
-  formatSize,
-  readVideoDuration,
-  type Limits,
-  type Rejection,
-} from '@/features/upload/fileRules'
-import { StatusDialog } from '@/features/upload/StatusDialog'
+import { formatSize, type Limits } from '@/features/upload/fileRules'
+import { useFileCheck, type PickedFile } from '@/features/upload/useFileCheck'
 
-export interface PickedFile {
-  file: File
-  durationSec: number
-}
+export type { PickedFile }
 
 /** 1/3단계: 파일 고르기 (파일 창 또는 끌어다 놓기) */
 export function PickStep({
@@ -24,44 +14,29 @@ export function PickStep({
   onPicked,
 }: {
   limits: Limits
-  /** 오늘 남은 업로드 횟수. 관리자는 null(제한 없음) */
+  /** 오늘 남은 내 영상 해설 횟수(업로드를 마쳐 해설을 요청할 때 차감). 관리자는 null(제한 없음) */
   remaining: number | null
   onPicked: (picked: PickedFile) => void
 }) {
-  const { announce } = useAnnouncer()
   const inputRef = useRef<HTMLInputElement>(null)
   const hintId = useId()
-  const [checking, setChecking] = useState(false)
-  const [rejection, setRejection] = useState<Rejection | null>(null)
   const [dragging, setDragging] = useState(false)
   const noneLeft = remaining === 0
+
+  const { checking, take, rejectionDialog } = useFileCheck({
+    limits,
+    disabled: noneLeft,
+    inputRef,
+    onPicked,
+  })
 
   usePageEntry({
     title: '영상 등록',
     announce: noneLeft
-      ? '영상 등록이에요. 오늘 올리기 횟수를 다 썼어요. 밤 12시에 다시 채워져요.'
+      ? '영상 등록이에요. 오늘 내 영상 해설 횟수를 다 썼어요. 밤 12시에 다시 채워져요.'
       : '영상 등록이에요. 파일 고르기 버튼에 있어요. Enter를 누르면 파일 창이 열려요.',
     focusRef: inputRef,
   })
-
-  const take = async (file: File | undefined) => {
-    if (!file || noneLeft) return
-    setChecking(true)
-    announce(`${file.name}을 확인하고 있어요.`)
-    const durationSec = await readVideoDuration(file)
-    setChecking(false)
-    const problem = checkFile(file, durationSec, limits)
-    if (problem || durationSec == null) {
-      setRejection(
-        problem ?? { reason: '영상 파일을 읽을 수 없어요.', action: '다른 파일을 골라 주세요.' },
-      )
-      announce('이 파일은 올릴 수 없어요. 다른 파일 고르기 버튼에 있어요.', {
-        politeness: 'assertive',
-      })
-      return
-    }
-    onPicked({ file, durationSec })
-  }
 
   const onDrop = (e: DragEvent) => {
     e.preventDefault()
@@ -83,14 +58,14 @@ export function PickStep({
       <h1 className="mt-6 text-[2.75rem] font-bold">올릴 영상 파일을 골라 주세요</h1>
       <p className="mt-8 text-2xl">
         {remaining == null
-          ? '올리기 횟수 제한이 없어요.'
+          ? '내 영상 해설 횟수 제한이 없어요.'
           : noneLeft
-            ? '오늘은 더 올릴 수 없어요.'
-            : `오늘 ${remaining}개 더 올릴 수 있어요.`}
+            ? '오늘은 내 영상 해설을 더 요청할 수 없어요.'
+            : `오늘 내 영상 해설을 ${remaining}번 더 요청할 수 있어요.`}
       </p>
 
       {noneLeft && (
-        <Notice title="오늘 올리기 횟수를 다 썼어요" className="mt-6">
+        <Notice title="오늘 내 영상 해설 횟수를 다 썼어요" className="mt-6">
           밤 12시에 다시 채워져요. 이미 해설이 있는 영상은 계속 볼 수 있어요.
         </Notice>
       )}
@@ -140,21 +115,7 @@ export function PickStep({
         파일 창 대신 영상 파일을 이 상자 위로 끌어다 놓아도 돼요.
       </p>
 
-      <StatusDialog
-        open={rejection != null}
-        kicker="업로드 불가"
-        tone="danger"
-        title={rejection?.reason ?? ''}
-        primaryLabel="다른 파일 고르기"
-        onPrimary={() => {
-          setRejection(null)
-          inputRef.current?.click()
-        }}
-        secondaryLabel="취소"
-        onSecondary={() => setRejection(null)}
-      >
-        {rejection && <p className="font-bold">{rejection.action}</p>}
-      </StatusDialog>
+      {rejectionDialog}
     </div>
   )
 }

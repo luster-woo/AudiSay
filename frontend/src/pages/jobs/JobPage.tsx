@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { jobsApi } from '@/api/jobs'
 import { videosApi } from '@/api/videos'
@@ -11,7 +11,11 @@ import { ButtonLink } from '@/components/ui/ButtonLink'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { useAnnouncer } from '@/features/announcer/context'
 import { STAGE_NAME, useProgressAnnounce } from '@/features/announcer/useProgressAnnounce'
+import { JobSteps } from '@/features/job/JobSteps'
+import { jobSteps, type SourceType } from '@/features/job/stages'
+import { useDisplayProgress } from '@/features/job/useDisplayProgress'
 import { StatusDialog } from '@/features/upload/StatusDialog'
+import { APP_TITLE } from '@/features/page/usePageEntry'
 import { formatDurationSpoken } from '@/utils/time'
 
 const POLL_MS = 5_000
@@ -74,6 +78,8 @@ function elapsedText(job: Job) {
 /**
  * 해설 만들기 진행 화면 (/jobs/:jobId).
  * 처음엔 GET /jobs/{id} 로 상태를 받고, 이어서 SSE 로 진행률을 받는다.
+ * 유튜브는 4단계(영상 분석 → 장면 해설 → 합치고 다듬기 → 음성), 업로드 영상은 앞에 '영상 업로드'(늘 완료)를 더한 5단계.
+ * 업로드 영상의 진행률은 업로드 몫 15% 뒤에 서버 진행률을 85%로 줄여 이어 붙인다(features/job/stages).
  * SSE 가 끊기면(heartbeat 없음·네트워크 오류) 5초마다 GET 으로 바꿔 끝까지 따라간다.
  */
 export default function JobRoute() {
@@ -102,11 +108,17 @@ function JobPage({ jobId }: { jobId: number }) {
   const live = !!job && !isFinished(job)
   const videoId = job?.videoId
 
-  const { data: video } = useQuery({
+  const videoQuery = useQuery({
     queryKey: queryKeys.video(videoId ?? 0),
     queryFn: () => videosApi.get(videoId!),
     enabled: !!videoId,
   })
+  const video = videoQuery.data
+  // 업로드 화면에서 넘어오면 영상 종류를 주소 상태로 받아, 영상 정보를 기다리지 않고 바로 그린다(깜박임 방지).
+  // 영상 정보를 못 받으면 업로드 몫 없이 4단계로 보여 준다
+  const fromState = (useLocation().state as { sourceType?: SourceType } | null)?.sourceType
+  const source = video?.sourceType ?? fromState ?? (videoQuery.isError ? 'YOUTUBE' : undefined)
+  const progress = useDisplayProgress(source, job, video?.durationSec)
 
   // ── 실시간 진행률 (SSE) ──
   useEffect(() => {
@@ -143,15 +155,15 @@ function JobPage({ jobId }: { jobId: number }) {
   }, [phase, videoId, queryClient])
 
   // ── 화면 진입: 탭 제목 + 제목으로 포커스 (대화상자가 떠 있으면 그대로 둔다) ──
-  const ready = !!job
+  const ready = !!job && !!source
   useEffect(() => {
-    document.title = '해설 만들기 – AudiSay'
+    document.title = APP_TITLE
     if (!ready) return
     if (!document.querySelector('dialog[open]')) headingRef.current?.focus({ preventScroll: true })
   }, [ready])
 
   // ── 읽어 주기: 진행 중엔 단계·10% 단위로, 상태가 바뀌면 한 번 ──
-  useProgressAnnounce(phase === 'running' ? (job?.currentStage ?? null) : null, job?.progress ?? 0)
+  useProgressAnnounce(phase === 'running' && source ? (job?.currentStage ?? null) : null, progress)
   const retryable =
     !!job?.errorCode && (job.retryable ?? JOB_ERROR_MESSAGES[job.errorCode].retryable)
   useEffect(() => {
@@ -192,9 +204,8 @@ function JobPage({ jobId }: { jobId: number }) {
       </div>
     )
   }
-  if (!job) return <p className="text-2xl">불러오는 중이에요.</p>
+  if (!job || !source) return <p className="text-2xl">불러오는 중이에요.</p>
 
-  const progress = phase === 'done' ? 100 : Math.round(job.progress)
   const statusLine =
     phase === 'done'
       ? elapsedText(job)
@@ -233,6 +244,7 @@ function JobPage({ jobId }: { jobId: number }) {
         className="mt-12 h-8"
       />
       <p className="mt-10 text-2xl text-ink-muted">{statusLine}</p>
+      <JobSteps steps={jobSteps(source, job)} className="mt-10" />
       <p className="mt-10 text-[1.625rem] font-bold">
         {phase === 'done'
           ? '내 영상에서 언제든 다시 볼 수 있어요.'

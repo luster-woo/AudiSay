@@ -14,6 +14,8 @@ export interface ChoiceGroupProps<T extends string | number> {
   value: T
   onChange: (value: T) => void
   className?: string
+  /** 보기 하나하나의 폭·여백 (옆 버튼들과 크기를 맞출 때). 없으면 글자 길이만큼 */
+  optionClassName?: string
 }
 
 /**
@@ -27,6 +29,7 @@ export function ChoiceGroup<T extends string | number>({
   value,
   onChange,
   className,
+  optionClassName,
 }: ChoiceGroupProps<T>) {
   const name = useId()
 
@@ -40,7 +43,8 @@ export function ChoiceGroup<T extends string | number>({
           <label
             key={String(o.value)}
             className={cn(
-              'flex min-h-touch cursor-pointer items-center rounded-md border-2 border-navy bg-paper px-4 font-bold text-navy',
+              'flex min-h-touch cursor-pointer items-center justify-center rounded-md border-2 border-navy bg-paper font-bold whitespace-nowrap text-navy',
+              optionClassName ?? 'px-4',
               'has-[:checked]:bg-navy has-[:checked]:text-cream',
               'has-[:focus-visible]:outline-[3px] has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-navy has-[:focus-visible]:outline-solid',
             )}
@@ -51,11 +55,8 @@ export function ChoiceGroup<T extends string | number>({
               value={String(o.value)}
               checked={o.value === value}
               onChange={() => onChange(o.value)}
-              className="peer sr-only"
+              className="sr-only"
             />
-            <span aria-hidden="true" className="mr-1 hidden peer-checked:inline">
-              ✓
-            </span>
             {o.label}
           </label>
         ))}

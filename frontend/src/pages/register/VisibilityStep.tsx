@@ -18,12 +18,15 @@ export function VisibilityStep({
   submitting,
   submitError,
   onSubmit,
+  onBack,
 }: {
   remaining: number | null
   submitting: boolean
   /** 업로드 시작이 서버에서 거절됐을 때 문구 */
   submitError?: string
   onSubmit: (visibility: Visibility) => void
+  /** 2단계(제목 정하기)로 돌아간다. 적은 제목은 그대로 남는다 */
+  onBack: () => void
 }) {
   const { announce } = useAnnouncer()
   const privateRef = useRef<HTMLInputElement>(null)
@@ -128,12 +131,26 @@ export function VisibilityStep({
           )}
         </div>
 
-        <Button type="submit" size="hero" loading={submitting} className="mt-8 w-full">
-          {submitting ? '올리기를 준비하는 중' : '올리고 해설 만들기'}
-        </Button>
+        {/* 2단계와 같이 왼쪽 이전 단계, 오른쪽 올리기 */}
+        <div className="mt-8 grid grid-cols-2 gap-4">
+          <Button
+            type="button"
+            variant="secondary"
+            size="hero"
+            disabled={submitting}
+            onClick={onBack}
+          >
+            이전 단계
+          </Button>
+          <Button type="submit" size="hero" loading={submitting}>
+            {submitting ? '올리기를 준비하는 중' : '올리고 해설 만들기'}
+          </Button>
+        </div>
       </form>
       {remaining != null && (
-        <p className="mt-8 text-2xl text-ink-muted">오늘 남은 {remaining}개 중 1개를 써요.</p>
+        <p className="mt-8 text-2xl text-ink-muted">
+          다 올리면 내 영상 해설 1번을 써요. 오늘 {remaining}번 남았어요.
+        </p>
       )}
     </div>
   )

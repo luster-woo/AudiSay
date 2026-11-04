@@ -1,5 +1,5 @@
 import { useId, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { usersApi } from '@/api/users'
 import { queryKeys } from '@/api/queryKeys'
@@ -42,14 +42,16 @@ export default function VerifyPage() {
   const [submitting, setSubmitting] = useState(false)
   const [done, setDone] = useState(false)
 
-  const alreadyVerified = user?.role === 'VISUALLY_IMPAIRED' && !done
+  // 이미 인증한 회원은 이 화면에서 할 일이 없으므로 내 정보로 보낸다 (주소를 직접 입력해 들어온 경우).
+  // 기준은 내 정보 화면과 같다: 역할이 시각장애인이거나 인증 표시가 있으면 인증한 회원.
+  // 방금 이 화면에서 인증을 끝낸 경우(done)는 완료 안내를 보여 주어야 하므로 보내지 않는다
+  const alreadyVerified = !done && (user?.role === 'VISUALLY_IMPAIRED' || user?.verified === true)
 
   usePageEntry({
     title: '시각장애인 인증',
-    announce: alreadyVerified
-      ? '시각장애인 인증 화면이에요. 이미 인증된 회원이에요.'
-      : '시각장애인 인증 화면이에요. 서류 한 장만 올리면 돼요.',
+    announce: '시각장애인 인증 화면이에요. 서류 한 장만 올리면 돼요.',
     focusRef: headingRef,
+    ready: !alreadyVerified,
   })
 
   const onPick = (e: ChangeEvent<HTMLInputElement>) => {
@@ -82,12 +84,13 @@ export default function VerifyPage() {
       const res = await usersApi.verify(file!)
       // 역할이 AccessToken 에 담기므로 새 토큰으로 바꾼다 (API 명세)
       tokenStore.set(res.accessToken)
+      // done 을 역할 변경과 같은 렌더에 넣는다. 그렇지 않으면 '이미 인증한 회원' 으로 보고 내 정보로 보내 버린다
+      setDone(true)
       updateUser({ role: res.role, verified: true })
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.me, exact: true }),
         queryClient.invalidateQueries({ queryKey: queryKeys.quota, exact: true }),
       ])
-      setDone(true)
       requestAnimationFrame(() => {
         headingRef.current?.focus()
         announce('시각장애인 인증이 끝났어요. 이제 60분까지 해설을 만들 수 있어요.')
@@ -101,6 +104,8 @@ export default function VerifyPage() {
     }
   }
 
+  if (alreadyVerified) return <Navigate to="/me" replace />
+
   return (
     <div className="grid gap-12 lg:grid-cols-[1fr_24rem]">
       <div>
@@ -111,12 +116,10 @@ export default function VerifyPage() {
           {done ? '인증이 끝났어요' : '시각장애인 인증'}
         </h1>
 
-        {done || alreadyVerified ? (
+        {done ? (
           <>
             <p className="mt-4 text-xl text-ink-muted">
-              {done
-                ? '이제 더 긴 영상의 해설을 만들고, 하루에 더 많이 이용할 수 있어요.'
-                : '이미 인증된 회원이에요. 따로 할 일은 없어요.'}
+              이제 더 긴 영상의 해설을 만들고, 하루에 더 많이 이용할 수 있어요.
             </p>
             <ButtonLink to="/" variant="primary" size="lg" className="mt-8">
               홈으로 가기
@@ -222,23 +225,98 @@ export default function VerifyPage() {
         <h2 id="verify-benefit" className="text-2xl font-bold">
           인증하면 달라지는 것
         </h2>
-        <dl className="mt-6 space-y-6">
-          <div>
-            <dt className="font-bold">유튜브 해설</dt>
-            <dd className="mt-1 text-ink-muted">지금 5분 이하 · 하루 2개</dd>
-            <dd className="mt-2 rounded-md bg-yellow-soft px-4 py-3 text-lg font-bold">
-              인증 후 60분 이하 · 하루 5개
-            </dd>
-          </div>
-          <div>
-            <dt className="font-bold">영상 올리기</dt>
-            <dd className="mt-1 text-ink-muted">지금 5분 이하 · 하루 1개</dd>
-            <dd className="mt-2 rounded-md bg-yellow-soft px-4 py-3 text-lg font-bold">
-              인증 후 60분 · 2GB 이하 · 하루 3개
-            </dd>
-          </div>
-        </dl>
+        <div className="mt-6 space-y-6">
+          {BENEFITS.map((b) => (
+            <BenefitTable key={b.title} {...b} />
+          ))}
+        </div>
       </aside>
     </div>
+  )
+}
+
+/** 인증 전후 비교 (와이어프레임 값) */
+const BENEFITS: { title: string; rows: { label: string; now: string; after: string }[] }[] = [
+  {
+    title: '유튜브 해설',
+    rows: [
+      { label: '영상 길이', now: '5분 이하', after: '60분 이하' },
+      { label: '하루', now: '2개', after: '5개' },
+    ],
+  },
+  {
+    title: '내 영상 해설',
+    rows: [
+      { label: '영상 길이', now: '5분 · 0.5GB 이하', after: '60분 · 2GB 이하' },
+      { label: '하루', now: '1개', after: '3개' },
+    ],
+  },
+]
+
+/**
+ * 항목 하나의 '지금 → 인증 후' 비교 표.
+ * 낭독기에는 "유튜브 해설 표, 영상 길이, 지금 5분 이하, 인증 후 60분 이하"처럼 칸 제목과 함께 읽힌다.
+ */
+function BenefitTable({ title, rows }: (typeof BENEFITS)[number]) {
+  return (
+    <table className="w-full table-fixed border-separate border-spacing-0 overflow-hidden rounded-md border-2 border-line bg-paper text-left">
+      <caption className="mb-2 text-left text-xl font-bold">{title}</caption>
+      <colgroup>
+        {/* '지금'과 '인증 후'는 같은 폭: 둘 다 '○분 · ○GB 이하' 가 한 줄에 들어가게 */}
+        <col className="w-[5.25rem]" />
+        <col />
+        <col />
+      </colgroup>
+      <thead>
+        <tr className="text-base">
+          <td className="border-r-2 border-b-2 border-line" />
+          <th scope="col" className="border-b-2 border-line px-3 py-2 font-bold text-ink-muted">
+            지금
+          </th>
+          <th scope="col" className="border-b-2 border-navy bg-navy px-3 py-2 font-bold text-paper">
+            인증 후
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r, i) => (
+          <tr key={r.label}>
+            <th
+              scope="row"
+              className={`border-r-2 border-line px-3 py-3 text-base font-bold whitespace-nowrap ${i > 0 ? 'border-t border-line' : ''}`}
+            >
+              {r.label}
+            </th>
+            <td
+              className={`px-2.5 py-3 text-lg whitespace-nowrap text-ink-muted ${i > 0 ? 'border-t border-line' : ''}`}
+            >
+              <EmphasizeNumbers text={r.now} />
+            </td>
+            <td
+              className={`bg-navy/85 px-2.5 py-3 text-lg font-bold whitespace-nowrap text-paper ${i > 0 ? 'border-t border-paper/25' : ''}`}
+            >
+              <EmphasizeNumbers text={r.after} />
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+/** "60분 · 2GB 이하" 의 숫자만 크게·굵게. 낭독은 글자 그대로 이어서 읽힌다 */
+function EmphasizeNumbers({ text }: { text: string }) {
+  return (
+    <>
+      {text.split(/(\d+(?:\.\d+)?)/).map((part, i) =>
+        /^\d+(?:\.\d+)?$/.test(part) ? (
+          <span key={i} className="text-xl font-extrabold tabular-nums">
+            {part}
+          </span>
+        ) : (
+          part
+        ),
+      )}
+    </>
   )
 }

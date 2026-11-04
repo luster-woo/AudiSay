@@ -98,13 +98,13 @@ export function PlayerPractice({ done, onDone }: { done: boolean; onDone: () => 
         onClick={toggle}
         onKeyDown={onVideoKeyDown}
         aria-label={`연습 영상, ${playing ? '재생 중. 누르면 멈춰요' : '멈춤. 누르면 재생해요'}`}
-        className="flex h-[9.5rem] w-full items-center justify-center rounded-lg bg-ink text-cream/70 focus-visible:bg-ink focus-visible:outline-yellow"
+        className="flex h-[9.5rem] w-full items-center justify-center rounded-lg bg-stage text-on-stage/70 focus-visible:bg-stage focus-visible:outline-yellow hc:border-2 hc:border-yellow"
       >
         예시 영상 · 10초 · {playing ? '재생 중' : started ? '멈춤' : '재생 전'}
       </button>
 
-      <div className="mt-2 flex items-center gap-6 rounded-lg bg-ink px-4 py-2">
-        <p aria-hidden="true" className="font-mono text-sm text-cream/70">
+      <div className="mt-2 flex items-center gap-6 rounded-lg bg-stage px-4 py-2 hc:border-2 hc:border-yellow">
+        <p aria-hidden="true" className="font-mono text-sm text-on-stage/70">
           해설
           <br />
           {formatClock(sceneAt(time).at * 1000)}

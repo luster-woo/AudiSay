@@ -32,6 +32,7 @@ export function commandText(intent: ChatIntent, utterance: string, targetMs: num
   if (intent === 'SEEK_TIME' || intent === 'SEEK_SCENE') return `${q} → 장면을 찾지 못했어요`
   if (intent === 'SETTING') return `${q} → 설정을 바꿨어요`
   if (intent === 'ACTION') return `${q} → 실행했어요`
+  if (intent === 'SEARCH_VIDEO') return `${q} → 영상을 찾았어요`
   return `${q} → 알아듣지 못했어요`
 }
 
@@ -39,7 +40,7 @@ export function commandText(intent: ChatIntent, utterance: string, targetMs: num
 export function entriesFromServer(items: ChatHistoryItem[]): HistoryEntry[] {
   const out: HistoryEntry[] = []
   for (const m of [...items].reverse()) {
-    if (m.intent === 'QUESTION' || m.intent === 'SCENE_NOW') {
+    if (m.intent === 'QUESTION' || m.intent === 'SCENE_NOW' || m.intent === 'RECAP') {
       out.push({
         key: `me-${m.chatLogId}`,
         kind: 'me',

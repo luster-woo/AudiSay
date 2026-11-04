@@ -169,14 +169,18 @@ export function Player({ video }: { video: VideoDetail }) {
     }
   }, [state.playing, interrupt, controls, announce])
 
+  // 이동하기 전 위치 ('되돌려 줘' 명령용). 재생바를 연달아 누르는 동안에는 처음 위치만 남긴다
+  const beforeSeekRef = useRef<number | null>(null)
+  const seekBurstRef = useRef(false)
   const seekTo = useCallback(
     (ms: number, said?: string) => {
+      beforeSeekRef.current = state.currentMs
       interrupt()
       controls.seek(ms)
       const at = sceneAtMs(description?.scenes, ms)
       announce(said ?? `${formatPositionSpoken(ms)}로 옮겼어요.${at ? ` ${at.title} 장면.` : ''}`)
     },
-    [interrupt, controls, description, announce],
+    [state.currentMs, interrupt, controls, description, announce],
   )
 
   const setDetail = useCallback(
@@ -334,74 +338,94 @@ export function Player({ video }: { video: VideoDetail }) {
     allowInInput: true,
   })
 
-  /* ── 챗봇 명령 → 기능 실행 (CTL-04) ── */
+  /* ── 챗봇 명령 → 기능 실행 (CTL-04). 처리하지 못한 기능이면 false ── */
   const runAction = useCallback(
-    (code: ChatActionCode) => {
+    (code: ChatActionCode): boolean => {
       const scenes = description?.scenes ?? []
       switch (code) {
         case 'PLAY':
           if (!state.playing) toggle()
-          return
+          return true
         case 'PAUSE':
           if (state.playing) toggle()
-          return
+          return true
         case 'CURRENT_POSITION':
           announce(
             `${formatPositionSpoken(state.currentMs)}. ${scene ? `${scene.title} 장면.` : ''}`,
           )
-          return
+          return true
         case 'NEXT_SCENE': {
           const next = scenes.find((s) => s.startMs > state.currentMs)
           if (next)
             seekTo(next.startMs, `다음 장면, ${next.title}, ${formatPositionSpoken(next.startMs)}.`)
           else announce('마지막 장면이에요.')
-          return
+          return true
         }
         case 'PREV_SCENE': {
           const prev = [...scenes].reverse().find((s) => s.startMs < state.currentMs - 1500)
           if (prev)
             seekTo(prev.startMs, `이전 장면, ${prev.title}, ${formatPositionSpoken(prev.startMs)}.`)
           else seekTo(0, '처음으로 옮겼어요.')
-          return
+          return true
         }
         case 'PLAY_SUMMARY':
           void playSummary('30초 요약을 들려 드릴게요.')
-          return
+          return true
         case 'READ_DETAIL':
           if (!narration.readDetail()) announce('지금 화면에 긴 글이 없어요.')
-          return
+          return true
         case 'HELP':
           setHelpOpen(true)
-          return
+          return true
         case 'OPEN_CHAPTERS':
           // 크게 보기에는 목차 탭이 없으니 작게 보기로 돌아가 연다
           setEnlarged(false)
           setTab('chapters')
           announce('장면 목차를 열었어요.')
-          return
+          return true
         case 'OPEN_SCRIPT':
           setEnlarged(false)
           setTab('script')
           announce('해설 대본을 열었어요.')
-          return
+          return true
         case 'OPEN_HISTORY':
           setTab('history')
           announce('질문 기록을 열었어요.')
-          return
+          return true
         case 'FAVORITE_ADD':
           if (!video.isFavorite) favorite.mutate()
           else announce('이미 즐겨찾기에 있어요.')
-          return
+          return true
         case 'FAVORITE_REMOVE':
           if (video.isFavorite) favorite.mutate()
           else announce('즐겨찾기에 없는 영상이에요.')
-          return
+          return true
         case 'REPORT':
           openReport()
-          return
+          return true
         case 'REPLAY_TUTORIAL':
           navigate('/tutorial/1')
-          return
+          return true
+        case 'REPEAT_LAST': {
+          // 방금 읽은 해설·답변을 다시 (영상은 멈추고 읽은 뒤 이어서)
+          const last = narrator.last
+          if (!last) announce('다시 들을 문장이 없어요.')
+          else void holdWhile(() => narrator.say({ ...last, skipIfBusy: false }))
+          return true
+        }
+        case 'UNDO_SEEK': {
+          const back = beforeSeekRef.current
+          if (back == null) announce('되돌릴 이동이 없어요.')
+          else seekTo(back, `이동하기 전 위치, ${formatPositionSpoken(back)}로 돌아왔어요.`)
+          return true
+        }
+        case 'STOP_SPEAKING':
+          // 읽던 소리만 멈춘다. 해설 때문에 영상을 멈춰 뒀으면 이어서 재생한다
+          interrupt()
+          announce('읽던 소리를 멈췄어요.')
+          return true
+        default:
+          return false
       }
     },
     [
@@ -411,6 +435,9 @@ export function Player({ video }: { video: VideoDetail }) {
       scene,
       toggle,
       seekTo,
+      narrator,
+      holdWhile,
+      interrupt,
       playSummary,
       narration,
       setHelpOpen,
@@ -437,6 +464,10 @@ export function Player({ video }: { video: VideoDetail }) {
       seekTo,
       updateSettings: update,
       runAction,
+      searchVideos: (query) => {
+        announce(`'${query}' 영상을 찾아요.`)
+        navigate(`/search?q=${encodeURIComponent(query)}`)
+      },
       announce,
       focusInput: () => inputRef.current?.focus(),
       showHistory: () => setTab('history'),
@@ -658,10 +689,13 @@ export function Player({ video }: { video: VideoDetail }) {
                 durationMs={state.durationMs}
                 stepSec={settings.seekStepSec}
                 onSeek={(ms) => {
+                  if (!seekBurstRef.current) beforeSeekRef.current = state.currentMs
+                  seekBurstRef.current = true
                   interrupt()
                   controls.seek(ms)
                 }}
                 onSeekSettled={(ms) => {
+                  seekBurstRef.current = false
                   const at = sceneAtMs(description?.scenes, ms)
                   announce(
                     `${formatPositionSpoken(ms)}로 옮겼어요.${at ? ` ${at.title} 장면.` : ''}`,
@@ -788,7 +822,6 @@ export function Player({ video }: { video: VideoDetail }) {
       <SummaryDialog
         open={phase === 'asking'}
         summaryText={summary?.summary.text ?? null}
-        recommend={summary?.recommendSummary ?? false}
         onListen={onListenSummary}
         onSkip={onSkipSummary}
       />

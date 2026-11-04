@@ -39,11 +39,12 @@ import java.util.Set;
 public class ChatMessageService {
     static final String UNKNOWN_MESSAGE = "다시 말씀해 주세요.";
     static final String OUTSIDE_VIDEO_MESSAGE = "영상을 연 뒤에 질문해 주세요.";
+    static final String IN_VIDEO_SEARCH_MESSAGE = "다른 영상은 검색 화면에서 찾아 주세요.";
     static final String SCENE_NOT_FOUND_MESSAGE = "그런 장면을 찾지 못했어요. 다르게 말씀해 주세요.";
     private static final Set<ChatIntent> VIDEO_ONLY = EnumSet.of(ChatIntent.QUESTION, ChatIntent.SCENE_NOW,
-            ChatIntent.SEEK_TIME, ChatIntent.SEEK_SCENE);
+            ChatIntent.SEEK_TIME, ChatIntent.SEEK_SCENE, ChatIntent.RECAP);
     private static final Set<ChatIntent> NEEDS_DESCRIPTION = EnumSet.of(ChatIntent.QUESTION, ChatIntent.SCENE_NOW,
-            ChatIntent.SEEK_SCENE);
+            ChatIntent.SEEK_SCENE, ChatIntent.RECAP);
     private static final int END_MARGIN_MS = 3000;
 
     private final ChatLogRepository chatLogRepository;
@@ -121,11 +122,14 @@ public class ChatMessageService {
         if (video == null && VIDEO_ONLY.contains(intent)) {
             return ChatResult.message(OUTSIDE_VIDEO_MESSAGE);
         }
+        if (video != null && intent == ChatIntent.SEARCH_VIDEO) {
+            return ChatResult.message(IN_VIDEO_SEARCH_MESSAGE);
+        }
         if (descriptionId == null && NEEDS_DESCRIPTION.contains(intent)) {
             throw new BusinessException(ErrorCode.DESCRIPTION_NOT_FOUND, "아직 해설이 없습니다.");
         }
         return switch (intent) {
-            case QUESTION, SCENE_NOW -> ChatResult.answerStream(chatLogId);
+            case QUESTION, SCENE_NOW, RECAP -> ChatResult.answerStream(chatLogId);
             case SEEK_TIME -> ChatResult.seekTime(targetMs);
             case SEEK_SCENE -> ChatResult.seekScene(null, null, List.of(), SCENE_NOT_FOUND_MESSAGE);
             case SETTING -> ChatResult.setting(classified.settingKey(), classified.settingValue(), classified.message());

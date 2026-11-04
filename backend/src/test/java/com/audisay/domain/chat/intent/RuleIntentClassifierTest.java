@@ -77,6 +77,11 @@ class RuleIntentClassifierTest {
             일시정지 | ACTION PAUSE
             도움말 | ACTION HELP
             요약 들려줘 | ACTION PLAY_SUMMARY
+            지금까지 줄거리 알려 줘 | RECAP
+            여태 무슨 일 있었어? | RECAP
+            앞에 내용 정리해 줘 | RECAP
+            지금까지 어떻게 됐는지 요약해 줘 | RECAP
+            지금까지 나온 사람 누구야 | QUESTION
             목차 열어 줘 | ACTION OPEN_CHAPTERS
             대본 보여 줘 | ACTION OPEN_SCRIPT
             질문 기록 보여줘 | ACTION OPEN_HISTORY
@@ -109,6 +114,17 @@ class RuleIntentClassifierTest {
             무슨 장면이야 | SCENE_NOW
             왜 울어? | QUESTION
             레시피 알려줘 | LLM
+            십 초 되돌려 | SEEK_TIME rel=-10000
+            아까 거기로 되돌려 | ACTION UNDO_SEEK
+            화면 뭐 나와 | SCENE_NOW
+            지금 뭐 보여 | SCENE_NOW
+            그 사람이 뭐 보여줬어 | QUESTION
+            시작할 때 요약 항상 들려줘 | SETTING summaryMode=ALWAYS
+            영상 틀 때마다 요약 물어봐 줘 | SETTING summaryMode=ASK
+            처음에 요약 안 들을래 | SETTING summaryMode=NEVER
+            요약 들려줘 | ACTION PLAY_SUMMARY
+            너는 누구야 | UNKNOWN msg=저는 영상 내용을 알려 드리는 도우미예요. 영상에 대해 물어봐 주세요.
+            넌 이름이 뭐야 | UNKNOWN msg=저는 영상 내용을 알려 드리는 도우미예요. 영상에 대해 물어봐 주세요.
             """)
     void 규칙(String utterance, String expected) {
         assertThat(format(classifier.classify(utterance))).isEqualTo(expected);

@@ -1,6 +1,8 @@
 package com.audisay.domain.admin.controller;
 
 import com.audisay.domain.admin.dto.response.AiUsageStatsResponse;
+import com.audisay.domain.admin.dto.response.ChatStatsResponse;
+import com.audisay.domain.admin.service.AdminChatStatsService;
 import com.audisay.domain.admin.service.AdminStatsService;
 import com.audisay.global.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -21,6 +23,7 @@ import java.time.LocalDate;
 @RequiredArgsConstructor
 public class AdminStatsController {
     private final AdminStatsService adminStatsService;
+    private final AdminChatStatsService adminChatStatsService;
 
     @Operation(summary = "AI 사용량 통계",
             description = "기간(KST, 양끝 포함, 최대 92일)의 AI 호출 수·토큰·추정 크레딧을 합계·용도별·모델별·일별로 주고, "
@@ -32,5 +35,17 @@ public class AdminStatsController {
             @Parameter(description = "종료일 YYYY-MM-DD", example = "2026-11-03")
             @RequestParam("to") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
         return ApiResponse.success("AI 사용량 통계 조회 성공", adminStatsService.getAiUsage(from, to));
+    }
+
+    @Operation(summary = "챗봇 품질 통계",
+            description = "기간(KST, 양끝 포함, 최대 92일)의 intent별 입력·분류 시간, 질문 답변 근거(바로 답함·자료에 없음·"
+                    + "지금 이후에 있어 물음·골라 들음), 첫 음성 p50·p95, 장면 찾기 방법, 어디에도 답이 없던 최근 질문 20개(회원 정보 없음)")
+    @GetMapping("/chat")
+    public ApiResponse<ChatStatsResponse> getChatStats(
+            @Parameter(description = "시작일 YYYY-MM-DD", example = "2026-10-21")
+            @RequestParam("from") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @Parameter(description = "종료일 YYYY-MM-DD", example = "2026-11-04")
+            @RequestParam("to") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return ApiResponse.success("챗봇 품질 통계 조회 성공", adminChatStatsService.getChatStats(from, to));
     }
 }

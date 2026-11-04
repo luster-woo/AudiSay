@@ -1,7 +1,7 @@
 # AudiSay H200 오픈소스 추론 서버
 
 > **팀 서버에서 쓸 때(2026-10-29 이식)**: 데모에서는 노트북이 이 서버를 불렀다. 팀에서는 **AI 워커(`ai/app/inference.py`)**가 부른다.
-> 서버 자체(설치·실행·버전 기록)는 아래 데모 내용 그대로다. 바뀌는 것은 연결하는 쪽뿐이다.
+> 서버 자체(설치·실행·버전 기록)는 아래 데모 내용 그대로다(2026-11-04 버전 22로 맞춤). 바뀌는 것은 연결하는 쪽뿐이다.
 >
 > | 데모(노트북) | 팀(EC2의 ai 컨테이너) |
 > |---|---|
@@ -79,6 +79,19 @@ curl -s -X POST http://127.0.0.1:8100/warmup   # 모델 내려받기·로드(처
 - 큰 모델 시험: `VLM_REPO=Qwen/Qwen3-VL-32B-Instruct nohup uvicorn ...`
 - 끄기: `pkill -f "uvicorn server:app"`
 - 주피터 서버가 꺼지면(오래 안 쓰면 자동 종료될 수 있음) 이 서버도 꺼진다. 시연 전에 다시 켠다.
+
+### 4-1. vLLM 함께 켜기(서버 버전 15, 19)
+
+장면 해설·요약·번역·질문 답변·발화 분석은 vLLM(같은 모델, `127.0.0.1:8200`)에 동시에 보내야 빠르다(망고 커리 8장면 44.8초 → 3.7초, troubleshooting 20·21). 설치는 `experiments/describe_vllm.py` 설명대로 `~/vllm_exp/.venv`에 한 번.
+
+```bash
+bash ~/gpu_server/start_vllm.sh   # "ready"가 나오면 됨(약 2분). 이미 켜져 있으면 "already running"
+```
+
+- 추론 서버보다 먼저 켜도 나중에 켜도 된다. `/health`의 `"vllm": true`면 쓰는 중.
+- vLLM이 꺼져 있거나 실패하면 추론 서버가 알아서 예전 방식(HF, 하나씩)으로 한다. 느려질 뿐 멈추지 않는다. 버전 19부터 HF 8B는 이때 처음 올라오므로(약 17GB) 평소에는 메모리에 없다.
+- 끄기: `pkill -f "[b]in/vllm serve"`. 메모리는 GPU0에서 약 24GB(상한 17%, 버전 19 전에는 25%·약 34GB).
+- vLLM을 아예 쓰지 않으려면 `VLLM_URL=` (빈 값)으로 추론 서버를 켠다.
 
 ## 5. 노트북에서 연결
 
@@ -182,17 +195,15 @@ uv run python scripts/h200_call.py POST /warmup
 
 같은 실험에서 `torch.compile`·정적 캐시·패딩은 효과가 없었다(정적 캐시는 컴파일로 30초 더 걸림).
 
-### 버전 12 (2026-10-30) — 안내 목소리(Supertonic 3)를 H200에서
+## 서버 버전 20 (2026-11-04) — 8B vLLM 끄고 32B 하나로
 
-| 항목 | 내용 |
-|---|---|
-| 무엇 | `POST /tts {text, voice(F1~F5·M1~M5), format:"mp3"}` → mp3, 헤더 `X-Duration-Ms`. 팀에서는 AI 서버 `/internal/tts`가 부르고 S3 `audio/guide/`에 저장 |
-| 왜 | 사용자 기기(CPU)에서 만들면 기기 성능에 따라 문장당 0.6~1.5초. H200은 사용자 수와 상관없이 약 0.04초 |
-| 설치 | `pip install -r requirements.txt` (`supertonic==1.3.1`, `onnxruntime-gpu==1.23.2`, `soundfile`). **onnxruntime-gpu 1.24+는 CUDA 13을 찾아 GPU를 못 잡고 CPU로 돈다** → 1.23.x 고정 |
-| 느렸던 것 | 새 문장마다 1.6초: cuDNN이 입력 크기가 바뀔 때마다 계산 방법을 다시 찾음 → 길이를 묶음 크기로 맞추고 크기별 세션을 따로 둠(`tts_bucket.py`, 53개, 약 20GB). 켠 뒤 약 45초 동안 뒤에서 미리 만든다(`/health`의 `ttsWarmSessions`가 53이면 끝) |
-| 잠금 | Qwen·Whisper와 따로 잠근다(`_tts_lock`). 다른 사람의 해설 만들기가 GPU를 잡고 있어도 안내는 기다리지 않는다 |
-| 실측 | 서버 안 0.04초, 터널 너머 왕복 0.1~0.16초(mp3로 받아 전송량 490KB → 약 40KB) |
+GPU0을 우리 몫만 113GB 쓰고 있어서(32B vLLM 61.5GB + 8B vLLM 24.4GB + 이 서버 27.1GB) 8B vLLM(8200)을 껐다.
+장면 해설·요약·번역·질문 답변·발화 분석은 이제 32B vLLM(8201)에 보낸다(`VLLM_URL` 기본값 8201, `VLLM_MODEL` 기본값 32B).
 
-### 버전 13 (2026-11-02) — 받아쓰기 힌트
+| 실측(H200 안) | 8B 때 | 32B |
+|---|---|---|
+| 발화 분석 | 약 0.4초 | 0.42초 |
+| 질문 답변(스트리밍 전체) | 약 0.4초 | 0.27초 |
 
-`POST /stt`가 `prompt`(영상 제목·인물 이름·목차 단어)를 받아 faster-whisper `initial_prompt`로 넣는다. 질문 녹음에서 고유명사 인식을 높인다. 옛 클라이언트는 보내지 않으므로 그대로 동작한다.
+8B를 다시 쓰려면 `start_vllm.sh`로 켜고 이 서버를 `VLLM_URL=http://127.0.0.1:8200/v1 VLLM_MODEL=Qwen/Qwen3-VL-8B-Instruct`로 띄운다.
+이전 파일은 `server_v19_backup.py`.

@@ -28,7 +28,7 @@ public class GeminiLlmProvider extends AbstractHttpLlmProvider {
     public LlmResult generate(LlmRequest request, String model) {
         long start = System.nanoTime();
         String response = post(request.purpose(), "/v1beta/models/" + model + ":generateContent", this::auth,
-                toJson(GeminiRequest.of(request, properties.thinkingBudget())));
+                toJson(GeminiRequest.of(request, properties.thinkingBudget(), properties.thinkingLevel(model))));
         GeminiResponse parsed = parse(response, GeminiResponse.class);
         rejectBlocked(parsed);
         GeminiResponse.UsageMetadata usage = parsed.usageMetadata() == null
@@ -43,7 +43,7 @@ public class GeminiLlmProvider extends AbstractHttpLlmProvider {
         StringBuilder text = new StringBuilder();
         GeminiResponse.UsageMetadata[] usage = {new GeminiResponse.UsageMetadata(0, 0, 0)};
         boolean cancelled = postSse(request.purpose(), "/v1beta/models/" + model + ":streamGenerateContent?alt=sse",
-                this::auth, toJson(GeminiRequest.of(request, properties.thinkingBudget())), (data, textArrived) -> {
+                this::auth, toJson(GeminiRequest.of(request, properties.thinkingBudget(), properties.thinkingLevel(model))), (data, textArrived) -> {
                     GeminiResponse chunk = parse(data, GeminiResponse.class);
                     rejectBlocked(chunk);
                     if (chunk.usageMetadata() != null) {

@@ -1,6 +1,7 @@
 package com.audisay.domain.chat.seek;
 
 import com.audisay.domain.chat.seek.KeywordSceneScorer.Hit;
+import com.audisay.domain.chat.tuning.ChatTuningProperties;
 import com.audisay.domain.description.service.SceneText;
 import com.audisay.domain.description.service.SceneText.Moment;
 import com.audisay.domain.description.service.SceneText.MomentType;
@@ -111,6 +112,28 @@ class LlmSceneSelectorTest {
         assertThatThrownBy(() -> selector.select("장면", game, 1L, 0))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.CHAT_AI_LIMIT);
+    }
+
+    @Test
+    void 정확히_맞는_장면만_고르고_비슷한_장면은_버린다() {
+        answer("{\"n\":[],\"similar\":[2]}");
+
+        assertThat(selector.select("도루하는 장면", game, 1L, 0)).isEmpty();
+        ArgumentCaptor<LlmRequest> captor = ArgumentCaptor.forClass(LlmRequest.class);
+        verify(llmClient).generate(captor.capture());
+        assertThat(captor.getValue().system()).isEqualTo(LlmSceneSelector.SYSTEM_EXACT);
+    }
+
+    @Test
+    void 정확히_고르기를_끄면_예전_프롬프트() {
+        LlmSceneSelector old = new LlmSceneSelector(llmClient, JsonMapper.builder().build(), new KeywordSceneScorer(),
+                new ChatTuningProperties(true, true, true, true, true, false, true, true, true));
+        answer("{\"n\":[2]}");
+
+        assertThat(old.select("도루하는 장면", game, 1L, 0)).hasSize(1);
+        ArgumentCaptor<LlmRequest> captor = ArgumentCaptor.forClass(LlmRequest.class);
+        verify(llmClient).generate(captor.capture());
+        assertThat(captor.getValue().system()).isEqualTo(LlmSceneSelector.SYSTEM);
     }
 
     private void answer(String text) {

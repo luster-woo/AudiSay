@@ -86,7 +86,11 @@ def normalize(raw: dict, video_id: int | None, model: str, duration_ms: int | No
             "category": CATEGORY_CODE.get(raw["category"], "ETC"), "summary30s": raw["summary_30s"],
             "dialogues": dialogues, "scenes": scenes, "lines": lines, "dialogueLanguage": raw.get("dialogue_language"),
             # 영상 제목: merge가 인물 이름 근거(제목·대사·화면 글자에 실제로 있는지)를 확인할 때 쓴다
-            "title": title}
+            "title": title,
+            # 32B 영상 보기 엔진(video.py)만: 줄거리가 바뀌는 메인 장면 목차, 목소리로 대사와 짝지은 호칭
+            "chapters": [{"startMs": min(to_ms(c["start"]), duration_ms), "title": c["title"]}
+                         for c in raw.get("chapters") or [] if c.get("title")],
+            "voiceNames": raw.get("voice_names") or []}
 
 
 def _inside_dialogue(t: int, dialogues: list[dict]) -> dict | None:

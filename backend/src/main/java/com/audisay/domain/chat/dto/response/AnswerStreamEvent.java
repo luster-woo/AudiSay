@@ -16,7 +16,9 @@ public final class AnswerStreamEvent {
     public record Sentence(String text, String audioUrl) {
     }
 
-    public record Done(String answerText, AnswerSource answerSource, Integer firstAudioMs, Integer totalLatencyMs) {
+    /** @param futureAvailable 바로 답하지 못했지만 지금 이후 내용에 답이 있음 → FE가 "들으시겠어요?"를 받고 includeFuture=true로 재구독 */
+    public record Done(String answerText, AnswerSource answerSource, Integer firstAudioMs, Integer totalLatencyMs,
+                       boolean futureAvailable) {
     }
 
     /** errorCode: AI_TIMEOUT / AI_LIMIT / AI_UNAVAILABLE / UNKNOWN */

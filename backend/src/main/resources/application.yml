@@ -71,6 +71,10 @@ audisay:
       seek-negation-filter: true      # 부정 문장 빼기·요약하는 말 점수 낮추기
       seek-evidence-bonus: true       # 15초 안에 대사·해설·화면 글자가 함께 말하면 점수 올리기
       seek-llm-verify: true           # 대사 한 줄에서만 찾은 후보가 섞이면 LLM이 거르기
+      seek-exact-only: true           # LLM이 정확히 맞는 장면만(비슷한 다른 일은 버림)
+      seek-partial-verify: true       # 검색어 낱말을 다 못 맞힌 키워드 후보는 LLM이 확인한 뒤 이동
+      answer-past-only: true          # 바로 하는 답은 질문한 시각까지 자료만(요약·지금 장면 설명 뺌)
+      answer-future-check: true       # 바로 못 답하면 뒤쪽에 답이 있는지 확인해 "들으시겠어요?"
     answer:                           # 질문 답변 SSE(283)
       threads: 32                     # 동시에 만드는 답변 수(넘으면 CHAT_005)
       tts-threads: 16                 # 답변 문장 음성(AI /internal/tts) 스레드
@@ -123,6 +127,8 @@ audisay:
     anthropic-base-url: https://gms.ssafy.io/gmsapi/api.anthropic.com
     connect-timeout: 2s
     thinking-budget: 0
+    thinking-levels:                # 추론을 끌 수 없는 모델(thinkingBudget 0이면 400)은 가장 적은 추론 단계로
+      "[gemini-3.5-flash-lite]": minimal
     models:
       intent: gemini-3.1-flash-lite
       seek: gemini-3.1-flash-lite
@@ -143,6 +149,7 @@ audisay:
     # 표에 없는 모델(h200:*, supertonic, mock)은 0. whisper-1은 토큰이 아니라 녹음 1초 = 1크레딧이라 표에 넣지 않음
     prices:
       "[gemini-3.1-flash-lite]": { input: 0.0025, output: 0.015 }
+      "[gemini-3.5-flash-lite]": { input: 0.003, output: 0.025 }
       "[gemini-3.5-flash]": { input: 0.015, output: 0.09 }
       "[gemini-3.8-flash]": { input: 0.015, output: 0.075 }
       "[gemini-3.8-flash-tts]": { input: 0.01, output: 0.18 }

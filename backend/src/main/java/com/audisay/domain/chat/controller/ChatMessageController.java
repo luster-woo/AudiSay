@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -39,13 +40,16 @@ public class ChatMessageController {
 
     @Operation(summary = "질문 답변 받기 (SSE)",
             description = "QUESTION·SCENE_NOW 답변. delta(글자 조각) / sentence(문장 + 음성 주소) / done / error. "
-                    + "이미 끝난 답변이면 done만. 같은 chatLogId를 동시에 구독하면 CHAT_008")
+                    + "이미 끝난 답변이면 done만. 같은 chatLogId를 동시에 구독하면 CHAT_008. "
+                    + "질문한 시각까지 자료로 답하지 못하고 뒤에 답이 있으면 done.futureAvailable=true → includeFuture=true로 한 번 더(CHAT_010)")
     @GetMapping("/messages/{chatLogId}/stream")
     public ResponseEntity<SseEmitter> stream(@AuthenticationPrincipal AuthUser authUser,
-                                             @PathVariable("chatLogId") Long chatLogId) {
+                                             @PathVariable("chatLogId") Long chatLogId,
+                                             @RequestParam(value = "includeFuture", defaultValue = "false")
+                                             boolean includeFuture) {
         return ResponseEntity.ok()
                 .header("Cache-Control", "no-cache")
                 .header("X-Accel-Buffering", "no")
-                .body(chatAnswerService.subscribe(authUser, chatLogId));
+                .body(chatAnswerService.subscribe(authUser, chatLogId, includeFuture));
     }
 }

@@ -5,6 +5,7 @@ import com.audisay.domain.description.service.AnswerContext.Dialogue;
 import com.audisay.domain.description.service.AnswerContext.Narration;
 import com.audisay.domain.description.service.AnswerContext.Person;
 import com.audisay.domain.description.service.AnswerContext.SceneInfo;
+import com.audisay.domain.description.service.FutureContext;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.Test;
@@ -40,6 +41,35 @@ class AnswerPromptTest {
     }
 
     @Test
+    void 요약이_없으면_요약_칸을_넣지_않는다() {
+        AnswerContext past = new AnswerContext("제목", null, 1_000, List.of(new SceneInfo(0, "시작", null, List.of(), List.of())),
+                List.of(), List.of());
+
+        assertThat(prompt.questionUser(past, "질문")).doesNotContain("영상 요약").doesNotContain("장면 설명");
+    }
+
+    @Test
+    void 뒤_내용은_1만2천_자를_넘으면_늦은_장면부터_뺀다() {
+        List<SceneInfo> scenes = new java.util.ArrayList<>();
+        for (int i = 0; i < 100; i++) {
+            scenes.add(new SceneInfo(i * 10_000, "장면 " + i, "가".repeat(300), List.of(), List.of()));
+        }
+        String json = prompt.futureJson(new FutureContext("요약", scenes, List.of()));
+
+        assertThat(json.length()).isLessThanOrEqualTo(AnswerPrompt.FUTURE_MAX_CHARS);
+        assertThat(json).contains("장면 0").doesNotContain("장면 99");
+    }
+
+    @Test
+    void 뒤_내용에서_찾은_답_문장을_읽는다() {
+        assertThat(prompt.evidence("{\"evidence\": \" 시속 60마일까지 0.81초 \"}")).isEqualTo("시속 60마일까지 0.81초");
+        assertThat(prompt.evidence("```json\n{\"evidence\":\"\"}\n```")).isNull();
+        assertThat(prompt.evidence("{\"evidence\": null}")).isNull();
+        assertThat(prompt.evidence("모르겠어요")).isNull();
+        assertThat(prompt.evidence(null)).isNull();
+    }
+
+    @Test
     void 지금_장면_프롬프트와_첫_문장() {
         assertThat(prompt.sceneNowUser(context)).endsWith("\n\n요청: 지금 화면을 설명해 주세요.");
         assertThat(AnswerPrompt.sceneTitleSentence(context.currentScene())).isEqualTo("지금은 제로백 가속 테스트 장면이에요.");
@@ -47,13 +77,16 @@ class AnswerPromptTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"그건 해설 자료에 없어요.", "해설 자료에는 그 내용이 나오지 않아요.", "자료에 나와 있지 않아 알 수 없어요.",
-            "해설에서는 알 수 없어요."})
+            "해설에서는 알 수 없어요.", "해설 자료에는 토끼 인형이나 그에 대한 내용이 없어서 색깔은 알 수 없어요.",
+            "해설 자료에는 솜사탕 기계 앞에서 눈을 반짝이는 어린 양이 나오지만, 그 양의 이름은 없어요.",
+            "해설 자료에 다음 타자가 안타를 쳤는지 여부는 없어요."})
     void 자료에_없다는_답을_알아본다(String answer) {
         assertThat(AnswerPrompt.saidUnanswerable(answer)).isTrue();
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"손흥민이 골을 넣었어요.", "차가 없어졌어요. 순식간에 사라졌어요."})
+    @ValueSource(strings = {"손흥민이 골을 넣었어요.", "차가 없어졌어요. 순식간에 사라졌어요.",
+            "해설 자료에 따르면 농장에 남은 양은 없어요.", "자료를 보면 이 차는 지붕이 없어요."})
     void 보통_답은_자료에_없다는_답이_아니다(String answer) {
         assertThat(AnswerPrompt.saidUnanswerable(answer)).isFalse();
     }

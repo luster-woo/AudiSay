@@ -22,7 +22,7 @@ final class IntentSlotMapper {
             return ClassifiedIntent.unknown(null);
         }
         return switch (intent) {
-            case QUESTION, SCENE_NOW -> ClassifiedIntent.of(intent);
+            case QUESTION, SCENE_NOW, RECAP -> ClassifiedIntent.of(intent);
             case SEEK_TIME -> seekTime(s, utterance);
             case SEEK_SCENE -> ClassifiedIntent.seekScene(query(s.get("query"), utterance));
             case SETTING -> setting(s);

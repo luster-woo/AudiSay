@@ -7,8 +7,12 @@ import com.audisay.domain.chat.entity.ChatIntent;
 import com.audisay.domain.chat.entity.ChatLog;
 import com.audisay.domain.chat.ratelimit.ChatRateLimiter;
 import com.audisay.domain.chat.repository.ChatLogRepository;
+import com.audisay.domain.chat.tuning.ChatTuningProperties;
 import com.audisay.domain.description.service.AnswerContext;
 import com.audisay.domain.description.service.AnswerContextReader;
+import com.audisay.domain.description.service.FutureContext;
+import com.audisay.domain.description.service.RecapContext;
+import com.audisay.domain.description.service.RecapReader;
 import com.audisay.global.exception.BusinessException;
 import com.audisay.global.exception.ErrorCode;
 import com.audisay.global.external.ai.AiServerClient;
@@ -37,7 +41,9 @@ import java.util.concurrent.TimeUnit;
  * 질문 답변 SSE(GET /chat/messages/{chatLogId}/stream). 저장 자료만 근거로 LLM(gemini-3.1-flash-lite) 스트리밍 →
  * 글자 조각은 delta, 문장이 끝나면 AI /internal/tts(Supertonic) 음성과 함께 sentence, 끝나면 done(실패면 error).
  * SCENE_NOW는 장면 제목을 먼저 읽고 LLM이 지금 화면을 잇는다(LLM을 못 쓰면 장면 설명으로).
- * 연결이 끊기면 LLM 스트림·남은 음성을 멈추고, 어느 경우든 받은 데까지 chat_logs에 남긴다
+ * 연결이 끊기면 LLM 스트림·남은 음성을 멈추고, 어느 경우든 받은 데까지 chat_logs에 남긴다.
+ * 바로 하는 답은 질문한 시각까지 자료만(answer-past-only). 답하지 못하면 뒤쪽 자료에 답이 있는지 LLM이 확인해(answer-future-check)
+ * "지금 이후에 나와요, 들으시겠어요?"를 읽고 done.futureAvailable=true → includeFuture=true 재구독이면 뒤 자료까지 넣어 답한다(FUTURE)
  */
 @Slf4j
 @Service
@@ -56,11 +62,19 @@ public class ChatAnswerService {
     private final ChatAnswerProperties properties;
     private final TransactionTemplate transactionTemplate;
     private final MeterRegistry meterRegistry;
+    private final ChatTuningProperties tuning;
+    private final FutureOffer futureOffer;
+    private final RecapReader recapReader;
 
     /**
      * 권한·상태를 먼저 확인하고(실패는 JSON 에러), 답변은 답변 스레드에서 만든다. 이미 끝난 답변이면 done만 보내고 닫는다
      */
     public SseEmitter subscribe(AuthUser authUser, Long chatLogId) {
+        return subscribe(authUser, chatLogId, false);
+    }
+
+    /** @param includeFuture "지금 이후 내용 들을게요"(futureAvailable였던 질문만, 한 번) */
+    public SseEmitter subscribe(AuthUser authUser, Long chatLogId, boolean includeFuture) {
         ChatLog chatLog = chatLogRepository.findById(chatLogId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CHAT_LOG_NOT_FOUND));
         if (!chatLog.getUserId().equals(authUser.userId())) {
@@ -69,11 +83,14 @@ public class ChatAnswerService {
         if (!chatLog.isAnswerable()) {
             throw new BusinessException(ErrorCode.NOT_ANSWERABLE_INPUT);
         }
+        if (includeFuture && !futureOffered(chatLog)) {
+            throw new BusinessException(ErrorCode.FUTURE_NOT_AVAILABLE);
+        }
         SseEmitter emitter = newEmitter();
         AnswerSink sink = new AnswerSink(emitter);
-        if (chatLog.isAnswered()) {
+        if (!includeFuture && chatLog.isAnswered()) {
             sink.send("done", new Done(chatLog.getAnswerText(), chatLog.getAnswerSource(), chatLog.getFirstAudioMs(),
-                    chatLog.getTotalLatencyMs()));
+                    chatLog.getTotalLatencyMs(), futureOffered(chatLog)));
             sink.complete();
             return emitter;
         }
@@ -81,15 +98,24 @@ public class ChatAnswerService {
             throw new BusinessException(ErrorCode.ANSWER_IN_PROGRESS);
         }
         boolean llmAllowed = acquireLlm(chatLog);
+        if (includeFuture && !futureOffer.take(chatLogId)) {
+            inProgress.finish(chatLogId);
+            throw new BusinessException(ErrorCode.FUTURE_NOT_AVAILABLE);
+        }
         long startedAt = System.nanoTime();
         try {
-            executors.answer().execute(() -> answer(chatLog, sink, llmAllowed, startedAt));
+            executors.answer().execute(() -> answer(chatLog, sink, llmAllowed, startedAt, includeFuture));
         } catch (RejectedExecutionException e) {
             inProgress.finish(chatLogId);
             log.warn("[CHAT] 답변 스레드가 모두 사용 중 chatLogId={}", chatLogId);
             throw new BusinessException(ErrorCode.CHAT_AI_UNAVAILABLE);
         }
         return emitter;
+    }
+
+    private boolean futureOffered(ChatLog chatLog) {
+        return chatLog.getIntent() == ChatIntent.QUESTION && chatLog.getAnswerSource() == AnswerSource.UNANSWERABLE
+                && futureOffer.exists(chatLog.getId());
     }
 
     SseEmitter newEmitter() {
@@ -111,22 +137,38 @@ public class ChatAnswerService {
     }
 
     /** 끝까지 만들었으면 answer_source까지, 실패·취소면 받은 글자와 시간만 남긴다 */
-    void answer(ChatLog chatLog, AnswerSink sink, boolean llmAllowed, long startedAt) {
-        AnswerSession session = new AnswerSession(sink, this::speech, executors.tts(), startedAt);
+    void answer(ChatLog chatLog, AnswerSink sink, boolean llmAllowed, long startedAt, boolean includeFuture) {
+        boolean checkFuture = !includeFuture && chatLog.getIntent() == ChatIntent.QUESTION && tuning.answerFutureCheck();
+        AnswerSession session = new AnswerSession(sink, this::speech, executors.tts(), startedAt, checkFuture);
         AnswerSource savedSource = null;
+        boolean futureAvailable = false;
         String result;
         try {
-            Optional<AnswerContext> context = chatLog.getDescriptionId() == null ? Optional.empty()
-                    : answerContextReader.read(chatLog.getDescriptionId(),
-                    chatLog.getVideoTimeMs() == null ? 0 : chatLog.getVideoTimeMs());
+            int nowMs = chatLog.getVideoTimeMs() == null ? 0 : chatLog.getVideoTimeMs();
+            boolean recap = chatLog.getIntent() == ChatIntent.RECAP;
+            Optional<AnswerContext> context = chatLog.getDescriptionId() == null || recap ? Optional.empty()
+                    : answerContextReader.read(chatLog.getDescriptionId(), nowMs, tuning.answerPastOnly());
             AnswerSource source;
-            if (context.isEmpty()) {
+            if (recap && chatLog.getDescriptionId() != null) {
+                source = recap(session, chatLog, nowMs);
+            } else if (context.isEmpty()) {
                 session.speak(List.of(NO_DESCRIPTION));
                 source = AnswerSource.UNANSWERABLE;
             } else if (chatLog.getIntent() == ChatIntent.SCENE_NOW) {
                 source = sceneNow(session, context.get(), llmAllowed, chatLog.getId());
+            } else if (includeFuture) {
+                source = futureAnswer(session, context.get(), chatLog, nowMs);
             } else {
-                source = question(session, context.get(), chatLog.getUtterance(), chatLog.getId());
+                source = question(session, context.get(), chatLog.getUtterance(), chatLog.getId(), checkFuture);
+                if (checkFuture && source == AnswerSource.UNANSWERABLE && !session.cancelled()) {
+                    futureAvailable = futureHasAnswer(chatLog, nowMs);
+                    if (futureAvailable || session.text().isEmpty()) {
+                        session.speak(List.of(futureAvailable ? AnswerPrompt.FUTURE_PROMPT : AnswerPrompt.UNANSWERABLE));
+                    }
+                    if (futureAvailable) {
+                        futureOffer.offer(chatLog.getId());
+                    }
+                }
             }
             session.awaitSpeech(properties.speechWait());
             if (session.cancelled()) {
@@ -134,7 +176,8 @@ public class ChatAnswerService {
             } else {
                 savedSource = source;
                 result = source.name().toLowerCase();
-                sink.send("done", new Done(session.text(), source, session.firstAudioMs(), session.elapsedMs()));
+                sink.send("done", new Done(session.text(), source, session.firstAudioMs(), session.elapsedMs(),
+                        futureAvailable));
             }
         } catch (LlmException e) {
             session.awaitSpeech(properties.speechWait());
@@ -160,9 +203,103 @@ public class ChatAnswerService {
         }
     }
 
-    private AnswerSource question(AnswerSession session, AnswerContext context, String question, Long chatLogId) {
+    /** @param deferUnanswerable true면 "자료에 없어요"를 여기서 읽지 않는다(뒤 확인 뒤 서비스가 읽음) */
+    private AnswerSource question(AnswerSession session, AnswerContext context, String question, Long chatLogId,
+                                  boolean deferUnanswerable) {
         LlmRequest request = LlmRequest.text(LlmPurpose.ANSWER, AnswerPrompt.QUESTION_SYSTEM,
                 answerPrompt.questionUser(context, question), AnswerPrompt.MAX_OUTPUT_TOKENS).withChatLogId(chatLogId);
+        try {
+            llmClient.stream(request, session::onDelta);
+        } catch (LlmException e) {
+            if (e.getKind() != LlmException.Kind.BLOCKED || session.generated()) {
+                throw e;
+            }
+            if (!deferUnanswerable) {
+                session.speak(List.of(AnswerPrompt.UNANSWERABLE));
+            }
+            return AnswerSource.UNANSWERABLE;
+        }
+        session.flush();
+        if (session.suppressedUnanswerable()) {
+            return AnswerSource.UNANSWERABLE;
+        }
+        if (!session.generated()) {
+            if (!deferUnanswerable) {
+                session.speak(List.of(AnswerPrompt.UNANSWERABLE));
+            }
+            return AnswerSource.UNANSWERABLE;
+        }
+        return AnswerPrompt.saidUnanswerable(session.text()) ? AnswerSource.UNANSWERABLE : AnswerSource.STORED;
+    }
+
+    /**
+     * 뒤쪽 자료에 답이 있는지 LLM 1회(LLM 한도에 셈). 자료가 없거나 확인이 실패하면 없다고 본다.
+     * 지표 audisay.chat.answer.future result: available / none / skipped(한도·장애)
+     */
+    private boolean futureHasAnswer(ChatLog chatLog, int nowMs) {
+        Optional<FutureContext> future = answerContextReader.readFuture(chatLog.getDescriptionId(), nowMs);
+        if (future.isEmpty() || (future.get().scenes().isEmpty() && future.get().dialogues().isEmpty())) {
+            return false;
+        }
+        String result = "skipped";
+        try {
+            rateLimiter.acquireLlm(chatLog.getUserId());
+            LlmResult check = llmClient.generate(LlmRequest.json(LlmPurpose.ANSWER, AnswerPrompt.FUTURE_CHECK_SYSTEM,
+                    answerPrompt.futureCheckUser(future.get(), chatLog.getUtterance()), AnswerPrompt.CHECK_MAX_OUTPUT_TOKENS)
+                    .withChatLogId(chatLog.getId()));
+            String evidence = check == null ? null : answerPrompt.evidence(check.text());
+            boolean available = evidence != null;
+            result = available ? "available" : "none";
+            log.info("[CHAT] 뒤 내용 확인 chatLogId={} available={} 근거={}", chatLog.getId(), available, evidence);
+            return available;
+        } catch (BusinessException | LlmException e) {
+            log.warn("[CHAT] 뒤 내용 확인을 건너뜁니다 chatLogId={}: {}", chatLog.getId(), e.getMessage());
+            return false;
+        } finally {
+            meterRegistry.counter("audisay.chat.answer.future", "result", result).increment();
+        }
+    }
+
+    /** 지금까지 줄거리: 질문한 시각 전 목차(끝난 장면 요약 + 지금 장면 해설 문장)만으로 2~4문장 */
+    private AnswerSource recap(AnswerSession session, ChatLog chatLog, int nowMs) {
+        Optional<RecapContext> recap = recapReader.read(chatLog.getDescriptionId(), nowMs);
+        if (recap.isEmpty()) {
+            session.speak(List.of(NO_DESCRIPTION));
+            return AnswerSource.UNANSWERABLE;
+        }
+        if (recap.get().parts().isEmpty()) {
+            session.speak(List.of(AnswerPrompt.NO_RECAP));
+            return AnswerSource.UNANSWERABLE;
+        }
+        LlmRequest request = LlmRequest.text(LlmPurpose.ANSWER, AnswerPrompt.RECAP_SYSTEM,
+                answerPrompt.recapUser(recap.get()), AnswerPrompt.MAX_OUTPUT_TOKENS).withChatLogId(chatLog.getId());
+        try {
+            llmClient.stream(request, session::onDelta);
+        } catch (LlmException e) {
+            if (e.getKind() != LlmException.Kind.BLOCKED || session.generated()) {
+                throw e;
+            }
+            session.speak(List.of(AnswerPrompt.UNANSWERABLE));
+            return AnswerSource.UNANSWERABLE;
+        }
+        session.flush();
+        if (!session.generated()) {
+            session.speak(List.of(AnswerPrompt.NO_RECAP));
+            return AnswerSource.UNANSWERABLE;
+        }
+        return AnswerSource.STORED;
+    }
+
+    /** "지금 이후 내용 들을게요": 질문한 시각까지 자료 + 뒤 자료로 답한다(FUTURE) */
+    private AnswerSource futureAnswer(AnswerSession session, AnswerContext context, ChatLog chatLog, int nowMs) {
+        Optional<FutureContext> future = answerContextReader.readFuture(chatLog.getDescriptionId(), nowMs);
+        if (future.isEmpty()) {
+            session.speak(List.of(AnswerPrompt.UNANSWERABLE));
+            return AnswerSource.UNANSWERABLE;
+        }
+        LlmRequest request = LlmRequest.text(LlmPurpose.ANSWER, AnswerPrompt.FUTURE_SYSTEM,
+                answerPrompt.futureUser(context, future.get(), chatLog.getUtterance()), AnswerPrompt.MAX_OUTPUT_TOKENS)
+                .withChatLogId(chatLog.getId());
         try {
             llmClient.stream(request, session::onDelta);
         } catch (LlmException e) {
@@ -177,16 +314,17 @@ public class ChatAnswerService {
             session.speak(List.of(AnswerPrompt.UNANSWERABLE));
             return AnswerSource.UNANSWERABLE;
         }
-        return AnswerPrompt.saidUnanswerable(session.text()) ? AnswerSource.UNANSWERABLE : AnswerSource.STORED;
+        return AnswerPrompt.saidUnanswerable(session.text()) ? AnswerSource.UNANSWERABLE : AnswerSource.FUTURE;
     }
 
     private AnswerSource sceneNow(AnswerSession session, AnswerContext context, boolean llmAllowed, Long chatLogId) {
-        String title = SceneNowComposer.title(context);
+        String title = tuning.answerPastOnly() ? null : SceneNowComposer.title(context);
         if (title != null) {
             session.speak(List.of(title));
         }
         if (llmAllowed) {
-            LlmRequest request = LlmRequest.text(LlmPurpose.ANSWER, AnswerPrompt.SCENE_NOW_SYSTEM,
+            LlmRequest request = LlmRequest.text(LlmPurpose.ANSWER,
+                    tuning.answerPastOnly() ? AnswerPrompt.SCENE_NOW_PAST_SYSTEM : AnswerPrompt.SCENE_NOW_SYSTEM,
                     answerPrompt.sceneNowUser(context), AnswerPrompt.MAX_OUTPUT_TOKENS).withChatLogId(chatLogId);
             try {
                 LlmResult result = llmClient.stream(request, session::onDelta);

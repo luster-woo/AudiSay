@@ -118,7 +118,7 @@ class SceneSeekerTest {
     void 거르기를_끄면_후보를_그대로_준다() {
         when(reader.read(DESCRIPTION_ID)).thenReturn(talky("중견수 앞 안타!", "지금까지 안타 3개째입니다"));
 
-        SceneSeeker.Outcome outcome = seeker(new ChatTuningProperties(true, true, true, true, false))
+        SceneSeeker.Outcome outcome = seeker(new ChatTuningProperties(true, true, true, true, false, true, true, true, true))
                 .seek(2L, DESCRIPTION_ID, "안타", 31L, 0);
 
         assertThat(outcome.hits()).hasSize(2);
@@ -129,7 +129,7 @@ class SceneSeekerTest {
     void 키워드_검색을_끄면_LLM이_고른다() {
         when(selector.select(anyString(), any(), any(), any())).thenReturn(List.of());
 
-        seeker(new ChatTuningProperties(true, false, true, true, true)).seek(2L, DESCRIPTION_ID, "안타", 31L, 0);
+        seeker(new ChatTuningProperties(true, false, true, true, true, true, true, true, true)).seek(2L, DESCRIPTION_ID, "안타", 31L, 0);
 
         verify(selector).select("안타", scenes, 31L, 0);
     }
@@ -140,6 +140,52 @@ class SceneSeekerTest {
 
         assertThat(seeker.seek(2L, DESCRIPTION_ID, "안타", 31L, 0).hits()).isEmpty();
         verify(selector, never()).select(anyString(), any(), any(), any());
+    }
+
+    @Test
+    void 검색어_낱말을_다_못_맞힌_후보는_LLM이_확인한_뒤_이동한다() {
+        when(verifier.verify(anyString(), any(), any())).thenAnswer(invocation -> invocation.getArgument(1));
+
+        SceneSeeker.Outcome outcome = seeker.seek(2L, DESCRIPTION_ID, "주자 2루 도루", 31L, 0);
+
+        assertThat(outcome.source()).isEqualTo(SeekSource.KEYWORD);
+        assertThat(outcome.hits()).extracting(Hit::targetMs).containsExactly(903_000);
+        verify(verifier).verify(anyString(), any(), any());
+        verify(selector, never()).select(anyString(), any(), any(), any());
+    }
+
+    @Test
+    void 확인에서_모두_빠지면_LLM이_목차에서_다시_고른다() {
+        when(verifier.verify(anyString(), any(), any())).thenReturn(List.of());
+        when(selector.select(anyString(), any(), any(), any())).thenReturn(List.of());
+
+        SceneSeeker.Outcome outcome = seeker.seek(2L, DESCRIPTION_ID, "주자 2루 도루", 31L, 0);
+
+        assertThat(outcome.hits()).isEmpty();
+        assertThat(outcome.source()).isNull();
+        verify(selector).select("주자 2루 도루", scenes, 31L, 0);
+    }
+
+    @Test
+    void 한_글자_낱말로_찾은_후보는_LLM이_확인한다() {
+        when(reader.read(DESCRIPTION_ID)).thenReturn(List.of(new SceneText(1L, 1, 0, 600_000, "농장", "", List.of(), "",
+                List.of(new Moment(5_000, MomentType.NARRATION, "숀이 우유 통 옆에서 잔다")))));
+        when(verifier.verify(anyString(), any(), any())).thenReturn(List.of());
+        when(selector.select(anyString(), any(), any(), any())).thenReturn(List.of());
+
+        SceneSeeker.Outcome outcome = seeker.seek(2L, DESCRIPTION_ID, "숀이 우는", 31L, 0);
+
+        assertThat(outcome.hits()).isEmpty();
+        verify(verifier).verify(anyString(), any(), any());
+    }
+
+    @Test
+    void 낱말_확인을_끄면_일부만_맞아도_바로_이동한다() {
+        SceneSeeker.Outcome outcome = seeker(new ChatTuningProperties(true, true, true, true, true, true, false, true, true))
+                .seek(2L, DESCRIPTION_ID, "주자 2루 도루", 31L, 0);
+
+        assertThat(outcome.hits()).extracting(Hit::targetMs).containsExactly(903_000);
+        verify(verifier, never()).verify(anyString(), any(), any());
     }
 
     private SceneSeeker seeker(ChatTuningProperties tuning) {

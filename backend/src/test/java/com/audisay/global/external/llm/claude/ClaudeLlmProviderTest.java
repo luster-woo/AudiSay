@@ -55,7 +55,7 @@ class ClaudeLlmProviderTest {
     void setUp() {
         server.resetAll();
         GmsProperties properties = new GmsProperties(GmsProperties.Mode.REAL, "test-key", null, server.baseUrl(),
-                Duration.ofSeconds(1), 0, new GmsProperties.Models(MODEL, MODEL, MODEL),
+                Duration.ofSeconds(1), 0, null, new GmsProperties.Models(MODEL, MODEL, MODEL),
                 new GmsProperties.Timeouts(TIMEOUT, TIMEOUT, TIMEOUT), TIMEOUT, Map.of(), null, null, null);
         provider = new ClaudeLlmProvider(properties, JsonMapper.builder().build());
     }

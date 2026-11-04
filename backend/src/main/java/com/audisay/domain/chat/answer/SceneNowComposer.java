@@ -17,17 +17,25 @@ public final class SceneNowComposer {
     private SceneNowComposer() {
     }
 
-    /** 첫 문장(장면이 없으면 null → 바로 LLM) */
+    /** 첫 문장(장면이나 제목이 없으면 null → 바로 LLM) */
     public static String title(AnswerContext context) {
         SceneInfo scene = context.currentScene();
-        return scene == null ? null : AnswerPrompt.sceneTitleSentence(scene);
+        return scene == null || scene.title() == null ? null : AnswerPrompt.sceneTitleSentence(scene);
     }
 
-    /** LLM을 못 쓸 때 제목 뒤에 읽을 장면 설명. 장면도 설명도 없으면 안내 한 문장 */
+    /**
+     * LLM을 못 쓸 때 제목 뒤에 읽을 문장: 장면 설명 앞 2문장, 설명이 없으면(바로 하는 답은 끝나지 않은 장면 설명을 뺌) 질문한 시각 직전 해설 문장 2개.
+     * 둘 다 없으면 안내 한 문장
+     */
     public static List<String> fallback(AnswerContext context) {
         SceneInfo scene = context.currentScene();
-        List<String> sentences = new ArrayList<>(
-                scene == null ? List.of() : AnswerPrompt.sentencesOf(scene.description(), MAX_SENTENCES));
+        List<String> sentences = new ArrayList<>();
+        if (scene != null && scene.description() != null && !scene.description().isBlank()) {
+            sentences.addAll(AnswerPrompt.sentencesOf(scene.description(), MAX_SENTENCES));
+        } else if (scene != null) {
+            List<String> recent = scene.narrations().stream().map(n -> n.text()).toList();
+            sentences.addAll(recent.subList(Math.max(0, recent.size() - MAX_SENTENCES), recent.size()));
+        }
         if (sentences.isEmpty()) {
             sentences.add(NO_SCENE);
         }

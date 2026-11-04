@@ -1,9 +1,11 @@
 package com.audisay.domain.job.service;
 
 import com.audisay.domain.description.service.DescriptionService;
+import com.audisay.domain.job.dto.JobProgress;
 import com.audisay.domain.job.entity.Job;
 import com.audisay.domain.job.entity.JobChunk;
 import com.audisay.domain.job.entity.JobStage;
+import com.audisay.domain.job.entity.JobStatus;
 import com.audisay.domain.job.entity.Pipeline;
 import com.audisay.domain.job.message.JobEvent;
 import com.audisay.domain.job.message.JobMessage;
@@ -27,7 +29,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
+import java.time.Instant;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
+import java.util.stream.Stream;
 
 @Slf4j
 @Service
@@ -37,6 +43,7 @@ public class JobEventService {
     private static final int DESCRIBE_END = 70;
     private static final int MERGE_END = 80;
     private static final String UNKNOWN_ERROR = "UNKNOWN";
+    private static final String STALE_ERROR = "AI_TIMEOUT";
     private static final String TRANSCODE_FAILED = "TRANSCODE_FAILED";
     private static final String YOUTUBE_WATCH_URL = "https://www.youtube.com/watch?v=";
 
@@ -44,6 +51,7 @@ public class JobEventService {
     private final JobChunkRepository jobChunkRepository;
     private final JobMessagePublisher jobMessagePublisher;
     private final JobProgressNotifier notifier;
+    private final JobProgressStore progressStore;
     private final JobEventDeduplicator deduplicator;
     private final DescriptionService descriptionService;
     private final UploadService uploadService;
@@ -102,6 +110,38 @@ public class JobEventService {
             case LINE_TTS, JOB_EVENT -> {
             }
         }
+    }
+
+    /**
+     * 멈춘 작업 정리(StaleJobCleaner). 잠근 뒤 마지막 활동(대기 시작·시작·조각 갱신·Redis 진행 상태)을 다시 보고,
+     * 그 사이 소식이 왔으면 건너뛴다. Redis를 못 읽으면 예외로 이번 주기는 건너뛴다
+     *
+     * @return FAILED로 바꿨으면 true
+     */
+    @Transactional
+    public boolean failIfStale(Long jobId, Instant queuedBefore, Instant runningBefore) {
+        Job job = jobRepository.findByIdForUpdate(jobId).orElse(null);
+        if (job == null || job.isFinished()) {
+            return false;
+        }
+        Instant lastActivity = Stream.of(
+                        job.getQueuedAt(),
+                        job.getStartedAt(),
+                        jobChunkRepository.findLastUpdatedAt(jobId),
+                        progressStore.find(jobId).map(JobProgress::updatedAt).orElse(null))
+                .filter(Objects::nonNull)
+                .max(Comparator.naturalOrder())
+                .orElseThrow();
+        Instant before = job.getStatus() == JobStatus.QUEUED ? queuedBefore : runningBefore;
+        if (!lastActivity.isBefore(before)) {
+            return false;
+        }
+        log.warn("멈춘 작업 FAILED jobId={} status={} stage={} lastActivity={}",
+                jobId, job.getStatus(), job.getCurrentStage(), lastActivity);
+        meterRegistry.counter("audisay.job.stale", "status", job.getStatus().name(),
+                "stage", job.getCurrentStage() == null ? "NONE" : job.getCurrentStage().name()).increment();
+        failJob(job, STALE_ERROR);
+        return true;
     }
 
     private void onStageStarted(Job job, JobEvent event) {

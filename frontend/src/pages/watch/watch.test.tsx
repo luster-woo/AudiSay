@@ -572,10 +572,14 @@ test('지금까지 줄거리(RECAP)는 질문처럼 답변을 받아 읽는다',
   await waitFor(() =>
     expect(subscribeSse).toHaveBeenCalledWith('/chat/messages/90/stream', expect.anything()),
   )
+  // 답을 받는 동안에도 버튼 자리는 있고 누를 수 없다 (끝난 뒤 생겨서 화면이 밀리지 않게)
+  const replay = await screen.findByRole('button', { name: /^다시 듣기, AudiSay 답/ })
+  expect(replay).toHaveAttribute('aria-disabled', 'true')
   answer('막대그래프로 두 반을 비교했어요.')
   await waitFor(() =>
     expect(band()).toHaveTextContent('답변이 끝났어요. 막대그래프로 두 반을 비교했어요.'),
   )
+  expect(replay).not.toHaveAttribute('aria-disabled')
   expect(band()).not.toHaveTextContent('알아듣지 못했어요')
 })
 

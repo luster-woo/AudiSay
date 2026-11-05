@@ -104,7 +104,7 @@ test('단축키 3개 분류는 확정된 와이어프레임 문구로 표시한�
   expect(within(screen.getByRole('table')).getAllByRole('row')).toHaveLength(6)
 })
 
-test('음성 안내는 와이어프레임의 3단계 설명과 명령 12개를 제공한다 (axe)', async () => {
+test('음성 안내는 와이어프레임의 3단계 설명과 명령 16개(홈 음성 검색 포함)를 제공한다 (axe)', async () => {
   const { container } = renderRoute('/help')
   await openTab('말로 하는 명령')
   expect(
@@ -115,7 +115,7 @@ test('음성 안내는 와이어프레임의 3단계 설명과 명령 12개를 �
   expect(screen.getByText('원하는 요청을 말해 주세요.')).toBeVisible()
   expect(screen.getByText('내용이 틀리면 ‘아니’라고 말해 주세요.')).toBeVisible()
   expect(screen.queryByRole('button', { name: '말을 알아듣지 못할 때' })).not.toBeInTheDocument()
-  for (const category of ['재생 조절', '장면 찾기', '질문과 해설']) {
+  for (const category of ['재생 조절', '장면 찾기', '질문과 해설', '홈 음성 검색']) {
     await openTab(category)
     const table = screen.getByRole('table', { name: `${category} 음성 명령 예시` })
     expect(within(table).getAllByRole('row')).toHaveLength(5)
@@ -126,6 +126,7 @@ test('음성 안내는 와이어프레임의 3단계 설명과 명령 12개를 �
     ).toEqual(['음성 명령', '설명'])
     expect(await axe(container)).toHaveNoViolations()
   }
+  await openTab('질문과 해설')
   expect(screen.getByRole('table')).toHaveTextContent('‘여기 신고’')
   expect(screen.getByRole('table')).toHaveTextContent('현재 재생 위치와 남은 시간')
 })
@@ -196,7 +197,7 @@ test('음성 입력 단계와 모든 음성 명령 표는 따옴표와 슬래시
   ).toBeVisible()
   expect(within(playback).getByText('0.75배속 / 기본 속도')).toBeVisible()
 
-  for (const category of ['재생 조절', '장면 찾기', '질문과 해설']) {
+  for (const category of ['재생 조절', '장면 찾기', '질문과 해설', '홈 음성 검색']) {
     await openTab(category)
     const table = screen.getByRole('table')
     for (const cell of [

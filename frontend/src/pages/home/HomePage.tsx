@@ -90,7 +90,7 @@ export default function HomePage() {
               options={CATEGORY_OPTIONS}
               value={category}
               onChange={(e) => changeCategory(e.target.value)}
-              className="[&_label]:text-xl [&_select]:min-w-44"
+              className="[&_label]:text-xl [&_select]:min-w-44 [&_select]:text-xl"
             />
           </div>
         </div>

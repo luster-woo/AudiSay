@@ -715,3 +715,20 @@ test('설정이 범위 끝이면 서버가 준 말을 읽고, 아니면 바꾼 �
   await ask(user, '조금 느리게')
   await waitFor(() => expect(band()).toHaveTextContent('말하기 속도 0.8배로 바꿨어요.'))
 })
+
+test('영상 안에서 다른 영상을 찾으라고 하면 서버 안내를 읽고 화면을 옮기지 않는다', async () => {
+  const user = userEvent.setup()
+  mockAll()
+  vi.mocked(chatApi.send).mockResolvedValue({
+    chatLogId: 95,
+    inputMode: 'TEXT',
+    utterance: '고양이 영상 찾아 줘',
+    intent: 'SEARCH_VIDEO',
+    result: { query: null, message: '다른 영상은 검색 화면에서 찾아 주세요.' },
+  })
+  const { router } = renderRoute('/watch/15')
+  await screen.findByRole('button', { name: '재생' })
+  await ask(user, '고양이 영상 찾아 줘')
+  await waitFor(() => expect(band()).toHaveTextContent('다른 영상은 검색 화면에서 찾아 주세요.'))
+  expect(router.state.location.pathname).toBe('/watch/15')
+})

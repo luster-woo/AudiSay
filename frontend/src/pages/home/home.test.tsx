@@ -7,6 +7,7 @@ import { videosApi } from '@/api/videos'
 import { jobsApi } from '@/api/jobs'
 import { sttApi } from '@/api/stt'
 import { ApiError } from '@/api/errors'
+import { chatApi } from '@/api/chat'
 import {
   DEFAULT_SETTINGS,
   type Job,
@@ -46,6 +47,7 @@ vi.mock('@/api/jobs', () => ({
 // 검색 결과 → 확인 화면 → 해설 만들기 흐름이 /jobs/:id 까지 가므로 SSE 는 열지 않게 막는다
 vi.mock('@/api/sse', () => ({ subscribeSse: vi.fn() }))
 vi.mock('@/api/stt', () => ({ sttApi: { transcribe: vi.fn() } }))
+vi.mock('@/api/chat', () => ({ chatApi: { send: vi.fn() } }))
 
 const video = (id: number, title: string, isFavorite = false): VideoSummary => ({
   videoId: id,
@@ -202,7 +204,7 @@ describe('홈', () => {
   })
 })
 
-describe('음성으로 찾기', () => {
+describe('음성 검색', () => {
   class FakeRecorder {
     state = 'inactive'
     mimeType = 'audio/webm'
@@ -255,7 +257,7 @@ describe('음성으로 찾기', () => {
   test('듣는 중 → 말 끝내기 → 알아들은 말로 검색한다', async () => {
     vi.mocked(sttApi.transcribe).mockResolvedValue({ text: '그래프 읽는 법', latencyMs: 1 })
     const { router } = renderRoute('/')
-    await userEvent.click(await screen.findByRole('button', { name: '음성으로 찾기' }))
+    await userEvent.click(await screen.findByRole('button', { name: '음성 검색' }))
     const finish = await screen.findByRole('button', { name: '말 끝내기' })
     expect(finish).toHaveFocus()
     expect(screen.getByText('듣고 있어요')).toBeInTheDocument()
@@ -263,10 +265,59 @@ describe('음성으로 찾기', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe('/search'))
   })
 
+  test('"~ 영상 찾아 줘"는 챗봇이 뽑은 검색어로 검색한다', async () => {
+    localStorage.removeItem('audisay.voiceSearchTipCount')
+    vi.mocked(sttApi.transcribe).mockResolvedValue({ text: '고양이 영상 찾아 줘', latencyMs: 1 })
+    vi.mocked(chatApi.send).mockResolvedValue({
+      chatLogId: 1,
+      inputMode: 'VOICE',
+      utterance: '고양이 영상 찾아 줘',
+      intent: 'SEARCH_VIDEO',
+      result: { query: '고양이' },
+    })
+    const { router } = renderRoute('/')
+    const voiceButton = await screen.findByRole('button', { name: '음성 검색' })
+    expect(voiceButton).toHaveAccessibleDescription(
+      '음성으로는 "고양이 영상 찾아 줘", "말 빠르게"처럼 말해도 돼요.',
+    )
+    await userEvent.click(voiceButton)
+    // 처음 몇 번은 듣기 시작 안내에 부가 기능을 함께 읽는다
+    expect(await screen.findByText(/"말 빠르게" 같은 설정을 말해도 돼요/)).toBeInTheDocument()
+    await userEvent.click(await screen.findByRole('button', { name: '말 끝내기' }))
+    await waitFor(() => expect(router.state.location.search).toBe('?q=%EA%B3%A0%EC%96%91%EC%9D%B4'))
+    expect(chatApi.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        videoId: null,
+        utterance: '고양이 영상 찾아 줘',
+        inputMode: 'VOICE',
+      }),
+    )
+  })
+
+  test('말로 한 설정 변경은 검색하지 않고 설정을 바꾼다', async () => {
+    vi.mocked(sttApi.transcribe).mockResolvedValue({ text: '말 빠르게', latencyMs: 1 })
+    vi.mocked(chatApi.send).mockResolvedValue({
+      chatLogId: 2,
+      inputMode: 'VOICE',
+      utterance: '말 빠르게',
+      intent: 'SETTING',
+      result: { settingKey: 'speechRate', settingValue: '1.5' },
+    })
+    vi.mocked(usersApi.updateSettings).mockImplementation(async (patch) => ({
+      ...(await usersApi.settings()),
+      ...patch,
+    }))
+    const { router } = renderRoute('/')
+    await userEvent.click(await screen.findByRole('button', { name: '음성 검색' }))
+    await userEvent.click(await screen.findByRole('button', { name: '말 끝내기' }))
+    await waitFor(() => expect(usersApi.updateSettings).toHaveBeenCalledWith({ speechRate: 1.5 }))
+    expect(router.state.location.pathname).toBe('/')
+  })
+
   test('알아듣지 못하면 다시 말하기에 포커스, 글자로 찾기는 검색 칸으로', async () => {
     vi.mocked(sttApi.transcribe).mockRejectedValue(new ApiError('CHAT_001', 422, ''))
     renderRoute('/')
-    await userEvent.click(await screen.findByRole('button', { name: '음성으로 찾기' }))
+    await userEvent.click(await screen.findByRole('button', { name: '음성 검색' }))
     await userEvent.click(await screen.findByRole('button', { name: '말 끝내기' }))
     expect(await screen.findByRole('button', { name: '다시 말하기' })).toHaveFocus()
     await userEvent.click(screen.getByRole('button', { name: '글자로 찾기' }))
@@ -278,7 +329,7 @@ describe('음성으로 찾기', () => {
   test('마이크를 쓸 수 없으면 이유와 글자 입력 방법을 알린다', async () => {
     Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: undefined })
     renderRoute('/')
-    await userEvent.click(await screen.findByRole('button', { name: '음성으로 찾기' }))
+    await userEvent.click(await screen.findByRole('button', { name: '음성 검색' }))
     expect(
       (
         await screen.findAllByText(
@@ -290,7 +341,7 @@ describe('음성으로 찾기', () => {
   test('마이크를 처음 쓰면 허용 팝업이 뜬다고 먼저 알리고, 허용하면 바로 듣는다', async () => {
     micPermission('prompt')
     renderRoute('/')
-    await userEvent.click(await screen.findByRole('button', { name: '음성으로 찾기' }))
+    await userEvent.click(await screen.findByRole('button', { name: '음성 검색' }))
     expect(
       (await screen.findAllByText(/브라우저가 마이크를 써도 되는지 물어봐요/)).length,
     ).toBeGreaterThan(0)
@@ -301,7 +352,7 @@ describe('음성으로 찾기', () => {
     const perm = micPermission('denied')
     denyMic('NotAllowedError')
     renderRoute('/')
-    await userEvent.click(await screen.findByRole('button', { name: '음성으로 찾기' }))
+    await userEvent.click(await screen.findByRole('button', { name: '음성 검색' }))
     expect(
       (await screen.findAllByText(/마이크가 막혀 있어요. 주소창 왼쪽의 자물쇠/)).length,
     ).toBeGreaterThan(0)
@@ -311,7 +362,7 @@ describe('음성으로 찾기', () => {
 
     act(() => perm.change('granted'))
     expect(
-      (await screen.findAllByText('이제 마이크를 쓸 수 있어요. 음성으로 찾기를 다시 눌러 주세요.'))
+      (await screen.findAllByText('이제 마이크를 쓸 수 있어요. 음성 검색을 다시 눌러 주세요.'))
         .length,
     ).toBeGreaterThan(0)
   })
@@ -320,7 +371,7 @@ describe('음성으로 찾기', () => {
     micPermission('prompt')
     denyMic('NotAllowedError')
     renderRoute('/')
-    await userEvent.click(await screen.findByRole('button', { name: '음성으로 찾기' }))
+    await userEvent.click(await screen.findByRole('button', { name: '음성 검색' }))
     expect(
       (await screen.findAllByText(/마이크 사용을 허용하지 않았어요. 다시 누르면 다시 물어봐요./))
         .length,
@@ -330,13 +381,13 @@ describe('음성으로 찾기', () => {
   test('마이크가 없거나 다른 프로그램이 쓰는 중이면 그 이유를 알린다', async () => {
     denyMic('NotFoundError')
     const { unmount } = renderRoute('/')
-    await userEvent.click(await screen.findByRole('button', { name: '음성으로 찾기' }))
+    await userEvent.click(await screen.findByRole('button', { name: '음성 검색' }))
     expect((await screen.findAllByText(/마이크가 연결돼 있지 않아요/)).length).toBeGreaterThan(0)
     unmount()
 
     denyMic('NotReadableError')
     renderRoute('/')
-    await userEvent.click(await screen.findByRole('button', { name: '음성으로 찾기' }))
+    await userEvent.click(await screen.findByRole('button', { name: '음성 검색' }))
     expect(
       (await screen.findAllByText(/다른 프로그램이 마이크를 쓰고 있어요/)).length,
     ).toBeGreaterThan(0)

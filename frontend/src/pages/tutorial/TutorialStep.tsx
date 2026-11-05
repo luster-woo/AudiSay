@@ -43,21 +43,23 @@ export function TutorialStep({ step }: { step: number }) {
   }
 
   return (
-    <div className="grid gap-12 lg:grid-cols-[minmax(0,47.5rem)_18.75rem]">
+    <div className="grid gap-12 lg:grid-cols-[minmax(0,47.5rem)_18.75rem] lg:justify-center lg:gap-x-20">
       <div>
-        <p className="font-bold text-ink-muted">사용법 · 3분</p>
-        <h1 ref={headingRef} tabIndex={-1} className="mt-2 text-4xl font-bold outline-none">
+        <h1 ref={headingRef} tabIndex={-1} className="text-4xl font-bold outline-none">
           {data.title}
         </h1>
 
         <section
           aria-labelledby="tutorial-guide"
-          className="mt-6 rounded-lg bg-navy-deep py-5 pr-16 pl-6"
+          className="mt-6 rounded-lg bg-navy-deep px-8 py-6"
         >
-          <h2 id="tutorial-guide" className="text-sm text-cream/80">
+          <h2 id="tutorial-guide" className="text-lg font-bold text-cream">
             지금 읽는 안내
           </h2>
-          <p className="mt-2 text-xl leading-relaxed font-bold text-yellow">{data.guide}</p>
+          {/* 글자는 크게, 줄은 단어 단위로 바꾼다. 상자는 글자 양에 맞춰 늘어난다 */}
+          <p className="mt-3 text-[1.625rem] leading-relaxed font-bold break-keep text-yellow [overflow-wrap:anywhere]">
+            {data.guide}
+          </p>
         </section>
 
         <section aria-labelledby="tutorial-practice" className="mt-6 px-4">
@@ -93,7 +95,8 @@ export function TutorialStep({ step }: { step: number }) {
         </div>
       </div>
 
-      <nav aria-labelledby="tutorial-steps">
+      {/* 단계 목록은 왼쪽 안내 상자와 위쪽 줄을 맞춘다 (제목·안내 상자 높이만큼 내린다) */}
+      <nav aria-labelledby="tutorial-steps" className="lg:pt-4">
         <h2 id="tutorial-steps" className="text-2xl font-bold">
           {TUTORIAL_STEPS.length}단계 중 {step}단계
         </h2>
@@ -111,17 +114,11 @@ export function TutorialStep({ step }: { step: number }) {
                   )}
                 >
                   {i + 1} {s.title}
-                  {current && (
-                    <span aria-hidden="true" className="ml-auto text-base">
-                      ● 지금
-                    </span>
-                  )}
                 </Link>
               </li>
             )
           })}
         </ol>
-        <p className="mt-4 text-sm text-ink-muted">자동으로 넘어가지 않아요.</p>
       </nav>
     </div>
   )

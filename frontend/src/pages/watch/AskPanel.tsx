@@ -12,7 +12,7 @@ import { cn } from '@/components/ui/cn'
 import { useAnnouncer } from '@/features/announcer/context'
 import { MIC_MESSAGES } from '@/features/search/micPermission'
 import { MAX_RECORD_SEC, useVoiceRecorder } from '@/features/search/useVoiceRecorder'
-import { useShortcut } from '@/features/shortcuts/context'
+import { useShortcutEntry } from '@/features/shortcuts/context'
 import { formatClock } from '@/utils/time'
 
 export interface AskPanelProps {
@@ -70,11 +70,7 @@ export function AskPanel({
     }
   }, [busy, voice, inputRef, onListenStart, announce])
 
-  useShortcut('Alt+Shift+Q', () => void startVoice(), {
-    description: '질문하기 (말로, 또는 글자로)',
-    scope: 'user',
-    allowInInput: true,
-  })
+  useShortcutEntry('ask', () => void startVoice(), { scope: 'user' })
 
   useEffect(() => {
     if (voice.state === 'listening') finishRef.current?.focus()

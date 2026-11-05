@@ -17,7 +17,7 @@ import { SeekBar } from '@/features/player/SeekBar'
 import { sceneAtMs, useNarration } from '@/features/player/useNarration'
 import { usePlayerSource } from '@/features/player/usePlayerSource'
 import { useSettings } from '@/features/settings/context'
-import { useShortcut, useShortcuts } from '@/features/shortcuts/context'
+import { useShortcutEntry, useShortcuts } from '@/features/shortcuts/context'
 import { formatDurationSpoken, formatPositionSpoken } from '@/utils/time'
 import { AskPanel } from './AskPanel'
 import { NarrationBox } from './NarrationBox'
@@ -327,16 +327,6 @@ export function Player({ video }: { video: VideoDetail }) {
       )
     }
   }, [videoId, state.currentMs, holdWhile, narrator, settings.speechRate, announce])
-  useShortcut('Alt+Shift+D', () => void describeScene(), {
-    description: '지금 장면 설명 듣기',
-    scope: 'user',
-    allowInInput: true,
-  })
-  useShortcut('Alt+Shift+S', () => void playSummary('30초 요약을 들려 드릴게요.'), {
-    description: '30초 요약 다시 듣기',
-    scope: 'user',
-    allowInInput: true,
-  })
 
   /* ── 챗봇 명령 → 기능 실행 (CTL-04). 처리하지 못한 기능이면 false ── */
   const runAction = useCallback(
@@ -448,6 +438,33 @@ export function Player({ video }: { video: VideoDetail }) {
       announce,
     ],
   )
+
+  /* ── 시청 화면 단축키 (Alt+Shift + 키, catalog.ts). 요약을 묻거나 읽는 동안에는 재생·이동을 막는다 ── */
+  const summaryBusy = phase === 'asking' || phase === 'playing'
+  useShortcutEntry(
+    'play',
+    () => {
+      if (summaryBusy) announce('요약이 끝나면 재생할 수 있어요.')
+      else toggle()
+    },
+    { scope: 'user' },
+  )
+  useShortcutEntry(
+    'seek',
+    (key) => {
+      if (summaryBusy) return
+      const step = settings.seekStepSec * 1000
+      const max = state.durationMs || Number.MAX_SAFE_INTEGER
+      const target = Math.min(max, Math.max(0, state.currentMs + (key === 'J' ? -step : step)))
+      seekTo(target)
+    },
+    { scope: 'user' },
+  )
+  useShortcutEntry('position', () => void runAction('CURRENT_POSITION'), { scope: 'user' })
+  useShortcutEntry('describe', () => void describeScene(), { scope: 'user' })
+  useShortcutEntry('detail', (key) => setDetail(Number(key) as 1 | 2 | 3), { scope: 'user' })
+  useShortcutEntry('settings', () => setSettingsOpen(true), { scope: 'user' })
+  useShortcutEntry('report', () => openReport(), { scope: 'user' })
 
   const initialEntries = useMemo(
     () => (historyQ.data ? entriesFromServer(historyQ.data.messages) : []),
@@ -574,19 +591,10 @@ export function Player({ video }: { video: VideoDetail }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [enlarged, ask, announce])
 
-  // 플레이어 영역 안에서만 1/2/3·Space 가 동작한다 (원칙 5장: 한 글자 키는 입력창·낭독기 키와 겹치지 않게)
+  // 플레이어 영역 안에서 버튼이 아닌 곳에 있을 때 Space 로 재생·멈춤.
+  // 1/2/3·F 같은 한 글자 키는 낭독기의 제목·입력칸 이동 키와 겹쳐 빼고 Alt+Shift 단축키로 옮겼다 (원칙 5장)
   const onPlayerKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (isTyping(e.target)) return
-    if (e.key === '1' || e.key === '2' || e.key === '3') {
-      e.preventDefault()
-      setDetail(Number(e.key) as 1 | 2 | 3)
-      return
-    }
-    if ((e.key === 'f' || e.key === 'F') && !e.altKey && !e.ctrlKey && !e.metaKey) {
-      e.preventDefault()
-      void toggleFullscreen()
-      return
-    }
     const onButton = e.target instanceof HTMLElement && e.target.closest('button, [role="slider"]')
     if (e.key === ' ' && !onButton) {
       e.preventDefault()
@@ -678,7 +686,7 @@ export function Player({ video }: { video: VideoDetail }) {
                 // 재생 중(일시정지 버튼)은 흰 바탕으로 바꿔 글자뿐 아니라 모양으로도 상태가 보이게 한다
                 variant={state.playing ? 'secondary' : 'primary'}
                 onClick={toggle}
-                aria-keyshortcuts="Space"
+                aria-keyshortcuts="Alt+Shift+K Space"
                 disabled={phase === 'asking' || phase === 'playing'}
                 className={cn(CONTROL, state.playing && 'text-[#1f2a44]! hc:text-navy!')}
               >
@@ -722,7 +730,7 @@ export function Player({ video }: { video: VideoDetail }) {
                   variant="secondary"
                   onClick={() => void toggleFullscreen()}
                   disabled={!canFullscreen}
-                  aria-keyshortcuts={fullscreen ? 'Escape' : 'F'}
+                  aria-keyshortcuts={fullscreen ? 'Escape' : undefined}
                   className={fullscreen ? CONTROL_WIDE : CONTROL}
                 >
                   {fullscreen ? '전체 화면 끝내기' : '전체 화면'}
@@ -745,10 +753,20 @@ export function Player({ video }: { video: VideoDetail }) {
               optionClassName={CONTROL}
             />
             <div className="flex gap-2">
-              <Button variant="secondary" onClick={openReport} className={CONTROL}>
+              <Button
+                variant="secondary"
+                onClick={openReport}
+                aria-keyshortcuts="Alt+Shift+X"
+                className={CONTROL}
+              >
                 이 문장 신고
               </Button>
-              <Button variant="secondary" onClick={() => setSettingsOpen(true)} className={CONTROL}>
+              <Button
+                variant="secondary"
+                onClick={() => setSettingsOpen(true)}
+                aria-keyshortcuts="Alt+Shift+S"
+                className={CONTROL}
+              >
                 재생 설정
               </Button>
             </div>

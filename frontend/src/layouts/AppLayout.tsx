@@ -1,6 +1,6 @@
 import { Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/features/auth/context'
-import { useShortcut, useShortcutScope } from '@/features/shortcuts/context'
+import { useShortcutEntry, useShortcutScope } from '@/features/shortcuts/context'
 import { SkipLink } from './parts/SkipLink'
 import { BrandLogo } from './parts/BrandLogo'
 import { MainNav } from './parts/MainNav'
@@ -13,7 +13,7 @@ export function AppLayout() {
   const navigate = useNavigate()
 
   useShortcutScope('user')
-  useShortcut('Alt+Shift+H', () => navigate('/'), { description: '홈으로 가기', scope: 'user' })
+  useShortcutEntry('home', () => navigate('/'), { scope: 'user' })
 
   return (
     <>

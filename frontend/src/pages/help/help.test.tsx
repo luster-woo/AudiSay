@@ -73,7 +73,7 @@ test('상위 탭을 화살표로 바꾸어도 초점이 제목으로 튀지 않�
   expect(screen.getByRole('tab', { name: '단축키' })).toHaveFocus()
 })
 
-test('단축키는 분류 탭 없이 어디서나 3개, 영상 볼 때 8개를 한 화면에 보여 준다 (axe)', async () => {
+test('단축키는 분류 탭 없이 어디서나 3개, 영상 찾을 때 1개, 영상 볼 때 8개를 한 화면에 보여 준다 (axe)', async () => {
   const { container } = renderRoute('/help')
   await openTab('단축키')
   expect(screen.queryByRole('tab', { name: '어디서나' })).not.toBeInTheDocument()
@@ -91,11 +91,19 @@ test('단축키는 분류 탭 없이 어디서나 3개, 영상 볼 때 8개를 �
   for (const key of ['U', 'V', 'C', 'N', 'G', 'F']) {
     expect(within(container).queryByText(key)).not.toBeInTheDocument()
   }
+  expect(
+    within(screen.getByRole('list', { name: '영상 찾을 때' })).getAllByRole('listitem'),
+  ).toHaveLength(1)
+  // 도움말 화면의 안내 창에는 어디서나 쓰는 3개만 나온다
   await userEvent.keyboard('{Alt>}{Shift>}/{/Shift}{/Alt}')
   const dialog = screen.getByRole('dialog', { name: '단축키 안내' })
-  for (const combo of ['Alt+Shift+R', 'Alt+Shift+/', 'Alt+Shift+H']) {
-    expect(within(dialog).getByText(combo)).toBeVisible()
-  }
+  expect(within(dialog).queryByRole('list', { name: '이 화면에서' })).not.toBeInTheDocument()
+  const anywhere = within(dialog).getByRole('list', { name: '어디서나' })
+  expect(
+    within(anywhere)
+      .getAllByRole('listitem')
+      .map((li) => li.querySelector('.shortcut-dialog-desc')?.textContent),
+  ).toEqual(['홈으로 가기', '방금 안내 다시 듣기', '지금 화면의 단축키 보기'])
   fireEvent(dialog, new Event('cancel', { bubbles: true, cancelable: true }))
   expect(await axe(container)).toHaveNoViolations()
 })
@@ -145,7 +153,7 @@ test('표시는 유지하면서 단축키와 안내를 기호 대신 한국어 �
   expect(home).toHaveTextContent('알트와 시프트를 누른 상태에서 에이치 키를 누르세요.')
   expect(within(home).getByText('H').closest('[aria-hidden="true"]')).not.toBeNull()
 
-  for (const name of ['어디서나', '영상 볼 때']) {
+  for (const name of ['어디서나', '영상 찾을 때', '영상 볼 때']) {
     for (const item of within(screen.getByRole('list', { name })).getAllByRole('listitem')) {
       const spoken = [...item.querySelectorAll('.sr-only')].map((el) => el.textContent)
       expect(spoken[0]).toMatch(/^알트와 시프트를 누른 상태에서 [가-힣 ]+ 키를 누르세요\.$/)

@@ -4,10 +4,24 @@
  * 실제 키 등록(useShortcut)도 이 목록을 읽도록 옮길 예정이다.
  * 모든 키는 Alt+Shift 와 함께 누른다 (낭독기의 한 글자 이동 키와 겹치지 않게, 원칙 5장).
  */
-export type ShortcutGroupId = 'everywhere' | 'watch'
+export type ShortcutEntryId =
+  | 'home'
+  | 'repeat'
+  | 'help'
+  | 'voiceSearch'
+  | 'play'
+  | 'seek'
+  | 'position'
+  | 'describe'
+  | 'detail'
+  | 'ask'
+  | 'settings'
+  | 'report'
+
+export type ShortcutGroupId = 'everywhere' | 'search' | 'watch'
 
 export interface ShortcutEntry {
-  id: string
+  id: ShortcutEntryId
   group: ShortcutGroupId
   /** Alt+Shift 다음에 누르는 키. 여러 개면 그중 하나를 누른다 */
   keys: string[]
@@ -26,6 +40,7 @@ const SPOKEN_MODIFIER = '알트와 시프트를 누른 상태에서'
 
 export const shortcutGroups: { id: ShortcutGroupId; label: string; note: string }[] = [
   { id: 'everywhere', label: '어디서나', note: '모든 화면에서 쓸 수 있어요.' },
+  { id: 'search', label: '영상 찾을 때', note: '홈과 검색 결과 화면에서 쓸 수 있어요.' },
   { id: 'watch', label: '영상 볼 때', note: '영상을 보는 화면에서 쓸 수 있어요.' },
 ]
 
@@ -53,6 +68,14 @@ export const shortcutCatalog: ShortcutEntry[] = [
     description: '지금 화면의 단축키 보기',
     hint: '물음표와 같은 키예요',
     spokenKeys: '슬래시',
+  },
+  {
+    id: 'voiceSearch',
+    group: 'search',
+    keys: ['Q'],
+    description: '음성으로 찾기',
+    hint: "'띠' 소리 뒤에 영상 이름을 말해요",
+    spokenKeys: '큐',
   },
   {
     id: 'play',
@@ -122,6 +145,12 @@ export const shortcutCatalog: ShortcutEntry[] = [
     spokenKeys: '엑스',
   },
 ]
+
+export function shortcutById(id: ShortcutEntryId): ShortcutEntry {
+  const entry = shortcutCatalog.find((e) => e.id === id)
+  if (!entry) throw new Error(`단축키 목록에 없는 항목이에요: ${id}`)
+  return entry
+}
 
 /** 'Alt+Shift+K' 형태 (useShortcut 등록용) */
 export function comboOf(key: string) {

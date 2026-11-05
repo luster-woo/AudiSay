@@ -1,7 +1,7 @@
 import { useEffect, useEffectEvent, useState, type KeyboardEvent } from 'react'
 import { useAnnouncer } from '@/features/announcer/context'
 import { useAudio } from '@/features/audio/useAudio'
-import { useShortcut } from '@/features/shortcuts/context'
+import { useShortcutEntry } from '@/features/shortcuts/context'
 import { Button } from '@/components/ui/Button'
 import { StatusLine } from '@/components/ui/StatusLine'
 import { formatClock, formatDurationSpoken } from '@/utils/time'
@@ -81,7 +81,10 @@ export function PlayerPractice({ done, onDone }: { done: boolean; onDone: () => 
   }
 
   const describe = () => announce(`지금 장면. ${sceneAt(time).detail}`)
-  useShortcut('Alt+Shift+D', describe, { description: '지금 장면 설명 듣기', scope: 'user' })
+  // 시청 화면과 같은 키로 연습한다 (catalog.ts)
+  useShortcutEntry('play', () => toggle(), { scope: 'user' })
+  useShortcutEntry('seek', (key) => seek(key === 'J' ? -STEP : STEP), { scope: 'user' })
+  useShortcutEntry('describe', () => describe(), { scope: 'user' })
 
   // 영상 영역에 포커스가 있을 때만 좌우 화살표로 이동 (한 글자 키 규칙, 원칙 5장)
   const onVideoKeyDown = (e: KeyboardEvent<HTMLButtonElement>) => {
@@ -115,7 +118,7 @@ export function PlayerPractice({ done, onDone }: { done: boolean; onDone: () => 
       </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
-        <Button onClick={toggle} aria-keyshortcuts="Space">
+        <Button onClick={toggle} aria-keyshortcuts="Alt+Shift+K Space">
           {playing ? '일시정지' : '재생'}
         </Button>
         <Button variant="secondary" onClick={() => seek(-STEP)}>

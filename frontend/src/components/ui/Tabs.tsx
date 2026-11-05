@@ -16,7 +16,7 @@ export interface TabsProps<T extends string> {
   onChange: (value: T) => void
   /** underline: 밑줄 탭(관리자) · buttons: 테두리 버튼 세 개가 나란히 (시청 화면 목차·대본·질문 기록) */
   appearance?: 'underline' | 'buttons'
-  /** sm: 관리자 화면의 작은 탭 (Figma 14px, 밑줄 2px). 기본 md */
+  /** sm: 관리자 화면의 탭 (18px, 밑줄 2px). 기본 md */
   size?: 'md' | 'sm'
   /** 탭 패널 위쪽 여백을 바꿀 때 */
   panelClassName?: string
@@ -117,7 +117,7 @@ export function Tabs<T extends string>({
                       : '-mb-0.5 font-bold',
                     !buttons &&
                       (size === 'sm'
-                        ? 'min-h-11 border-b-2 px-3 text-sm'
+                        ? 'min-h-12 border-b-2 px-4 text-[1.2rem]'
                         : 'min-h-touch border-b-4 px-5'),
                     buttons
                       ? selected

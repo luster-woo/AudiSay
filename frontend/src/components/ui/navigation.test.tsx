@@ -35,15 +35,15 @@ test('탭: Tab 은 선택된 탭에만 멈추고 화살표로 옮기면 바로 �
   expect(await axe(container)).toHaveNoViolations()
 })
 
-test('탭 size="sm": 관리자 화면의 작은 탭 (14px 글자, 밑줄 2px). 기본은 56px 높이·밑줄 4px', () => {
+test('탭 size="sm": 관리자 화면의 탭 (18px 글자, 밑줄 2px). 기본은 56px 높이·밑줄 4px', () => {
   const { rerender } = render(<ReportTabs size="sm" />)
   const small = screen.getByRole('tab', { name: '신고 3' })
-  expect(small).toHaveClass('text-sm', 'border-b-2', 'min-h-11')
+  expect(small).toHaveClass('text-[1.2rem]', 'border-b-2', 'min-h-12')
   expect(small).not.toHaveClass('min-h-touch')
   rerender(<ReportTabs />)
   const normal = screen.getByRole('tab', { name: '신고 3' })
   expect(normal).toHaveClass('min-h-touch', 'border-b-4')
-  expect(normal).not.toHaveClass('text-sm')
+  expect(normal).not.toHaveClass('text-[1.2rem]')
 })
 
 test('탭 appearance="buttons": 테두리 버튼 모양이고 선택된 탭만 남색 채움. 키보드 동작은 같다', async () => {

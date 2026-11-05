@@ -143,21 +143,43 @@ beforeEach(() => {
 })
 
 describe('신고 처리', () => {
-  test('같은 문장의 신고를 한 줄로 묶고, 첫 문장을 열어 장면과 고칠 문장을 보여 준다', async () => {
+  test('목록은 같은 문장 신고를 한 줄로 묶은 표이고, 줄을 열면 그 문장 상세만 보인다', async () => {
+    const user = userEvent.setup()
     const { container } = renderRoute('/admin/reports')
     expect(await screen.findByRole('heading', { level: 1, name: '신고 처리' })).toBeInTheDocument()
-    const listHeading = await screen.findByRole('heading', { level: 2, name: '처리 전 3건' })
+    // 문장 2줄 (신고는 3개)
+    const listHeading = await screen.findByRole('heading', { level: 2, name: /^처리 전 2건/ })
     await waitFor(() => expect(listHeading).toHaveFocus())
     // 처리 상태는 위쪽 줄 가운데 (라디오 묶음)
     const statuses = within(screen.getByRole('group', { name: '처리 상태' }))
     expect(statuses.getByRole('radio', { name: /^처리 전\s*3\s*건$/ })).toBeChecked()
     expect(statuses.getAllByRole('radio')).toHaveLength(3)
 
-    const list = within(screen.getByRole('region', { name: '처리 전 3건' }))
-    const links = list.getAllByRole('link')
-    expect(links).toHaveLength(2) // 신고 3건 → 문장 2개
-    expect(links[0]).toHaveAccessibleName(/그래프를 읽는 방법.*신고 2건/)
+    const table = screen.getByRole('table', { name: /신고 목록/ })
+    expect(
+      within(table)
+        .getAllByRole('columnheader')
+        .map((c) => c.textContent),
+    ).toEqual(['영상', '신고된 문장', '사유', '신고 수', '첫 신고'])
+    const rows = within(table).getAllByRole('row').slice(1)
+    expect(rows).toHaveLength(2) // 신고 3건 → 문장 2개
+    expect(rows[0]).toHaveTextContent('2건')
+    // 서버는 한 상태의 신고를 모두 받아 묶는다 (쪽마다 묶으면 같은 문장이 갈라진다)
+    expect(adminApi.reports).toHaveBeenCalledWith({ status: 'PENDING', page: 0, size: 50 })
+    expect(await axe(container)).toHaveNoViolations()
 
+    // 줄을 열면 목록 없이 상세만
+    await user.click(within(rows[0]).getByRole('link', { name: '그래프를 읽는 방법' }))
+    const detailHeading = await screen.findByRole('heading', {
+      level: 2,
+      name: '그래프를 읽는 방법',
+    })
+    await waitFor(() => expect(detailHeading).toHaveFocus())
+    expect(screen.queryByRole('table', { name: /신고 목록/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /처리 전 신고 목록/ })).toHaveAttribute(
+      'href',
+      '/admin/reports',
+    )
     expect(screen.getByRole('link', { name: /신고 처리/ })).toHaveTextContent('3')
     expect(await screen.findByText('막대 4개(A·B·C·D). B가 가장 높음.')).toBeInTheDocument()
     // 장면 영상은 실제 플레이어(시청 화면과 같은 재생 주소)로 보여 주고, 화면 글자 목록은 없다
@@ -169,13 +191,28 @@ describe('신고 처리', () => {
       ),
     )
     expect(within(sceneRegion).queryByText(/화면 글자/)).not.toBeInTheDocument()
-    expect(within(sceneRegion).getByRole('button', { name: '▶ 구간 재생' })).toBeInTheDocument()
+    expect(within(sceneRegion).getByRole('button', { name: '재생' })).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: '해설 문장 · 2단계' })).toHaveValue(
       '세 개의 막대가 있는 그래프예요',
     )
     expect(screen.getByText(/0\.9초 넘침/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '2건 처리 완료' })).toBeInTheDocument()
     expect(await axe(container)).toHaveNoViolations()
+  })
+
+  test('빈 구간이 없는 문장(gapEndMs null)은 넘침으로 보지 않고 멈추고 읽는다고 알린다', async () => {
+    vi.mocked(adminApi.reviewDescription).mockResolvedValue({
+      ...review,
+      lines: [{ ...review.lines[0], startMs: 30000, gapEndMs: null, audioDurationMs: 5800 }],
+    })
+    renderRoute('/admin/reports/7')
+    expect(
+      await screen.findByText(
+        '대사 사이 빈 구간이 없어요 · 재생할 때 영상을 멈추고 이 문장을 읽어요',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/넘침/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/-\d/)).not.toBeInTheDocument()
   })
 
   test('문장을 고쳐 저장한 뒤, 고른 신고를 한 번에 처리 완료한다', async () => {
@@ -212,7 +249,7 @@ describe('신고 처리', () => {
     expect((await screen.findAllByText('신고 2건을 처리 완료했어요.')).length).toBeGreaterThan(0)
   })
 
-  test('신고 탭에서 한 건만 반려할 수 있고, 이미 처리된 신고면 알려 준다', async () => {
+  test('신고 탭에서 한 건만 골라 반려할 수 있고, 이미 처리된 신고면 알려 준다', async () => {
     vi.mocked(adminApi.handleReport).mockRejectedValue(
       new ApiError('REPORT_003', 409, '이미 처리된 신고입니다.'),
     )
@@ -221,7 +258,9 @@ describe('신고 처리', () => {
 
     await user.click(await screen.findByRole('tab', { name: '신고 2' }))
     expect(screen.getByText('“D반 막대를 안 읽어 줘요.”')).toBeInTheDocument()
-    await user.click(screen.getAllByRole('button', { name: /^이 건만 반려/ })[1])
+    // 처음엔 전부 골라져 있다. 첫 신고를 빼고 남은 한 건만 반려
+    await user.click(screen.getAllByRole('checkbox')[1])
+    await user.click(screen.getByRole('button', { name: '1건 반려' }))
     expect(adminApi.handleReport).toHaveBeenCalledWith(9, 'REJECTED')
     expect((await screen.findAllByText('이미 처리된 신고예요.')).length).toBeGreaterThan(0)
   })

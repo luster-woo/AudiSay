@@ -12,7 +12,12 @@ import java.time.Duration;
 @Service
 @RequiredArgsConstructor
 public class JobStreamService {
-    private static final long TIMEOUT_MS = Duration.ofMinutes(30).toMillis();
+    /**
+     * 작업이 끝나면(completed/failed) 서버가 닫는다. 그 전에 시간이 다 되면 끝 이벤트 없이 닫혀 FE가 끝난 것으로 알고
+     * 진행 화면이 멈추므로, 작업이 가장 오래 걸리는 경우(대기 2시간 정리 + 60분 업로드 분석)보다 길게 잡는다.
+     * 연결은 15초 heartbeat로 유지하고, 클라이언트가 떠나면 heartbeat 실패로 정리된다
+     */
+    private static final long TIMEOUT_MS = Duration.ofHours(6).toMillis();
 
     private final JobQueryService jobQueryService;
     private final JobSseEmitters emitters;
@@ -22,8 +27,14 @@ public class JobStreamService {
         jobQueryService.getViewableJob(authUser, jobId);
         SseEmitter emitter = new SseEmitter(TIMEOUT_MS);
         JobSseEmitters.Subscriber subscriber = emitters.add(jobId, emitter);
-        JobStatusResponse current = jobQueryService.getJob(authUser, jobId);
-        subscriber.send(JobStreamEvent.from(current));
+        try {
+            JobStatusResponse current = jobQueryService.getJob(authUser, jobId);
+            subscriber.send(JobStreamEvent.from(current));
+        } catch (RuntimeException e) {
+            // 응답으로 나가지 못한 emitter는 완료·시간 초과 콜백이 오지 않아 직접 뺀다(안 빼면 heartbeat 대상으로 계속 남는다)
+            emitters.remove(subscriber);
+            throw e;
+        }
         return emitter;
     }
 }

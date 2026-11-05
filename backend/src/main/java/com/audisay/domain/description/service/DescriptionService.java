@@ -25,13 +25,18 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class DescriptionService {
+    /** 챗봇이 근거로 쓸 수 있는 해설(만드는 중·실패한 해설은 빼고) */
+    private static final Set<DescriptionStatus> CHAT_READABLE = EnumSet.of(DescriptionStatus.PUBLISHED, DescriptionStatus.ARCHIVED);
+
     private final VideoAccessValidator videoAccessValidator;
     private final DescriptionRepository descriptionRepository;
     private final DescriptionLineRepository descriptionLineRepository;
@@ -107,11 +112,12 @@ public class DescriptionService {
     }
 
     /**
-     * 챗봇 입력이 가리키는 해설. FE가 보낸 해설이 이 영상의 것이면 그대로(보는 중에 새 해설이 공개돼 ARCHIVED가 된 것도),
-     * 없거나 다른 영상의 것이면 지금 공개 중인 해설
+     * 챗봇 입력이 가리키는 해설. FE가 보낸 해설이 이 영상의 다 만든 해설이면 그대로(보는 중에 새 해설이 공개돼 ARCHIVED가 된 것도),
+     * 없거나 다른 영상의 것이거나 만드는 중·실패한 해설이면 지금 공개 중인 해설
      */
     public Optional<Long> resolveForChat(Long videoId, Long requestedDescriptionId) {
-        if (requestedDescriptionId != null && descriptionRepository.existsByIdAndVideo_Id(requestedDescriptionId, videoId)) {
+        if (requestedDescriptionId != null && descriptionRepository.existsByIdAndVideo_IdAndStatusIn(
+                requestedDescriptionId, videoId, CHAT_READABLE)) {
             return Optional.of(requestedDescriptionId);
         }
         return findPublishedId(videoId);

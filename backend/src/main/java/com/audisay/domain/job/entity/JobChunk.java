@@ -91,7 +91,7 @@ public class JobChunk {
         status = JobChunkStatus.FAILED;
         recordAttempt(attempt);
         this.workerId = workerId;
-        lastError = truncate(errorCode + ": " + errorDetail);
+        lastError = truncate(errorText(errorCode, errorDetail));
         finishedAt = Instant.now();
     }
 
@@ -102,8 +102,13 @@ public class JobChunk {
         }
         status = JobChunkStatus.DEAD;
         recordAttempt(attempt);
-        lastError = truncate(errorCode + ": " + errorDetail);
+        lastError = truncate(errorText(errorCode, errorDetail));
         finishedAt = Instant.now();
+    }
+
+    /** 워커가 코드를 빠뜨리면 "null: ..."이 아니라 UNKNOWN으로 */
+    private static String errorText(String errorCode, String errorDetail) {
+        return (errorCode == null || errorCode.isBlank() ? "UNKNOWN" : errorCode) + ": " + errorDetail;
     }
 
     /** last_error는 "코드: 내용" 형식으로 저장한다 */

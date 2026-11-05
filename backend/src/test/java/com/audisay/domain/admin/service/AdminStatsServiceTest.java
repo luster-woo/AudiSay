@@ -100,8 +100,8 @@ class AdminStatsServiceTest {
     void 재사용_절감은_영상당_평균_크레딧으로_계산한다() {
         when(repository.countYoutubeRequestsByResult(START, END)).thenReturn(List.of(
                 count("NEW_JOB", 2), count("REUSED", 3), count("JOINED_JOB", 1), count("REJECTED", 5)));
-        when(repository.countYoutubeJobsWithCalls(eq(Instant.EPOCH), any())).thenReturn(4L);
-        when(repository.sumYoutubeJobCallsByModel(eq(Instant.EPOCH), any())).thenReturn(List.of(
+        when(repository.countYoutubeJobsWithCalls(any(), any())).thenReturn(4L);
+        when(repository.sumYoutubeJobCallsByModel(any(), any())).thenReturn(List.of(
                 row("JOB", "gemini-3.5-flash", 4, 0, 0, 0, 0, "400")));
         when(repository.sumYoutubeJobCallsByModel(START, END)).thenReturn(List.of(
                 row("JOB", "gemini-3.5-flash", 2, 0, 0, 0, 0, "200")));

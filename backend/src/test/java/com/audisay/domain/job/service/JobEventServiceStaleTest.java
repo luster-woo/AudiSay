@@ -96,6 +96,25 @@ class JobEventServiceStaleTest {
     }
 
     @Test
+    void 아직_안_끝난_조각이_있으면_워커_대기로_보고_2시간까지_기다린다() {
+        Job job = running(Pipeline.GEMINI_URL, NOW.minus(Duration.ofHours(1)));
+        when(jobChunkRepository.existsByJob_IdAndStatus(JOB_ID, com.audisay.domain.job.entity.JobChunkStatus.PENDING))
+                .thenReturn(true);
+
+        assertThat(service.failIfStale(JOB_ID, QUEUED_BEFORE, RUNNING_BEFORE)).isFalse();
+        assertThat(job.getStatus()).isEqualTo(JobStatus.RUNNING);
+    }
+
+    @Test
+    void 업로드_영상_분석_중이면_2시간까지_기다린다() {
+        Job job = running(Pipeline.LOCAL, NOW.minus(Duration.ofHours(1)));
+        ReflectionTestUtils.setField(job, "currentStage", JobStage.PREPARE);
+
+        assertThat(service.failIfStale(JOB_ID, QUEUED_BEFORE, RUNNING_BEFORE)).isFalse();
+        assertThat(job.getStatus()).isEqualTo(JobStatus.RUNNING);
+    }
+
+    @Test
     void 대기_중은_2시간까지_기다린다() {
         Job job = queued(NOW.minus(Duration.ofHours(1)));
 

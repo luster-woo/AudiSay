@@ -4,6 +4,7 @@ import com.audisay.domain.description.service.DescriptionService;
 import com.audisay.domain.job.dto.JobProgress;
 import com.audisay.domain.job.entity.Job;
 import com.audisay.domain.job.entity.JobChunk;
+import com.audisay.domain.job.entity.JobChunkStatus;
 import com.audisay.domain.job.entity.JobStage;
 import com.audisay.domain.job.entity.JobStatus;
 import com.audisay.domain.job.entity.Pipeline;
@@ -103,7 +104,12 @@ public class JobEventService {
                     return;
                 }
                 chunk.markDead(envelope.attempt(), errorCode, errorDetail);
-                afterChunkFinished(job);
+                // FAILED 이벤트와 같게: 조각 실패를 PARTIAL로 넘기지 않는 설정이면 작업 전체를 실패로
+                if (jobProperties.partialOnChunkFailure()) {
+                    afterChunkFinished(job);
+                } else {
+                    failJob(job, errorCode);
+                }
             }
             case JOB_TTS -> onTtsCompleted(job, objectMapper.convertValue(envelope.payload(), TtsResult.class));
             case JOB_PREPARE, JOB_MERGE -> failJob(job, errorCode);
@@ -132,7 +138,7 @@ public class JobEventService {
                 .filter(Objects::nonNull)
                 .max(Comparator.naturalOrder())
                 .orElseThrow();
-        Instant before = job.getStatus() == JobStatus.QUEUED ? queuedBefore : runningBefore;
+        Instant before = mayBeSilentLong(job) ? queuedBefore : runningBefore;
         if (!lastActivity.isBefore(before)) {
             return false;
         }
@@ -142,6 +148,17 @@ public class JobEventService {
                 "stage", job.getCurrentStage() == null ? "NONE" : job.getCurrentStage().name()).increment();
         failJob(job, STALE_ERROR);
         return true;
+    }
+
+    /**
+     * 소식 없이 오래 걸릴 수 있는 작업은 대기 기준(queued-timeout)으로 본다.
+     * - 워커 차례를 기다리는 중: 아직 안 끝난 조각(PENDING)은 처리 중인지 대기열에 있는지 알 수 없다(조각 시작 알림이 없다)
+     * - 업로드(LOCAL) 영상 분석(PREPARE): 영상 길이의 약 1.4배(60분 영상 약 84분)라 진행 알림 사이가 길 수 있다
+     */
+    private boolean mayBeSilentLong(Job job) {
+        return job.getStatus() == JobStatus.QUEUED
+                || (job.getPipeline() == Pipeline.LOCAL && job.getCurrentStage() == JobStage.PREPARE)
+                || jobChunkRepository.existsByJob_IdAndStatus(job.getId(), JobChunkStatus.PENDING);
     }
 
     private void onStageStarted(Job job, JobEvent event) {

@@ -13,6 +13,7 @@ import com.audisay.domain.description.service.AnswerContextReader;
 import com.audisay.domain.description.service.FutureContext;
 import com.audisay.domain.description.service.RecapContext;
 import com.audisay.domain.description.service.RecapReader;
+import com.audisay.domain.description.service.VideoAccessValidator;
 import com.audisay.global.exception.BusinessException;
 import com.audisay.global.exception.ErrorCode;
 import com.audisay.global.external.ai.AiServerClient;
@@ -32,9 +33,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -50,6 +53,8 @@ import java.util.concurrent.TimeUnit;
 @RequiredArgsConstructor
 public class ChatAnswerService {
     static final String NO_DESCRIPTION = "아직 해설이 없어서 답할 수 없어요.";
+    private static final Duration IN_PROGRESS_MARGIN = Duration.ofMinutes(3);
+    private static final Duration HEARTBEAT_INTERVAL = Duration.ofSeconds(15);
 
     private final ChatLogRepository chatLogRepository;
     private final AnswerContextReader answerContextReader;
@@ -65,6 +70,7 @@ public class ChatAnswerService {
     private final ChatTuningProperties tuning;
     private final FutureOffer futureOffer;
     private final RecapReader recapReader;
+    private final VideoAccessValidator videoAccessValidator;
 
     /**
      * 권한·상태를 먼저 확인하고(실패는 JSON 에러), 답변은 답변 스레드에서 만든다. 이미 끝난 답변이면 done만 보내고 닫는다
@@ -83,34 +89,67 @@ public class ChatAnswerService {
         if (!chatLog.isAnswerable()) {
             throw new BusinessException(ErrorCode.NOT_ANSWERABLE_INPUT);
         }
+        if (chatLog.getVideoId() != null) {
+            // 질문한 뒤 영상이 비공개로 바뀌었으면 답(다시 만들기·뒤 내용 포함)도 받지 못한다(기록 조회와 같은 기준)
+            videoAccessValidator.getAccessibleVideo(authUser, chatLog.getVideoId());
+        }
         if (includeFuture && !futureOffered(chatLog)) {
             throw new BusinessException(ErrorCode.FUTURE_NOT_AVAILABLE);
         }
         SseEmitter emitter = newEmitter();
         AnswerSink sink = new AnswerSink(emitter);
         if (!includeFuture && chatLog.isAnswered()) {
-            sink.send("done", new Done(chatLog.getAnswerText(), chatLog.getAnswerSource(), chatLog.getFirstAudioMs(),
-                    chatLog.getTotalLatencyMs(), futureOffered(chatLog)));
-            sink.complete();
-            return emitter;
+            return sendAnswered(sink, emitter, chatLog);
         }
-        if (!inProgress.start(chatLogId, properties.streamTimeout().plusSeconds(30))) {
+        // 서버가 죽었을 때만 TTL로 풀린다(정상이면 finish). 답변 스레드는 SSE가 닫힌 뒤에도 조금 더 돌 수 있어 넉넉히
+        if (!inProgress.start(chatLogId, properties.streamTimeout().plus(IN_PROGRESS_MARGIN))) {
             throw new BusinessException(ErrorCode.ANSWER_IN_PROGRESS);
         }
-        boolean llmAllowed = acquireLlm(chatLog);
-        if (includeFuture && !futureOffer.take(chatLogId)) {
-            inProgress.finish(chatLogId);
-            throw new BusinessException(ErrorCode.FUTURE_NOT_AVAILABLE);
-        }
-        long startedAt = System.nanoTime();
+        // 여기부터 답변 스레드에 넘기기 전까지 실패하면(한도·스레드 부족·DB 오류) 진행 표시를 풀고 "들을게요" 표시를 되돌린다
+        boolean offerTaken = false;
         try {
-            executors.answer().execute(() -> answer(chatLog, sink, llmAllowed, startedAt, includeFuture));
-        } catch (RejectedExecutionException e) {
+            ChatLog target = chatLog;
+            if (!includeFuture) {
+                // 확인과 표시 사이에 다른 구독이 답을 끝냈으면 다시 만들지 않는다
+                target = chatLogRepository.findById(chatLogId).orElse(chatLog);
+                if (target.isAnswered()) {
+                    inProgress.finish(chatLogId);
+                    return sendAnswered(sink, emitter, target);
+                }
+            } else if (!futureOffer.take(chatLogId)) {
+                throw new BusinessException(ErrorCode.FUTURE_NOT_AVAILABLE);
+            } else {
+                offerTaken = true;
+            }
+            boolean llmAllowed = acquireLlm(target);
+            long startedAt = System.nanoTime();
+            ChatLog answering = target;
+            try {
+                executors.answer().execute(() -> answer(answering, sink, llmAllowed, startedAt, includeFuture));
+            } catch (RejectedExecutionException e) {
+                log.warn("[CHAT] 답변 스레드가 모두 사용 중 chatLogId={}", chatLogId);
+                throw new BusinessException(ErrorCode.CHAT_AI_UNAVAILABLE);
+            }
+            return emitter;
+        } catch (RuntimeException e) {
             inProgress.finish(chatLogId);
-            log.warn("[CHAT] 답변 스레드가 모두 사용 중 chatLogId={}", chatLogId);
-            throw new BusinessException(ErrorCode.CHAT_AI_UNAVAILABLE);
+            restoreFutureOffer(chatLogId, offerTaken);
+            throw e;
         }
+    }
+
+    private SseEmitter sendAnswered(AnswerSink sink, SseEmitter emitter, ChatLog chatLog) {
+        sink.send("done", new Done(chatLog.getAnswerText(), chatLog.getAnswerSource(), chatLog.getFirstAudioMs(),
+                chatLog.getTotalLatencyMs(), futureOffered(chatLog)));
+        sink.complete();
         return emitter;
+    }
+
+    /** "들을게요" 답변을 시작하지 못했거나 끝내지 못했으면 다시 들을 수 있게 표시를 되돌린다(표시를 지운 경우만) */
+    private void restoreFutureOffer(Long chatLogId, boolean taken) {
+        if (taken) {
+            futureOffer.offer(chatLogId);
+        }
     }
 
     private boolean futureOffered(ChatLog chatLog) {
@@ -122,7 +161,7 @@ public class ChatAnswerService {
         return new SseEmitter(properties.streamTimeout().toMillis());
     }
 
-    /** QUESTION은 한도면 CHAT_009, SCENE_NOW는 한도여도 장면 설명으로 답한다 */
+    /** QUESTION은 한도면 CHAT_009(진행 표시 해제는 subscribe가), SCENE_NOW는 한도여도 장면 설명으로 답한다 */
     private boolean acquireLlm(ChatLog chatLog) {
         try {
             rateLimiter.acquireLlm(chatLog.getUserId());
@@ -131,23 +170,51 @@ public class ChatAnswerService {
             if (chatLog.getIntent() == ChatIntent.SCENE_NOW) {
                 return false;
             }
-            inProgress.finish(chatLog.getId());
             throw e;
         }
     }
 
-    /** 끝까지 만들었으면 answer_source까지, 실패·취소면 받은 글자와 시간만 남긴다 */
+    /**
+     * 답변 스레드. 15초마다 SSE 주석(heartbeat)을 보낸다: "자료에 없어요"를 잡아 두고 뒤 내용을 확인하는 동안처럼
+     * 한동안 보낼 글자가 없어도 FE(45초)·프록시가 연결을 끊지 않게
+     */
     void answer(ChatLog chatLog, AnswerSink sink, boolean llmAllowed, long startedAt, boolean includeFuture) {
+        ScheduledFuture<?> heartbeat = scheduleHeartbeat(sink);
+        try {
+            respond(chatLog, sink, llmAllowed, startedAt, includeFuture);
+        } finally {
+            if (heartbeat != null) {
+                heartbeat.cancel(false);
+            }
+        }
+    }
+
+    private ScheduledFuture<?> scheduleHeartbeat(AnswerSink sink) {
+        try {
+            return executors.heartbeat().scheduleAtFixedRate(sink::heartbeat, HEARTBEAT_INTERVAL.toSeconds(),
+                    HEARTBEAT_INTERVAL.toSeconds(), TimeUnit.SECONDS);
+        } catch (RejectedExecutionException e) {
+            // 서버 종료 중
+            return null;
+        }
+    }
+
+    /** 끝까지 만들었으면 answer_source까지, 실패·취소면 받은 글자와 시간만 남긴다 */
+    private void respond(ChatLog chatLog, AnswerSink sink, boolean llmAllowed, long startedAt, boolean includeFuture) {
         boolean checkFuture = !includeFuture && chatLog.getIntent() == ChatIntent.QUESTION && tuning.answerFutureCheck();
         AnswerSession session = new AnswerSession(sink, this::speech, executors.tts(), startedAt, checkFuture);
         AnswerSource savedSource = null;
         boolean futureAvailable = false;
         String result;
+        String lastEvent = null;
+        Object lastData = null;
         try {
             int nowMs = chatLog.getVideoTimeMs() == null ? 0 : chatLog.getVideoTimeMs();
             boolean recap = chatLog.getIntent() == ChatIntent.RECAP;
             Optional<AnswerContext> context = chatLog.getDescriptionId() == null || recap ? Optional.empty()
-                    : answerContextReader.read(chatLog.getDescriptionId(), nowMs, tuning.answerPastOnly());
+                    : answerContextReader.read(chatLog.getDescriptionId(), nowMs, tuning.answerPastOnly(),
+                    // 지금 장면 설명은 지금 화면의 글자가 핵심이라 끝나지 않은 장면의 화면 글자도 넣는다
+                    tuning.answerPastOnly() && chatLog.getIntent() != ChatIntent.SCENE_NOW);
             AnswerSource source;
             if (recap && chatLog.getDescriptionId() != null) {
                 source = recap(session, chatLog, nowMs);
@@ -161,7 +228,7 @@ public class ChatAnswerService {
             } else {
                 source = question(session, context.get(), chatLog.getUtterance(), chatLog.getId(), checkFuture);
                 if (checkFuture && source == AnswerSource.UNANSWERABLE && !session.cancelled()) {
-                    futureAvailable = futureHasAnswer(chatLog, nowMs);
+                    futureAvailable = hasTimeForFutureCheck(session, chatLog.getId()) && futureHasAnswer(chatLog, nowMs);
                     if (futureAvailable || session.text().isEmpty()) {
                         session.speak(List.of(futureAvailable ? AnswerPrompt.FUTURE_PROMPT : AnswerPrompt.UNANSWERABLE));
                     }
@@ -176,24 +243,34 @@ public class ChatAnswerService {
             } else {
                 savedSource = source;
                 result = source.name().toLowerCase();
-                sink.send("done", new Done(session.text(), source, session.firstAudioMs(), session.elapsedMs(),
-                        futureAvailable));
             }
         } catch (LlmException e) {
             session.awaitSpeech(properties.speechWait());
             String code = streamErrorCode(e.getKind());
             result = session.cancelled() ? "cancelled" : code.toLowerCase();
-            sink.send("error", new Failed(code, streamErrorMessage(code)));
+            lastEvent = "error";
+            lastData = new Failed(code, streamErrorMessage(code));
         } catch (RuntimeException e) {
             log.error("[CHAT] 답변 실패 chatLogId={}", chatLog.getId(), e);
             session.awaitSpeech(properties.speechWait());
             result = "unknown";
-            sink.send("error", new Failed("UNKNOWN", streamErrorMessage("UNKNOWN")));
+            lastEvent = "error";
+            lastData = new Failed("UNKNOWN", streamErrorMessage("UNKNOWN"));
         }
-        // 저장 → 진행 표시 해제 → 닫기 순서: 닫은 직후 다시 구독해도 저장된 done을 받게
         int totalMs = session.elapsedMs();
+        if (savedSource != null) {
+            lastEvent = "done";
+            lastData = new Done(session.text(), savedSource, session.firstAudioMs(), totalMs, futureAvailable);
+        }
+        // 저장 → 진행 표시 해제 → done/error → 닫기 순서: done을 받고 바로 다시 구독(includeFuture 등)해도 저장된 답을 본다
         save(chatLog.getId(), session.text(), savedSource, session.firstAudioMs(), totalMs);
+        if (savedSource == null) {
+            restoreFutureOffer(chatLog.getId(), includeFuture);
+        }
         inProgress.finish(chatLog.getId());
+        if (lastEvent != null) {
+            sink.send(lastEvent, lastData);
+        }
         sink.complete();
         Timer.builder("audisay.chat.answer").tag("intent", chatLog.getIntent().name()).tag("result", result)
                 .register(meterRegistry).record(totalMs, TimeUnit.MILLISECONDS);
@@ -233,6 +310,21 @@ public class ChatAnswerService {
     }
 
     /**
+     * 뒤 내용 확인(최대 futureCheckTimeout) + 남은 음성 대기까지 SSE 연결 시간 안에 끝날 때만 확인한다.
+     * 모자라면 확인하지 않고 "자료에 없어요"로 끝낸다(연결이 done 없이 끊기는 것보다 낫다)
+     */
+    private boolean hasTimeForFutureCheck(AnswerSession session, Long chatLogId) {
+        long remainingMs = properties.streamTimeout().toMillis() - session.elapsedMs()
+                - properties.speechWait().toMillis();
+        if (remainingMs >= properties.futureCheckTimeout().toMillis()) {
+            return true;
+        }
+        log.info("[CHAT] 남은 시간이 모자라 뒤 내용 확인을 건너뜁니다 chatLogId={} remainingMs={}", chatLogId, remainingMs);
+        meterRegistry.counter("audisay.chat.answer.future", "result", "no_time").increment();
+        return false;
+    }
+
+    /**
      * 뒤쪽 자료에 답이 있는지 LLM 1회(LLM 한도에 셈). 자료가 없거나 확인이 실패하면 없다고 본다.
      * 지표 audisay.chat.answer.future result: available / none / skipped(한도·장애)
      */
@@ -244,9 +336,10 @@ public class ChatAnswerService {
         String result = "skipped";
         try {
             rateLimiter.acquireLlm(chatLog.getUserId());
+            // 덤 확인이라 대체 모델까지 부르면 SSE 시간 예산(hasTimeForFutureCheck)을 넘을 수 있어 주 모델만
             LlmResult check = llmClient.generate(LlmRequest.json(LlmPurpose.ANSWER, AnswerPrompt.FUTURE_CHECK_SYSTEM,
                     answerPrompt.futureCheckUser(future.get(), chatLog.getUtterance()), AnswerPrompt.CHECK_MAX_OUTPUT_TOKENS)
-                    .withChatLogId(chatLog.getId()));
+                    .withChatLogId(chatLog.getId()).withoutFallback());
             String evidence = check == null ? null : answerPrompt.evidence(check.text());
             boolean available = evidence != null;
             result = available ? "available" : "none";

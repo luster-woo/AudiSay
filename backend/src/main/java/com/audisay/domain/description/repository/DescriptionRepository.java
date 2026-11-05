@@ -17,7 +17,7 @@ public interface DescriptionRepository extends JpaRepository<Description, Long> 
 
     Optional<Description> findByJob_Id(Long jobId);
 
-    boolean existsByIdAndVideo_Id(Long id, Long videoId);
+    boolean existsByIdAndVideo_IdAndStatusIn(Long id, Long videoId, Collection<DescriptionStatus> statuses);
 
     /** 영상의 해설 버전 전체. 최신순 */
     List<Description> findByVideo_IdOrderByCreatedAtDescIdDesc(Long videoId);

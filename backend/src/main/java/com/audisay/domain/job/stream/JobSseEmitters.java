@@ -48,6 +48,11 @@ public class JobSseEmitters {
         }
     }
 
+    /** 이 서버에 그 작업의 구독자가 있는지 */
+    boolean hasSubscribers(Long jobId) {
+        return subscribers.containsKey(jobId);
+    }
+
     /** 구독자가 있는 작업 */
     Set<Long> jobIds() {
         return Set.copyOf(subscribers.keySet());
@@ -66,7 +71,7 @@ public class JobSseEmitters {
         subscribers.values().forEach(set -> set.forEach(Subscriber::heartbeat));
     }
 
-    private void remove(Subscriber subscriber) {
+    void remove(Subscriber subscriber) {
         subscribers.computeIfPresent(subscriber.jobId, (id, set) -> {
             set.remove(subscriber);
             return set.isEmpty() ? null : set;

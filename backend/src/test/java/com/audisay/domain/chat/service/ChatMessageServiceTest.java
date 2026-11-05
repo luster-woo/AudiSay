@@ -91,7 +91,7 @@ class ChatMessageServiceTest {
         when(video.getDurationSec()).thenReturn(300);
         when(videoAccessValidator.getAccessibleVideo(USER, VIDEO_ID)).thenReturn(video);
         when(descriptionService.resolveForChat(eq(VIDEO_ID), any())).thenReturn(Optional.of(500L));
-        when(sceneSeeker.seek(any(), any(), any(), any(), any())).thenReturn(new SceneSeeker.Outcome(List.of(), null));
+        when(sceneSeeker.seek(any(), any(), any(), any(), any(), any())).thenReturn(new SceneSeeker.Outcome(List.of(), null));
     }
 
     @Test
@@ -122,7 +122,7 @@ class ChatMessageServiceTest {
 
     @Test
     void 장면이_하나면_그곳으로_가고_이동_시각과_찾은_방법을_기록한다() {
-        when(sceneSeeker.seek(2L, 500L, "홈런", CHAT_LOG_ID, 1000))
+        when(sceneSeeker.seek(eq(2L), eq(500L), eq("홈런"), eq(CHAT_LOG_ID), eq(1000), any()))
                 .thenReturn(new SceneSeeker.Outcome(List.of(hit(3, 1_298_000, "넘어갑니다! 홈런!")), SeekSource.KEYWORD));
 
         ChatMessageResponse response = service.receive(USER, inVideo("홈런 장면으로 가 줘", 1000));
@@ -137,7 +137,7 @@ class ChatMessageServiceTest {
 
     @Test
     void 장면이_여럿이면_후보를_전부_주고_찾은_방법만_기록한다() {
-        when(sceneSeeker.seek(eq(2L), eq(500L), eq("안타 친"), eq(CHAT_LOG_ID), eq(950_000))).thenReturn(new SceneSeeker.Outcome(
+        when(sceneSeeker.seek(eq(2L), eq(500L), eq("안타 친"), eq(CHAT_LOG_ID), eq(950_000), any())).thenReturn(new SceneSeeker.Outcome(
                 List.of(hit(3, 1_498_000, "우전 안타로 출루합니다"), hit(1, 93_000, "쳤습니다! 중견수 앞 안타!")),
                 SeekSource.LLM));
 
@@ -248,6 +248,17 @@ class ChatMessageServiceTest {
         assertThat(response.result().message()).isEqualTo(ChatMessageService.IN_VIDEO_SEARCH_MESSAGE);
         assertThat(response.result().query()).isNull();
         assertThat(saved.getIntent()).isEqualTo(ChatIntent.SEARCH_VIDEO);
+    }
+
+    @Test
+    void 해설이_없는_영상에서_장면을_찾으면_에러_없이_못_찾음() {
+        when(descriptionService.resolveForChat(eq(VIDEO_ID), any())).thenReturn(Optional.empty());
+
+        ChatMessageResponse response = service.receive(USER, inVideo("홈런 장면으로 가 줘", 1000));
+
+        assertThat(response.intent()).isEqualTo(ChatIntent.SEEK_SCENE);
+        assertThat(response.result().message()).isEqualTo(ChatMessageService.SCENE_NOT_FOUND_MESSAGE);
+        verify(sceneSeeker, never()).seek(any(), any(), any(), any(), any(), any());
     }
 
     @Test

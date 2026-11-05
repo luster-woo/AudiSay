@@ -30,8 +30,17 @@ public class JobProgressNotifier {
     }
 
     public void progress(Job job, int progress) {
-        int latest = Math.max(progress, progressStore.find(job.getId()).map(JobProgress::progress).orElse(0));
-        afterCommit(job.getId(), JobNotice.progress(job, latest));
+        afterCommit(job.getId(), JobNotice.progress(job, Math.max(progress, storedProgress(job.getId()))));
+    }
+
+    /** Redis에 남은 진행률(줄지 않게). 못 읽으면 0 → DB 값으로 알린다(알림 때문에 이벤트 처리를 실패시키지 않는다) */
+    private int storedProgress(Long jobId) {
+        try {
+            return progressStore.find(jobId).map(JobProgress::progress).orElse(0);
+        } catch (RuntimeException e) {
+            log.warn("job 진행 상태 읽기 실패 jobId={}: {}", jobId, e.getMessage());
+            return 0;
+        }
     }
 
     public void completed(Job job, Long descriptionId, Integer coveredUntilMs) {

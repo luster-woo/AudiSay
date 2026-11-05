@@ -35,6 +35,8 @@ public class AdminStatsService {
     public static final int MAX_RANGE_DAYS = 92;
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
     private static final int CREDIT_SCALE = 2;
+    /** 재사용으로 아낀 크레딧을 어림할 영상당 평균 크레딧의 기간(전체 기간을 매번 훑지 않게 최근만) */
+    private static final int REUSE_AVG_DAYS = 90;
 
     private final AiUsageStatsRepository statsRepository;
     private final AiCreditCalculator creditCalculator;
@@ -96,10 +98,11 @@ public class AdminStatsService {
         long reused = counts.getOrDefault("REUSED", 0L);
         long joinedJob = counts.getOrDefault("JOINED_JOB", 0L);
 
-        Instant allTimeEnd = Instant.now().plus(1, ChronoUnit.DAYS);
-        long jobs = statsRepository.countYoutubeJobsWithCalls(Instant.EPOCH, allTimeEnd);
+        Instant avgEnd = Instant.now().plus(1, ChronoUnit.DAYS);
+        Instant avgStart = avgEnd.minus(REUSE_AVG_DAYS + 1, ChronoUnit.DAYS);
+        long jobs = statsRepository.countYoutubeJobsWithCalls(avgStart, avgEnd);
         BigDecimal avg = jobs == 0 ? BigDecimal.ZERO
-                : sumCredits(statsRepository.sumYoutubeJobCallsByModel(Instant.EPOCH, allTimeEnd))
+                : sumCredits(statsRepository.sumYoutubeJobCallsByModel(avgStart, avgEnd))
                 .divide(BigDecimal.valueOf(jobs), CREDIT_SCALE, RoundingMode.HALF_UP);
         BigDecimal saved = avg.multiply(BigDecimal.valueOf(reused + joinedJob));
         BigDecimal spent = sumCredits(statsRepository.sumYoutubeJobCallsByModel(start, end));

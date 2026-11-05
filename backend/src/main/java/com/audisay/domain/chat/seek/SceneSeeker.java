@@ -9,10 +9,14 @@ import com.audisay.domain.description.service.SceneText;
 import com.audisay.domain.description.service.SceneTextReader;
 import com.audisay.global.exception.BusinessException;
 import com.audisay.global.exception.ErrorCode;
+import com.audisay.global.external.llm.GmsProperties;
+import com.audisay.global.external.llm.LlmPurpose;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
 import java.util.List;
 
 /**
@@ -22,9 +26,16 @@ import java.util.List;
  * 키워드로 못 찾으면 LLM이 고른다.
  * 지표 audisay.chat.seek{source=KEYWORD/LLM/NONE, result=single/multiple/none, verified} — 키워드로 처리한 비율, 거르기 횟수
  */
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class SceneSeeker {
+    /**
+     * 챗봇 입력 하나의 응답 예산. FE가 15초(axios)에 끊으므로 그 전에 답한다: LLM 한 번(seek 시간 제한)을 다 기다릴 수
+     * 없으면 그 단계를 건너뛴다(거르기는 생략, 다시 고르기는 못 찾음)
+     */
+    public static final Duration RECEIVE_BUDGET = Duration.ofSeconds(13);
+
     private final SceneTextReader sceneTextReader;
     private final KeywordSceneScorer scorer;
     private final LlmSceneSelector selector;
@@ -32,12 +43,24 @@ public class SceneSeeker {
     private final ChatRateLimiter rateLimiter;
     private final ChatTuningProperties tuning;
     private final MeterRegistry meterRegistry;
+    private final GmsProperties gmsProperties;
 
-    /** @param source 찾은 방법(못 찾았으면 null) */
-    public record Outcome(List<Hit> hits, SeekSource source) {
+    /**
+     * @param source   찾은 방법(못 찾았으면 null)
+     * @param timedOut 응답 시간 예산이 모자라 LLM으로 고르지 못했다(못 찾은 것과 안내를 다르게)
+     */
+    public record Outcome(List<Hit> hits, SeekSource source, boolean timedOut) {
+        public Outcome(List<Hit> hits, SeekSource source) {
+            this(hits, source, false);
+        }
     }
 
     public Outcome seek(Long userId, Long descriptionId, String query, Long chatLogId, Integer nowMs) {
+        return seek(userId, descriptionId, query, chatLogId, nowMs, null);
+    }
+
+    /** @param deadlineNanos 이 System.nanoTime()까지 답해야 한다(null이면 제한 없음) */
+    public Outcome seek(Long userId, Long descriptionId, String query, Long chatLogId, Integer nowMs, Long deadlineNanos) {
         List<SceneText> scenes = sceneTextReader.read(descriptionId);
         boolean verified = false;
         Outcome outcome;
@@ -48,25 +71,34 @@ public class SceneSeeker {
             if (keyword != null && keyword.decision() != Decision.NONE) {
                 List<Hit> hits = keyword.chosen();
                 int termCount = keyword.terms().size();
-                boolean partial = tuning.seekPartialVerify() && (hits.stream().anyMatch(h -> h.matchedTerms() < termCount)
+                // 후보가 너무 많으면 프롬프트·출력 한도를 넘으므로 점수가 높은 MAX_CANDIDATES개만 LLM이 거른다
+                List<Hit> candidates = topByScore(hits, nowMs);
+                boolean partial = tuning.seekPartialVerify() && (candidates.stream().anyMatch(h -> h.matchedTerms() < termCount)
                         || keyword.terms().stream().anyMatch(t -> t.length() == 1));
                 boolean dialogueOnly = keyword.decision() == Decision.MULTIPLE && tuning.seekLlmVerify()
-                        && LlmHitVerifier.worthVerifying(hits);
-                if ((partial || dialogueOnly) && tryAcquireLlm(userId)) {
-                    hits = verifier.verify(query, hits, chatLogId);
+                        && LlmHitVerifier.worthVerifying(candidates);
+                if ((partial || dialogueOnly) && hasTimeForLlm(deadlineNanos, "거르기") && tryAcquireLlm(userId)) {
+                    hits = deadlineNanos == null ? verifier.verify(query, candidates, chatLogId)
+                            : verifier.verify(query, candidates, chatLogId, deadlineNanos);
                     verified = true;
                 }
                 if (hits.isEmpty() && partial) {
-                    rateLimiter.acquireLlm(userId);
-                    hits = selector.select(query, scenes, chatLogId, nowMs);
-                    outcome = new Outcome(hits, hits.isEmpty() ? null : SeekSource.LLM);
+                    if (hasTimeForLlm(deadlineNanos, "다시 고르기")) {
+                        rateLimiter.acquireLlm(userId);
+                        hits = select(query, scenes, chatLogId, nowMs, deadlineNanos);
+                        outcome = new Outcome(hits, hits.isEmpty() ? null : SeekSource.LLM);
+                    } else {
+                        outcome = new Outcome(List.of(), null, true);
+                    }
                 } else {
                     outcome = new Outcome(hits, hits.isEmpty() ? null : SeekSource.KEYWORD);
                 }
-            } else {
+            } else if (hasTimeForLlm(deadlineNanos, "고르기")) {
                 rateLimiter.acquireLlm(userId);
-                List<Hit> hits = selector.select(query, scenes, chatLogId, nowMs);
+                List<Hit> hits = select(query, scenes, chatLogId, nowMs, deadlineNanos);
                 outcome = new Outcome(hits, hits.isEmpty() ? null : SeekSource.LLM);
+            } else {
+                outcome = new Outcome(List.of(), null, true);
             }
         }
         meterRegistry.counter("audisay.chat.seek",
@@ -75,6 +107,33 @@ public class SceneSeeker {
                 "verified", String.valueOf(verified))
                 .increment();
         return outcome;
+    }
+
+    private static List<Hit> topByScore(List<Hit> hits, Integer nowMs) {
+        if (hits.size() <= LlmHitVerifier.MAX_CANDIDATES) {
+            return hits;
+        }
+        return KeywordSceneScorer.sortByTime(hits.stream()
+                .sorted(java.util.Comparator.comparingDouble(Hit::score).reversed())
+                .limit(LlmHitVerifier.MAX_CANDIDATES)
+                .toList(), nowMs);
+    }
+
+    private List<Hit> select(String query, List<SceneText> scenes, Long chatLogId, Integer nowMs, Long deadlineNanos) {
+        return deadlineNanos == null ? selector.select(query, scenes, chatLogId, nowMs)
+                : selector.select(query, scenes, chatLogId, nowMs, deadlineNanos);
+    }
+
+    private boolean hasTimeForLlm(Long deadlineNanos, String step) {
+        if (deadlineNanos == null) {
+            return true;
+        }
+        long remaining = deadlineNanos - System.nanoTime();
+        if (remaining >= gmsProperties.timeout(LlmPurpose.SEEK).toNanos()) {
+            return true;
+        }
+        log.info("[CHAT] 응답 시간 예산이 {}ms 남아 장면 {} 생략", remaining / 1_000_000, step);
+        return false;
     }
 
     /** 거르기는 덤이라 LLM 호출 한도에 걸리면 거르지 않고 넘어간다 */

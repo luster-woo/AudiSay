@@ -46,18 +46,25 @@ final class LlmNumbers {
         return new ArrayList<>(numbers);
     }
 
+    /** 정수만 번호로 본다(1.9 → 1, 4294967297 → 1처럼 잘려 범위 검사를 지나가지 않게). 범위 밖은 null */
     private static Integer number(Object value) {
-        if (value instanceof Number n) {
-            return n.intValue();
+        if (value instanceof Integer || value instanceof Long || value instanceof Short || value instanceof Byte
+                || value instanceof java.math.BigInteger) {
+            return toInt(((Number) value).longValue(), value instanceof java.math.BigInteger big
+                    && big.bitLength() >= Long.SIZE);
         }
         if (value instanceof String s) {
             try {
-                return Integer.valueOf(s.strip());
+                return toInt(Long.parseLong(s.strip()), false);
             } catch (NumberFormatException e) {
                 return null;
             }
         }
         return null;
+    }
+
+    private static Integer toInt(long n, boolean overflow) {
+        return overflow || n < Integer.MIN_VALUE || n > Integer.MAX_VALUE ? null : (int) n;
     }
 
     private static String abbreviate(String text) {

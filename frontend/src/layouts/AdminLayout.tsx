@@ -18,6 +18,7 @@ interface AdminNavItem {
 const ADMIN_NAV: AdminNavItem[] = [
   { to: '/admin/reports', label: '신고 처리' },
   { to: '/admin/stats', label: '통계' },
+  { to: '/admin/chat-stats', label: '챗봇 품질 통계' },
   { to: '/admin/users', label: '회원' },
 ]
 

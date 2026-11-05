@@ -4,6 +4,7 @@ import type { RouteHandle } from '@/app/routeHandle'
 import { useAuth } from '@/features/auth/context'
 import { usePendingReportCount } from '@/features/admin/usePendingReportCount'
 import { useShortcutScope } from '@/features/shortcuts/context'
+import { LogoMark } from './parts/LogoMark'
 import { SkipLink } from './parts/SkipLink'
 import { AdminBreadcrumb } from './parts/AdminBreadCrumb'
 import { AdminTopbarContext } from './parts/adminTopbar'
@@ -50,11 +51,14 @@ export function AdminLayout() {
         {/* 치수는 Figma 관리자 프레임 기준 (관리자 글자 크기 15px = 1rem) */}
         <aside className="sticky top-0 flex h-svh w-[15.4667rem] shrink-0 flex-col bg-sidebar px-[1.0667rem] pt-[1.5rem] pb-[1.3667rem] text-on-sidebar">
           <p className="px-[0.4rem] text-[1.6rem] leading-tight font-bold">
-            AudiSay{' '}
-            <span className="mt-1 block text-[0.8667rem] font-normal opacity-80">운영 관리</span>
+            <span className="flex items-center gap-[0.5rem]">
+              <LogoMark />
+              AudiSay
+            </span>{' '}
+            <span className="mt-[0.6rem] block text-[0.8667rem] font-normal opacity-80">운영 관리</span>
           </p>
 
-          <nav aria-label="운영 관리 메뉴" className="mt-[1.4rem]">
+          <nav aria-label="운영 관리 메뉴" className="mt-[2.2rem]">
             <ul className="space-y-[0.2667rem]">
               {nav.map((item) => (
                 <li key={item.to}>

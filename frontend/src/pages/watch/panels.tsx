@@ -200,10 +200,13 @@ export function HistoryPanel({
               <p className={cn('mt-1 text-lg', e.kind === 'answer' && 'font-bold')}>
                 {e.text || (e.kind === 'answer' && !e.done ? '답을 만드는 중이에요…' : '')}
               </p>
-              {e.kind === 'answer' && e.done && (
+              {/* 버튼 자리는 답을 받는 동안에도 잡아 둔다 (끝난 뒤 생기면 카드 높이가 바뀌어 화면이 밀린다).
+                  읽는 중에는 누를 수 없게(aria-disabled) 두었다가 답이 끝나면 누를 수 있다 */}
+              {e.kind === 'answer' && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Button
                     variant="secondary"
+                    disabled={!e.done}
                     onClick={() => onReplay(e)}
                     aria-label={`다시 듣기, ${stamp('AudiSay 답', e.videoTimeMs)}`}
                   >
@@ -212,6 +215,7 @@ export function HistoryPanel({
                   {e.videoTimeMs != null && (
                     <Button
                       variant="secondary"
+                      disabled={!e.done}
                       onClick={() => onGoTo(e.videoTimeMs!)}
                       aria-label={`그 장면 보기, ${formatPositionSpoken(e.videoTimeMs)}`}
                     >

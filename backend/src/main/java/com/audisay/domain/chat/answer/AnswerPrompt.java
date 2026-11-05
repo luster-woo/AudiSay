@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -40,7 +41,7 @@ public class AnswerPrompt {
             + "자료에 없는 내용은 지어내지 마세요. 사람 이름은 자료에 있을 때만, 시각 숫자나 MM:SS는 읽지 마세요.";
     static final String SCENE_NOW_REQUEST = "지금 화면을 설명해 주세요.";
     static final int FUTURE_MAX_CHARS = 12_000;
-    static final int CHECK_MAX_OUTPUT_TOKENS = 150;
+    static final int CHECK_MAX_OUTPUT_TOKENS = 300;
     public static final String FUTURE_PROMPT = "그건 지금 시점 이후에 나와요. 그래도 들으시겠어요?";
     public static final String NO_RECAP = "아직 지난 내용이 없어요.";
     static final String RECAP_SYSTEM = "당신은 시각장애인에게 영상의 지금까지 줄거리를 알려 주는 도우미입니다. "
@@ -49,7 +50,7 @@ public class AnswerPrompt {
             + "사람이나 캐릭터 이름은 자료에 이름이 있을 때만 말하세요. 시각 숫자나 MM:SS는 읽지 마세요.";
     static final String RECAP_REQUEST = "지금까지 줄거리를 정리해 주세요.";
     static final String FUTURE_CHECK_SYSTEM = "시각장애인이 영상을 보다가 한 질문입니다. 아래 '뒤 내용'(질문한 시각 이후의 장면·해설 문장·대사·화면 글자와 "
-            + "영상 전체 요약)에서 질문에 대한 답이 되는 부분을 찾아 그대로 옮기세요. 영상 요약에 답이 있어도 됩니다. "
+            + "영상 전체 요약)에서 질문에 대한 답이 되는 부분을 찾아 40자 이내 한 구절로 옮기세요. 영상 요약에 답이 있어도 됩니다. "
             + "답이 없거나 비슷한 내용뿐이면 빈 문자열로 두세요. "
             + "설명 없이 JSON 한 줄만 답하세요: {\"evidence\": \"답이 되는 문장\"} 또는 {\"evidence\": \"\"}";
     static final String FUTURE_SYSTEM = "당신은 시각장애인이 영상을 보다가 한 질문에 답하는 도우미입니다. "
@@ -60,6 +61,9 @@ public class AnswerPrompt {
     /** haiku(대체 모델)는 문구를 바꿔 말할 수 있어 한 문구로만 보지 않는다(스파이크 채점과 같은 기준) */
     private static final Pattern SAID_NO = Pattern.compile(
             "(자료|해설)(?![^.?!]{0,6}(따르면|보면|의하면))[^.?!]{0,60}?(없|나오지 않|나와 있지 않|있지 않|알 수 없)");
+
+    /** 닫는 따옴표·중괄호 없이 잘린 {"evidence": "... */
+    private static final Pattern TRUNCATED_EVIDENCE = Pattern.compile("\"evidence\"\\s*:\\s*\"([^\"]+)$");
 
     private final ObjectMapper objectMapper;
 
@@ -75,22 +79,26 @@ public class AnswerPrompt {
         return "해설 자료:\n" + json(context) + "\n\n뒤 내용:\n" + futureJson(future) + "\n\n질문: " + question;
     }
 
-    /** {"evidence": "..."}에서 뒤 내용의 답 문장. 비었거나 읽을 수 없으면 null(뒤에 답이 없는 것으로) */
+    /**
+     * {"evidence": "..."}에서 뒤 내용의 답 문장. 비었거나 읽을 수 없으면 null(뒤에 답이 없는 것으로).
+     * 근거를 길게 옮기다 출력 한도로 잘린 응답({"evidence": "...)도 글자가 있으면 답이 있는 것으로 본다
+     */
     public String evidence(String text) {
         if (text == null) {
             return null;
         }
         int start = text.indexOf('{');
         int end = text.lastIndexOf('}');
-        if (start < 0 || end <= start) {
-            return null;
+        if (start >= 0 && end > start) {
+            try {
+                Object value = objectMapper.readValue(text.substring(start, end + 1), Map.class).get("evidence");
+                return value instanceof String s && !s.isBlank() ? s.strip() : null;
+            } catch (JacksonException e) {
+                // 아래에서 잘린 응답으로 다시 본다
+            }
         }
-        try {
-            Object value = objectMapper.readValue(text.substring(start, end + 1), Map.class).get("evidence");
-            return value instanceof String s && !s.isBlank() ? s.strip() : null;
-        } catch (JacksonException e) {
-            return null;
-        }
+        Matcher truncated = TRUNCATED_EVIDENCE.matcher(text);
+        return truncated.find() && !truncated.group(1).isBlank() ? truncated.group(1).strip() : null;
     }
 
     public String recapUser(RecapContext recap) {
@@ -142,11 +150,36 @@ public class AnswerPrompt {
         return objectMapper.writeValueAsString(map);
     }
 
-    /** 뒤 내용 JSON. 1.2만 자를 넘으면 시각이 늦은 장면·대사부터 뺀다 */
+    /**
+     * 뒤 내용 JSON. 1.2만 자를 넘으면 시각이 늦은 장면·대사부터 뺀다.
+     * 긴 영상은 항목이 수천 개라 하나씩 빼며 매번 전체를 다시 만들지 않고, 이른 것부터 항목 길이를 더해 한 번에 자른다
+     */
     String futureJson(FutureContext future) {
-        List<SceneInfo> scenes = new ArrayList<>(future.scenes());
-        List<Dialogue> dialogues = new ArrayList<>(future.dialogues());
+        List<SceneInfo> scenes = new ArrayList<>();
+        List<Dialogue> dialogues = new ArrayList<>();
+        int length = futureJsonOf(future.summary(), List.of(), List.of()).length();
+        int si = 0;
+        int di = 0;
+        List<SceneInfo> allScenes = future.scenes();
+        List<Dialogue> allDialogues = future.dialogues();
+        while (si < allScenes.size() || di < allDialogues.size()) {
+            // 뺄 때와 같은 순서: 같은 시각이면 장면을 먼저 남긴다
+            boolean takeScene = di >= allDialogues.size() || (si < allScenes.size()
+                    && allScenes.get(si).startMs() <= allDialogues.get(di).startMs());
+            String item = takeScene ? objectMapper.writeValueAsString(sceneMap(allScenes.get(si)))
+                    : objectMapper.writeValueAsString(dialogueMap(allDialogues.get(di)));
+            length += item.length() + 1;
+            if (length > FUTURE_MAX_CHARS) {
+                break;
+            }
+            if (takeScene) {
+                scenes.add(allScenes.get(si++));
+            } else {
+                dialogues.add(allDialogues.get(di++));
+            }
+        }
         String json = futureJsonOf(future.summary(), scenes, dialogues);
+        // 길이 어림이 어긋났을 때만(거의 없음) 늦은 것부터 하나씩 뺀다
         while (json.length() > FUTURE_MAX_CHARS && (!scenes.isEmpty() || !dialogues.isEmpty())) {
             boolean dropDialogue = scenes.isEmpty() || (!dialogues.isEmpty()
                     && dialogues.get(dialogues.size() - 1).startMs() >= scenes.get(scenes.size() - 1).startMs());

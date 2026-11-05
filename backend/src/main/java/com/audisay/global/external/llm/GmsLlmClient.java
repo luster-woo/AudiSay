@@ -90,12 +90,23 @@ public class GmsLlmClient implements LlmClient {
             return attempt(request, primary, properties.model(request.purpose()), primaryBreakers, invocation, false);
         } catch (LlmException e) {
             String fallbackModel = properties.fallbackModel(request.purpose());
-            if (fallback == null || fallbackModel == null || !shouldFallback(e) || streamStarted.getAsBoolean()) {
+            if (fallback == null || fallbackModel == null || request.noFallback() || !shouldFallback(e)
+                    || streamStarted.getAsBoolean() || !hasTimeForFallback(request)) {
                 throw e;
             }
             log.warn("[LLM] {} 주 모델 실패({}) → 대체 모델 {}", request.purpose(), e.getKind(), fallbackModel);
             return attempt(request, fallback, fallbackModel, fallbackBreakers, invocation, true);
         }
+    }
+
+    /** 호출한 쪽 응답 시간 예산 안에 대체 모델 한 번을 다 기다릴 수 있는지 */
+    private boolean hasTimeForFallback(LlmRequest request) {
+        Long deadline = request.fallbackDeadlineNanos();
+        if (deadline == null || deadline - System.nanoTime() >= properties.timeout(request.purpose()).toNanos()) {
+            return true;
+        }
+        log.warn("[LLM] {} 주 모델 실패, 응답 시간 예산이 모자라 대체 모델을 부르지 않음", request.purpose());
+        return false;
     }
 
     private static boolean shouldFallback(LlmException e) {
@@ -164,6 +175,8 @@ public class GmsLlmClient implements LlmClient {
                 .waitDurationInOpenState(breaker.waitInOpenState())
                 .permittedNumberOfCallsInHalfOpenState(breaker.permittedCallsInHalfOpen())
                 .recordException(e -> e instanceof LlmException llm && llm.getKind().countsForBreaker())
+                // 호출한 쪽(스트리밍 handler)에서 난 오류는 LLM 상태와 무관해 성공으로도 세지 않는다
+                .ignoreException(e -> !(e instanceof LlmException))
                 .build();
     }
 }

@@ -5,100 +5,7 @@ export interface HelpRow {
   spokenDescription?: string
 }
 
-export type ShortcutCategory = 'everywhere' | 'playback' | 'questions'
-export type VoiceCategory = 'playback' | 'scenes' | 'questions'
-
-// 사용자와 확정한 와이어프레임 문구. 플레이어 담당자가 키·음성 동작을 추가할 예정이므로
-// 현재 등록된 키 목록과 분리한다. 도움말 구현에서 플레이어의 동작을 변경하지 않는다.
-export const shortcutCategories: { value: ShortcutCategory; label: string; rows: HelpRow[] }[] = [
-  {
-    value: 'everywhere',
-    label: '어디서나',
-    rows: [
-      {
-        command: 'Alt+Shift+H',
-        description: '홈으로 이동',
-        spokenCommand: '알트와 시프트를 누른 상태에서 에이치 키를 누르세요.',
-      },
-      {
-        command: 'Alt+Shift+R',
-        description: '방금 안내 다시 듣기',
-        spokenCommand: '알트와 시프트를 누른 상태에서 알 키를 누르세요.',
-      },
-      {
-        command: 'Alt+Shift+/',
-        description: '현재 화면의 단축키 듣기',
-        spokenCommand: '알트와 시프트를 누른 상태에서 슬래시 키를 누르세요.',
-      },
-      {
-        command: 'Alt+Shift+U',
-        description: '영상 등록',
-        spokenCommand: '알트와 시프트를 누른 상태에서 유 키를 누르세요.',
-      },
-    ],
-  },
-  {
-    value: 'playback',
-    label: '재생과 이동',
-    rows: [
-      {
-        command: 'Alt+Shift+K',
-        description: '재생 / 일시정지',
-        spokenCommand: '알트와 시프트를 누른 상태에서 케이 키를 누르세요.',
-        spokenDescription: '영상을 재생하거나 일시정지해요.',
-      },
-      {
-        command: 'Alt+Shift+J / L',
-        description: '앞뒤로 이동',
-        spokenCommand: '알트와 시프트를 누른 상태에서 제이 또는 엘 키를 누르세요.',
-      },
-      {
-        command: 'Alt+Shift+P',
-        description: '현재 재생 위치 듣기',
-        spokenCommand: '알트와 시프트를 누른 상태에서 피 키를 누르세요.',
-      },
-      {
-        command: 'Alt+Shift+D',
-        description: '현재 장면 설명',
-        spokenCommand: '알트와 시프트를 누른 상태에서 디 키를 누르세요.',
-      },
-    ],
-  },
-  {
-    value: 'questions',
-    label: '질문과 설정',
-    rows: [
-      {
-        command: 'Alt+Shift+1~3',
-        description: '해설 상세도 조절',
-        spokenCommand: '알트와 시프트를 누른 상태에서 숫자 일 또는 이 또는 삼 키를 누르세요.',
-      },
-      {
-        command: 'Alt+Shift+Q / V',
-        description: '글자 질문 / 말로 질문',
-        spokenCommand: '알트와 시프트를 누른 상태에서 큐 또는 브이 키를 누르세요.',
-        spokenDescription: '큐 키는 글자로 질문하기예요. 브이 키는 말로 질문하기예요.',
-      },
-      {
-        command: 'Alt+Shift+C / N / G',
-        description: '목차 / 대본 / 질문',
-        spokenCommand: '알트와 시프트를 누른 상태에서 씨 또는 엔 또는 지 키를 누르세요.',
-        spokenDescription: '씨 키는 목차예요. 엔 키는 대본이에요. 지 키는 질문이에요.',
-      },
-      {
-        command: 'Alt+Shift+S',
-        description: '재생 설정 열기',
-        spokenCommand: '알트와 시프트를 누른 상태에서 에스 키를 누르세요.',
-      },
-      {
-        command: 'Alt+Shift+F / X',
-        description: '즐겨찾기 / 신고',
-        spokenCommand: '알트와 시프트를 누른 상태에서 에프 또는 엑스 키를 누르세요.',
-        spokenDescription: '에프 키는 즐겨찾기예요. 엑스 키는 신고예요.',
-      },
-    ],
-  },
-]
+export type VoiceCategory = 'playback' | 'scenes' | 'questions' | 'home'
 
 export const voiceCategories: { value: VoiceCategory; label: string; rows: HelpRow[] }[] = [
   {
@@ -179,6 +86,34 @@ export const voiceCategories: { value: VoiceCategory; label: string; rows: HelpR
         command: '‘여기 신고’',
         description: '현재 해설 문장 신고',
         spokenCommand: '여기 신고라고 말하세요.',
+      },
+    ],
+  },
+  {
+    // 홈 음성 검색: 받아쓴 말을 챗봇이 먼저 나눈다 (글자 검색은 그대로 검색)
+    value: 'home',
+    label: '홈 음성 검색',
+    rows: [
+      {
+        command: '‘고양이 영상 찾아 줘’',
+        description: '말한 영상 검색',
+        spokenCommand: '고양이 영상 찾아 줘라고 말하세요.',
+      },
+      {
+        command: '‘말 빠르게’ / ‘고대비 켜 줘’',
+        description: '설정 바꾸기',
+        spokenCommand: '말 빠르게 또는 고대비 켜 줘라고 말하세요.',
+        spokenDescription: '검색하지 않고 설정을 바꿔요.',
+      },
+      {
+        command: '‘도움말’',
+        description: '도움말 열기',
+        spokenCommand: '도움말이라고 말하세요.',
+      },
+      {
+        command: '‘사용법 다시’',
+        description: '사용법 처음부터',
+        spokenCommand: '사용법 다시라고 말하세요.',
       },
     ],
   },

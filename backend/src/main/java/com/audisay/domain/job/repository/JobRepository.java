@@ -32,17 +32,22 @@ public interface JobRepository extends JpaRepository<Job, Long> {
     /** 예상 시간 계산용: 같은 경로로 최근 끝난 작업(JobTimeEstimator) */
     List<Job> findTop10ByPipelineAndStatusOrderByIdDesc(Pipeline pipeline, JobStatus status);
 
-    /** 멈춘 작업 후보(StaleJobCleaner). 마지막 활동은 서비스에서 잠근 뒤 다시 본다 */
+    /**
+     * 멈춘 작업 후보(StaleJobCleaner). 마지막 활동은 서비스에서 잠근 뒤 다시 본다.
+     * afterId 뒤부터 id 순서로(아직 활동 중인 오래된 작업이 앞을 채워도 뒤 후보까지 차례가 오게)
+     */
     @Query("""
             select j.id from Job j
-            where (j.status = :queued and j.queuedAt < :queuedBefore)
-               or (j.status = :running and coalesce(j.startedAt, j.queuedAt) < :runningBefore)
+            where j.id > :afterId
+              and ((j.status = :queued and j.queuedAt < :queuedBefore)
+                or (j.status = :running and coalesce(j.startedAt, j.queuedAt) < :runningBefore))
             order by j.id
             """)
     List<Long> findStaleCandidateIds(@Param("queued") JobStatus queued,
                                      @Param("queuedBefore") Instant queuedBefore,
                                      @Param("running") JobStatus running,
                                      @Param("runningBefore") Instant runningBefore,
+                                     @Param("afterId") Long afterId,
                                      Pageable pageable);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)

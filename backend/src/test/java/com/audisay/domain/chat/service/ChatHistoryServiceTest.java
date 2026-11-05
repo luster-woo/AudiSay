@@ -108,6 +108,7 @@ class ChatHistoryServiceTest {
         assertThat(message.inputMode()).isEqualTo(InputMode.TEXT);
         assertThat(message.videoTimeMs()).isEqualTo(200_000);
         assertThat(message.answerText()).isEqualTo("주인공은 민수예요.");
+        assertThat(message.answerSource()).isEqualTo(AnswerSource.STORED);
     }
 
     @Test

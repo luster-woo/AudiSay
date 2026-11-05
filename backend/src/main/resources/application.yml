@@ -40,6 +40,14 @@ spring:
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:audisay}
 
+  # @Scheduled 작업(outbox 재발행·SSE heartbeat·남은 시간·작업/업로드 정리)이 기본 스레드 1개를 나눠 쓰면
+  # 하나가 오래 걸릴 때 heartbeat가 멈춰 프록시가 SSE를 끊는다
+  task:
+    scheduling:
+      pool:
+        size: 4
+      thread-name-prefix: audisay-scheduling-
+
   rabbitmq:
     host: ${RABBITMQ_HOST:localhost}
     port: ${RABBITMQ_PORT:5672}
@@ -81,12 +89,29 @@ audisay:
       voice: F1                       # 답변 목소리(Supertonic, 안내 목소리와 같음)
       stream-timeout: 90s             # SSE 최대 연결 시간(LLM 전체 60초 + 음성)
       speech-wait: 15s                # LLM이 끝난 뒤 남은 문장 음성을 기다리는 최대 시간
+      future-check-timeout: 60s       # 뒤 내용 확인 LLM 최대 시간(gms.timeouts.answer와 같게). SSE에 이만큼+speech-wait가 안 남으면 건너뜀
   job:
     partial-on-chunk-failure: true    # 조각 하나 실패 시 작업 전체 FAILED 대신 나머지로 PARTIAL
     stale:                            # 멈춘 작업 정리(5분마다). 마지막 활동 뒤 이 시간이 지나면 FAILED(AI_TIMEOUT)
       enabled: true
       queued-timeout: 2h              # 워커가 아직 안 받은 작업(대기열에서 기다리는 시간 포함)
-      running-timeout: 45m            # 진행 중 작업. 워커 메시지 제한 10분 × 3번 + 재시도 대기보다 길게
+      running-timeout: 45m            # 진행 중 작업(MERGE·TTS 등). 워커 메시지 제한 10분 × 3번 + 재시도 대기보다 길게.
+                                      # 안 끝난 조각이 있거나 업로드(LOCAL) 영상 분석(PREPARE, 영상 길이의 약 1.4배)이면 queued-timeout
+
+  ocr:                                # 인증 서류 글자 읽기(286). PaddleOCR PP-OCRv5 ONNX를 서버 안 CPU로, 서류는 밖으로 안 나감
+    model-dir: ${OCR_MODEL_DIR:models/ocr}  # 실행 위치 기준. 로컬 backend/models/ocr(git 제외), 배포 이미지 /app/models/ocr
+    det-model: det_mobile.onnx        # PP-OCRv5_mobile_det(공식 PaddlePaddle ONNX, 4.8MB)
+    rec-model: rec.onnx               # korean_PP-OCRv5_mobile_rec(13MB)
+    dictionary: dict.txt
+    det-long-side: 960                # 긴 변을 이 크기로 바꿔 글자 위치를 찾음(모델 inference.yml resize_long)
+    min-score: 0.6                    # 이 점수 미만인 줄은 버림(H200 /ocr와 같음)
+    threads: 2                        # OCR 한 번에 쓰는 CPU 스레드
+    max-concurrent: 1                 # 동시에 돌리는 OCR 수(한 장 1초 안팎, 인증은 드물어 1개로 최대 메모리를 줄임). 넘으면 wait-timeout까지 기다림
+    wait-timeout: 10s
+    optimization-level: ALL           # ALL → BASIC → NONE. 모델 로드·첫 추론이 실패하면 자동으로 낮춤
+
+  verification:
+    daily-attempts: 5                 # 회원당 하루(KST) 인증 서류 확인 횟수. 넘으면 USER_007(429)
 
   # 역할별 이용 제한 (기획서 2.3 초기값, GMS 크레딧 확인 후 조정). 관리자는 제한 없음
   usage-limits:
@@ -119,8 +144,9 @@ audisay:
     base-url: ${AI_SERVER_URL:http://localhost:8000}
     internal-token: ${AI_INTERNAL_TOKEN:}
     connect-timeout: 2s
-    stt-timeout: 10s
-    tts-timeout: 7s   # 500자는 AI가 120자 조각 4~5개로 나눠 약 2초. H200이 느리면 AI가 조각마다 5초에 끊고 TTS_003을 준다
+    stt-timeout: 12s  # AI: H200 4초 → 실패하면 GMS whisper 5초 + ffmpeg 변환·힌트 조회. FE axios 시간 제한(15초)이 업로드까지 포함이라 그보다 짧게
+    tts-timeout: 7s   # 500자는 AI가 120자 조각 4~5개로 나눠 약 2초. H200이 느리면 조각마다 5초를 기다려 이 시간을 넘길 수 있지만
+                      # 결과는 TTS_003과 같은 audioUrl null(브라우저 음성)이라 늘리지 않는다(늘리면 답변 문장 음성 대기만 길어짐)
 
   # 챗봇 LLM(분류·장면 찾기·답변). Spring이 GMS를 직접 부른다. 모델은 11-02 비교로 결정(claude_AudiSay_GMS_모델비교.md)
   # mode: real(기본) / mock(가짜 응답, 크레딧 0 — 로컬에서 아끼고 싶을 때 .env에 AUDISAY_GMS_MODE=mock)

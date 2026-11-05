@@ -24,12 +24,15 @@ export interface VideoCardLinkProps extends VideoCardBase {
   /** 만들 수 없는 영상은 빨간 테두리로도 구분한다 */
   tone?: 'normal' | 'danger'
   actions?: never
+  row?: never
 }
 
 /** 정보 카드 + 아래 버튼 줄 (내 영상처럼 동작이 둘 이상이거나 되돌리기 어려운 동작이 있을 때) */
 export interface VideoCardActionsProps extends VideoCardBase {
   /** 카드 아래 버튼 줄. 버튼 이름에는 영상 제목을 넣는다 (원칙 4장) */
   actions: ReactNode
+  /** 한 열 목록용 가로 배치: 썸네일 · 제목/정보 · 버튼(세로로 쌓음). 제목은 코드가 포커스를 옮길 수 있게 tabIndex=-1 */
+  row?: boolean
   to?: never
   status?: never
   tone?: never
@@ -104,6 +107,27 @@ export function VideoCard(props: VideoCardProps) {
           )}
         </div>
       </Link>
+    )
+  }
+
+  if (props.row) {
+    return (
+      <article className="flex flex-col gap-4 rounded-lg border-2 border-line bg-paper px-5 py-4 sm:flex-row sm:items-center sm:gap-5">
+        <Thumbnail src={thumbnailUrl} className="hidden w-40 shrink-0 rounded-md sm:block" />
+        <div className="min-w-0 flex-1">
+          <h3
+            tabIndex={-1}
+            className="text-[1.375rem] leading-snug font-bold break-keep [overflow-wrap:anywhere] outline-none"
+          >
+            {title}
+          </h3>
+          <div className="mt-1 break-keep [overflow-wrap:anywhere]">{details}</div>
+        </div>
+        {/* 버튼은 오른쪽에 같은 폭으로 세로로 쌓는다. 버튼 이름에는 영상 제목이 들어 있다 */}
+        <div className="flex w-full shrink-0 flex-col gap-2 sm:w-[12rem] [&>*]:w-full [&>*]:flex-none">
+          {props.actions}
+        </div>
+      </article>
     )
   }
 

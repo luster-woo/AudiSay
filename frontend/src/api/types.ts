@@ -632,7 +632,8 @@ export type ChatMessageResult = {
       }
     }
   | { intent: 'ACTION'; result: { actionCode: ChatActionCode } }
-  | { intent: 'SEARCH_VIDEO'; result: { query: string } }
+  /** 영상 밖(홈)에서만 query 가 온다. 영상 안에서는 query 없이 안내 message 만 */
+  | { intent: 'SEARCH_VIDEO'; result: { query: string | null; message?: string | null } }
   | { intent: 'UNKNOWN'; result: { message: string } }
 )
 
@@ -742,4 +743,80 @@ export interface AiUsageStats {
     /** savedCredits ÷ (savedCredits + 실제 생성 크레딧) */
     savedRate: number
   }
+}
+
+/* ───────────── 관리자 · 챗봇 품질 통계 ───────────── */
+
+/** chat_logs.intent */
+export type ChatIntentCode =
+  | 'QUESTION'
+  | 'SCENE_NOW'
+  | 'SEEK_SCENE'
+  | 'SEEK_TIME'
+  | 'SETTING'
+  | 'ACTION'
+  | 'SEARCH_VIDEO'
+  | 'RECAP'
+  | 'UNKNOWN'
+
+export interface ChatIntentStat {
+  intent: ChatIntentCode | string
+  count: number
+  /** 분류 시간. 규칙으로 분류하면 거의 0 */
+  intentP50Ms: number | null
+  intentP95Ms: number | null
+}
+
+export interface ChatAnswerIntentStat {
+  /** QUESTION · SCENE_NOW · RECAP 중 기록이 있는 것 */
+  intent: ChatIntentCode | string
+  answered: number
+  /** 바로 답함 */
+  stored: number
+  /** 자료에 없음 */
+  unanswerable: number
+  /** 뒤에 있는 답을 골라 들음 */
+  future: number
+  firstAudioP50Ms: number | null
+  firstAudioP95Ms: number | null
+}
+
+/** GET /admin/stats/chat 의 data. 비율은 0 ~ 1(분모가 0이면 0), 시간은 ms */
+export interface ChatStats {
+  from: string
+  to: string
+  inputs: number
+  /** 입력 많은 순 */
+  byIntent: ChatIntentStat[]
+  answer: {
+    byIntent: ChatAnswerIntentStat[]
+    /** 끝까지 간 질문(QUESTION) 답변 수 */
+    questions: number
+    /** 질문한 시각까지 자료로 바로 답하지 못한 질문 (UNANSWERABLE + FUTURE) */
+    notAnsweredDirectly: number
+    /** 그중 뒤에 답이 있어 "들으시겠어요?"를 물은 수 */
+    futureOffered: number
+    /** 그중 사용자가 듣기로 한 수 */
+    futureChosen: number
+    unanswerableRate: number
+    futureOfferedRate: number
+    futureChosenRate: number
+  }
+  seek: {
+    total: number
+    keyword: number
+    llm: number
+    notFound: number
+    keywordRate: number
+  }
+  /** 어디에도 답이 없던 질문 최근 20개 */
+  recentUnanswered: {
+    chatLogId: number
+    videoId: number | null
+    videoTitle: string | null
+    videoTimeMs: number | null
+    utterance: string
+    /** KST YYYY-MM-DD HH:mm */
+    createdAt: string
+  }[]
 }

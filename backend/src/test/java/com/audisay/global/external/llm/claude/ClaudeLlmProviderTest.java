@@ -142,6 +142,16 @@ class ClaudeLlmProviderTest {
     }
 
     @Test
+    void stream_message_stop_없이_끊기면_UNAVAILABLE() {
+        server.stubFor(post(urlPathEqualTo(URI)).willReturn(aResponse()
+                .withHeader("Content-Type", "text/event-stream").withBody(sse(
+                        "message_start", "{\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":10}}}",
+                        "content_block_delta", "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"잘린 \"}}"))));
+
+        assertKind(() -> provider.stream(answer(), MODEL, delta -> true), Kind.UNAVAILABLE);
+    }
+
+    @Test
     void 코드_블록이_없으면_그대로() {
         assertThat(ClaudeLlmProvider.unwrapCodeBlock(" {\"n\": [3]} ")).isEqualTo("{\"n\": [3]}");
         assertThat(ClaudeLlmProvider.unwrapCodeBlock("```\n{\"n\": []}\n```")).isEqualTo("{\"n\": []}");

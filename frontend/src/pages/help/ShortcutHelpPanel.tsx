@@ -1,53 +1,76 @@
-import { useState } from 'react'
-import { Tabs } from '@/components/ui/Tabs'
-import { useAnnouncer } from '@/features/announcer/context'
-import { HelpReferenceTable } from './HelpReferenceTable'
+import {
+  shortcutCatalog,
+  shortcutGroups,
+  spokenCommandOf,
+  type ShortcutEntry,
+} from '@/features/shortcuts/catalog'
 import { HelpReadableText } from './HelpReadableText'
-import { shortcutCategories, type ShortcutCategory } from './helpContent'
 
+function ShortcutItem({ entry }: { entry: ShortcutEntry }) {
+  return (
+    <li className="help-shortcut-item">
+      <p className="help-shortcut-keys">
+        <HelpReadableText spoken={spokenCommandOf(entry)}>
+          <span className="help-shortcut-mod">Alt+Shift+</span>
+          <span className="help-shortcut-keyrow">
+            {entry.keys.map((key) => (
+              <kbd key={key} className="help-keycap help-keycap-lg">
+                {key}
+              </kbd>
+            ))}
+          </span>
+        </HelpReadableText>
+      </p>
+      <div className="min-w-0">
+        <p className="help-shortcut-desc">
+          {entry.spokenDescription ? (
+            <HelpReadableText spoken={entry.spokenDescription}>
+              {entry.description}
+            </HelpReadableText>
+          ) : (
+            entry.description
+          )}
+        </p>
+        <p className="help-shortcut-hint">{entry.hint}</p>
+      </div>
+    </li>
+  )
+}
+
+/** 도움말 '단축키' 탭. 키가 10개 남짓이라 분류 탭 없이 한 화면에 모두 보여 준다 */
 export function ShortcutHelpPanel() {
-  const [category, setCategory] = useState<ShortcutCategory>('everywhere')
-  const { announce } = useAnnouncer()
   return (
     <div className="help-reference-panel">
       <div className="help-shortcut-instructions">
         <p className="font-bold">
-          <HelpReadableText spoken="알트와 시프트를 누른 상태에서 슬래시 키를 누르면 현재 화면의 단축키를 읽어 드려요.">
-            Alt+Shift+/를 누르면 현재 화면의 단축키를 읽어 드려요.
+          <HelpReadableText spoken="모든 단축키는 알트와 시프트를 누른 채로 아래 키를 함께 눌러요.">
+            <kbd className="help-keycap">Alt</kbd> + <kbd className="help-keycap">Shift</kbd>를 누른
+            채로 아래 키를 함께 눌러요.
           </HelpReadableText>
         </p>
         <p>
-          <HelpReadableText spoken="키를 함께 누르세요. 예를 들어 알트와 시프트를 누른 상태에서 에이치 키를 누르세요.">
-            키를 함께 누르세요. 예: Alt+Shift+H
+          <HelpReadableText spoken="알트와 시프트를 누른 상태에서 슬래시 키를 누르면 지금 화면에서 쓸 수 있는 단축키를 알려 드려요.">
+            Alt+Shift+/를 누르면 지금 화면에서 쓸 수 있는 단축키를 알려 드려요.
           </HelpReadableText>
         </p>
       </div>
-      <Tabs
-        label="단축키 분류"
-        appearance="buttons"
-        value={category}
-        className="help-category-tabs"
-        tabListClassName="grid-cols-1 sm:grid-cols-3"
-        panelClassName="help-category-panel"
-        onChange={(next) => {
-          setCategory(next)
-          announce(
-            `${shortcutCategories.find((item) => item.value === next)?.label} 단축키예요.${next === 'everywhere' ? '' : ' 영상을 보는 화면에서 사용해요.'}`,
-          )
-        }}
-        items={shortcutCategories.map((item) => ({
-          value: item.value,
-          label: item.label,
-          panel: (
-            <HelpReferenceTable
-              caption={`${item.label} 단축키`}
-              commandHeading="단축키"
-              rows={item.rows}
-              keyboard
-            />
-          ),
-        }))}
-      />
+      {shortcutGroups.map((group) => {
+        const entries = shortcutCatalog.filter((entry) => entry.group === group.id)
+        const headingId = `help-shortcut-${group.id}`
+        return (
+          <section key={group.id} aria-labelledby={headingId} className="help-shortcut-group">
+            <div className="help-shortcut-group-head">
+              <h2 id={headingId}>{group.label}</h2>
+              <p>{group.note}</p>
+            </div>
+            <ul className="help-shortcut-list" aria-labelledby={headingId}>
+              {entries.map((entry) => (
+                <ShortcutItem key={entry.id} entry={entry} />
+              ))}
+            </ul>
+          </section>
+        )
+      })}
     </div>
   )
 }

@@ -175,11 +175,18 @@
     * {
     color: #000000;
   }
-  /* 고대비: 선택 상태를 노란 채움만이 아니라 ✓ 로도 보인다(원칙 10장). 낭독기는 aria-checked·aria-selected 로 읽으므로 ✓ 는 읽지 않는다 */
+  /*
+   * 노란 면 안의 흰(=고대비에서 검정) 버튼(질문 기록 '다시 듣기'·'그 장면 보기' 등)은 검정 바탕에 노란 글자로 되돌린다.
+   * 위 규칙대로면 검정 바탕 위 검정 글자가 되어 버튼이 안 보인다. 노랑 위 검정 버튼이라 면과도 구별된다
+   */
   html[data-contrast='high']:not(:has([data-layout='admin']))
-    :is(label:has(> input[type='radio']:checked), [role='tab'][aria-selected='true'])::before {
-    content: '✓' / '';
-    margin-right: 0.375rem;
-    font-weight: 800;
+    :is([class~='bg-yellow'], [class~='bg-[#ffc93c]'])
+    :is(button, a)[class~='bg-paper'],
+  html[data-contrast='high']:not(:has([data-layout='admin']))
+    :is([class~='bg-yellow'], [class~='bg-[#ffc93c]'])
+    :is(button, a)[class~='bg-paper']
+    * {
+    color: #ffd600;
+    border-color: #000000;
   }
 }

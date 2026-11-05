@@ -21,6 +21,8 @@ import java.util.List;
 @RequiredArgsConstructor
 public class StaleJobCleaner {
     private static final int BATCH_SIZE = 100;
+    /** 한 주기에 보는 최대 후보 수 = BATCH_SIZE × MAX_PAGES. 나머지는 다음 주기에 */
+    private static final int MAX_PAGES = 10;
 
     private final JobRepository jobRepository;
     private final JobEventService jobEventService;
@@ -42,20 +44,29 @@ public class StaleJobCleaner {
         JobProperties.Stale stale = jobProperties.stale();
         Instant queuedBefore = now.minus(stale.queuedTimeout());
         Instant runningBefore = now.minus(stale.runningTimeout());
-        List<Long> jobIds = jobRepository.findStaleCandidateIds(
-                JobStatus.QUEUED, queuedBefore, JobStatus.RUNNING, runningBefore, PageRequest.of(0, BATCH_SIZE));
+        int candidates = 0;
         int failed = 0;
-        for (Long jobId : jobIds) {
-            try {
-                if (jobEventService.failIfStale(jobId, queuedBefore, runningBefore)) {
-                    failed++;
+        Long afterId = 0L;
+        for (int page = 0; page < MAX_PAGES; page++) {
+            List<Long> jobIds = jobRepository.findStaleCandidateIds(JobStatus.QUEUED, queuedBefore,
+                    JobStatus.RUNNING, runningBefore, afterId, PageRequest.of(0, BATCH_SIZE));
+            for (Long jobId : jobIds) {
+                try {
+                    if (jobEventService.failIfStale(jobId, queuedBefore, runningBefore)) {
+                        failed++;
+                    }
+                } catch (RuntimeException e) {
+                    log.warn("[작업 정리] 실패, 다음 주기에 다시 시도 jobId={}: {}", jobId, e.getMessage());
                 }
-            } catch (RuntimeException e) {
-                log.warn("[작업 정리] 실패, 다음 주기에 다시 시도 jobId={}: {}", jobId, e.getMessage());
             }
+            candidates += jobIds.size();
+            if (jobIds.size() < BATCH_SIZE) {
+                break;
+            }
+            afterId = jobIds.get(jobIds.size() - 1);
         }
         if (failed > 0) {
-            log.info("[작업 정리] 후보 {}개 중 {}개 FAILED", jobIds.size(), failed);
+            log.info("[작업 정리] 후보 {}개 중 {}개 FAILED", candidates, failed);
         }
         return failed;
     }

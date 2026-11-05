@@ -7,6 +7,7 @@ import com.audisay.global.external.llm.LlmException;
 import com.audisay.global.external.llm.LlmException.Kind;
 import com.audisay.global.external.llm.LlmRequest;
 import com.audisay.global.external.llm.LlmResult;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
@@ -19,6 +20,7 @@ import java.util.regex.Pattern;
  * 대체 모델. Gemini가 429·장애일 때 GMS를 거쳐 Anthropic Messages API(claude-haiku-5-5)를 부른다.
  * JSON 응답 모드가 없어 프롬프트로 JSON을 받고, 코드 블록(```json)으로 감싸 오면 벗긴다.
  */
+@Slf4j
 @Component("fallbackLlmProvider")
 @ConditionalOnProperty(prefix = "audisay.gms", name = "mode", havingValue = "real", matchIfMissing = true)
 public class ClaudeLlmProvider extends AbstractHttpLlmProvider {
@@ -27,6 +29,7 @@ public class ClaudeLlmProvider extends AbstractHttpLlmProvider {
     private static final String VERSION = "2023-06-01";
     private static final String URI = "/v1/messages";
     private static final String REFUSAL = "refusal";
+    private static final String MAX_TOKENS = "max_tokens";
     private static final Pattern CODE_BLOCK = Pattern.compile("^```(?:json)?\\s*(.*?)\\s*```$", Pattern.DOTALL);
 
     public ClaudeLlmProvider(GmsProperties properties, ObjectMapper objectMapper) {
@@ -51,8 +54,9 @@ public class ClaudeLlmProvider extends AbstractHttpLlmProvider {
         long start = System.nanoTime();
         StringBuilder text = new StringBuilder();
         int[] usage = new int[2];
+        boolean[] stopped = {false};
         boolean cancelled = postSse(request.purpose(), URI, this::auth, toJson(ClaudeRequest.of(request, model, true)),
-                (data, textArrived) -> {
+                (data, control) -> {
                     ClaudeEvent event = parse(data, ClaudeEvent.class);
                     String type = event.type() == null ? "" : event.type();
                     switch (type) {
@@ -64,7 +68,7 @@ public class ClaudeLlmProvider extends AbstractHttpLlmProvider {
                         case "content_block_delta" -> {
                             String delta = event.delta() == null ? null : event.delta().text();
                             if (delta != null && !delta.isEmpty()) {
-                                textArrived.run();
+                                control.textArrived();
                                 text.append(delta);
                                 return handler.onDelta(delta);
                             }
@@ -76,6 +80,14 @@ public class ClaudeLlmProvider extends AbstractHttpLlmProvider {
                             if (event.delta() != null && REFUSAL.equals(event.delta().stopReason())) {
                                 throw new LlmException(Kind.BLOCKED, 200, "안전 정책으로 거부됨: refusal", null);
                             }
+                            if (event.delta() != null && MAX_TOKENS.equals(event.delta().stopReason())) {
+                                log.warn("[LLM] claude 답이 출력 한도({}토큰)에서 잘림 purpose={}",
+                                        request.maxOutputTokens(), request.purpose());
+                            }
+                        }
+                        case "message_stop" -> {
+                            stopped[0] = true;
+                            control.finished();
                         }
                         case "error" -> throw streamError(event.error());
                         default -> {
@@ -83,6 +95,10 @@ public class ClaudeLlmProvider extends AbstractHttpLlmProvider {
                     }
                     return true;
                 });
+        if (!cancelled && !stopped[0]) {
+            // message_stop 없이 연결이 닫히면 잘린 답을 성공으로 받지 않는다
+            throw new LlmException(Kind.UNAVAILABLE, 0, "claude 스트리밍이 끝 신호 없이 끊겼습니다", null);
+        }
         return new LlmResult(text.toString(), model, usage[0], usage[1], elapsedMs(start), cancelled, null);
     }
 

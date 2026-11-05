@@ -1,6 +1,6 @@
 import { useRef, useState, type FormEvent } from 'react'
 import { useAnnouncer } from '@/features/announcer/context'
-import { useShortcut } from '@/features/shortcuts/context'
+import { useShortcutEntry } from '@/features/shortcuts/context'
 import { Button } from '@/components/ui/Button'
 import { StatusLine } from '@/components/ui/StatusLine'
 import { MIC_MESSAGES, queryMic, recognitionErrorMessage } from '@/features/search/micPermission'
@@ -79,7 +79,7 @@ export function AskPractice({ done, onDone }: { done: boolean; onDone: () => voi
     inputRef.current?.focus()
     void listen()
   }
-  useShortcut('Alt+Shift+Q', ask, { description: '질문하기 (말로, 또는 글자로)', scope: 'user' })
+  useShortcutEntry('ask', () => void ask(), { scope: 'user' })
 
   return (
     <>

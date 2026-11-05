@@ -24,9 +24,9 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.EnumMap;
 import java.util.Map;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
@@ -57,11 +57,14 @@ public abstract class AbstractHttpLlmProvider implements LlmProvider {
             requestFactory.setReadTimeout(properties.timeout(purpose));
             clients.put(purpose, RestClient.builder().baseUrl(baseUrl).requestFactory(requestFactory).build());
         }
-        this.watchdog = Executors.newSingleThreadScheduledExecutor(runnable -> {
+        ScheduledThreadPoolExecutor watchdogPool = new ScheduledThreadPoolExecutor(1, runnable -> {
             Thread thread = new Thread(runnable, "llm-" + name + "-watchdog");
             thread.setDaemon(true);
             return thread;
         });
+        // 끝난 스트림의 타이머(최대 60초)가 큐에 남아 닫힌 스트림을 붙잡지 않게 취소하면 바로 뺀다
+        watchdogPool.setRemoveOnCancelPolicy(true);
+        this.watchdog = watchdogPool;
         if (!StringUtils.hasText(properties.apiKey())) {
             log.warn("[LLM] GMS_API_KEY가 비어 있습니다. {} 호출이 CHAT_005로 실패합니다.", name);
         }
@@ -76,10 +79,18 @@ public abstract class AbstractHttpLlmProvider implements LlmProvider {
     @FunctionalInterface
     protected interface SseData {
         /**
-         * @param textArrived 글이 왔을 때 부른다(첫 글자 시간 감시를 끈다)
+         * @param control 글이 왔을 때·끝 신호를 받았을 때 알린다(시간 감시를 끈다)
          * @return 그만 받으려면 false
          */
-        boolean accept(String data, Runnable textArrived);
+        boolean accept(String data, StreamControl control);
+    }
+
+    protected interface StreamControl {
+        /** 글이 왔다: 첫 글자 시간 감시를 끈다 */
+        void textArrived();
+
+        /** 공급사의 끝 신호를 받았다: 시간 감시를 모두 끄고, 그 뒤 연결이 닫히며 나는 오류·시간 초과는 무시한다 */
+        void finished();
     }
 
     /** 한 번에 받기 */
@@ -132,19 +143,37 @@ public abstract class AbstractHttpLlmProvider implements LlmProvider {
                 properties.streamFirstEventTimeout().toMillis(), TimeUnit.MILLISECONDS);
         ScheduledFuture<?> total = watchdog.schedule(expire,
                 Math.max(0, properties.timeout(purpose).toMillis() - elapsedMs(start)), TimeUnit.MILLISECONDS);
-        Runnable textArrived = () -> firstEvent.cancel(false);
+        AtomicBoolean done = new AtomicBoolean();
+        StreamControl control = new StreamControl() {
+            @Override
+            public void textArrived() {
+                firstEvent.cancel(false);
+            }
+
+            @Override
+            public void finished() {
+                done.set(true);
+                firstEvent.cancel(false);
+                total.cancel(false);
+            }
+        };
         boolean stopped = false;
         try {
             BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
             String line;
             while ((line = reader.readLine()) != null) {
-                if (line.startsWith("data:") && !onData.accept(line.substring(5).trim(), textArrived)) {
+                if (line.startsWith("data:") && !onData.accept(line.substring(5).trim(), control)) {
                     stopped = true;
                     break;
                 }
             }
         } catch (IOException e) {
-            if (timedOut.get()) {
+            if (done.get()) {
+                // 끝 신호를 받은 뒤 연결이 닫히며 난 오류: 답은 다 받았다
+                return stopped;
+            }
+            // 감시 타이머와 HTTP 클라이언트 읽기 제한이 같은 시각이라 클라이언트가 먼저 닫아도 시간 초과로 본다
+            if (timedOut.get() || elapsedMs(start) >= properties.timeout(purpose).toMillis()) {
                 throw new LlmException(Kind.TIMEOUT, 0, name + " 스트리밍 시간 초과", e);
             }
             throw new LlmException(Kind.UNAVAILABLE, 0, name + " 스트리밍이 끊겼습니다: " + e.getMessage(), e);
@@ -152,7 +181,8 @@ public abstract class AbstractHttpLlmProvider implements LlmProvider {
             firstEvent.cancel(false);
             total.cancel(false);
         }
-        if (timedOut.get()) {
+        // 끝 신호를 받았거나 호출한 쪽이 멈춘 뒤 타이머가 막 돌았으면 시간 초과가 아니다
+        if (timedOut.get() && !stopped && !done.get()) {
             throw new LlmException(Kind.TIMEOUT, 0, name + " 스트리밍 시간 초과", null);
         }
         return stopped;

@@ -48,15 +48,15 @@ test('1단계: 제목에 포커스, 현재 단계 표시, Alt+Shift+R 연습', a
 test('다음 링크로 2단계, 잘못된 단계 번호는 1단계로', async () => {
   const { router } = renderRoute('/tutorial/9')
   await waitFor(() => expect(router.state.location.pathname).toBe('/tutorial/1'))
-  await userEvent.click(await screen.findByRole('link', { name: '다음: 영상 찾기' }))
+  await userEvent.click(await screen.findByRole('link', { name: '다음으로 이동' }))
   expect(await screen.findByRole('heading', { level: 1, name: '영상 찾기' })).toBeInTheDocument()
 })
 
 test('2단계: 연습 검색은 실제로 검색하지 않고 해 봤다고 표시한다', async () => {
   renderRoute('/tutorial/2')
   await userEvent.type(await screen.findByRole('textbox', { name: '연습 검색어' }), '김치볶음밥')
-  await userEvent.click(screen.getByRole('button', { name: '찾기' }))
-  expect(screen.getByText('찾기를 눌렀어요')).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: '검색' }))
+  expect(screen.getByText('검색을 눌렀어요')).toBeInTheDocument()
 })
 
 test('3단계: 재생을 누르면 버튼 이름이 일시정지로 바뀐다', async () => {

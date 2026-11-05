@@ -5,6 +5,8 @@ import com.audisay.domain.chat.ratelimit.ChatRateLimiter;
 import com.audisay.domain.chat.tuning.ChatTuningProperties;
 import com.audisay.global.exception.BusinessException;
 import com.audisay.global.exception.ErrorCode;
+import com.audisay.global.external.llm.GmsProperties;
+import com.audisay.global.external.llm.LlmPurpose;
 import com.audisay.domain.chat.seek.KeywordSceneScorer.Hit;
 import com.audisay.domain.description.service.SceneText;
 import com.audisay.domain.description.service.SceneText.Moment;
@@ -14,6 +16,7 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -39,6 +42,7 @@ class SceneSeekerTest {
     private LlmHitVerifier verifier;
     private ChatRateLimiter rateLimiter;
     private SimpleMeterRegistry meterRegistry;
+    private GmsProperties gmsProperties;
     private SceneSeeker seeker;
 
     @BeforeEach
@@ -48,6 +52,8 @@ class SceneSeekerTest {
         verifier = mock(LlmHitVerifier.class);
         rateLimiter = mock(ChatRateLimiter.class);
         meterRegistry = new SimpleMeterRegistry();
+        gmsProperties = mock(GmsProperties.class);
+        when(gmsProperties.timeout(LlmPurpose.SEEK)).thenReturn(Duration.ofSeconds(10));
         seeker = seeker(ChatTuningProperties.DEFAULT);
         when(reader.read(DESCRIPTION_ID)).thenReturn(scenes);
     }
@@ -135,6 +141,38 @@ class SceneSeekerTest {
     }
 
     @Test
+    void 응답_시간_예산이_LLM_한_번보다_적게_남으면_거르지_않고_후보를_그대로_준다() {
+        when(reader.read(DESCRIPTION_ID)).thenReturn(talky("중견수 앞 안타!", "우전 안타!"));
+
+        SceneSeeker.Outcome outcome = seeker.seek(2L, DESCRIPTION_ID, "안타", 31L, 0, System.nanoTime() + 5_000_000_000L);
+
+        assertThat(outcome.hits()).hasSize(2);
+        verify(verifier, never()).verify(anyString(), any(), any());
+        verify(verifier, never()).verify(anyString(), any(), any(), any());
+    }
+
+    @Test
+    void 응답_시간_예산이_모자라면_LLM이_고르지_않고_못_찾음() {
+        SceneSeeker.Outcome outcome = seeker.seek(2L, DESCRIPTION_ID, "홈런", 31L, 0, System.nanoTime() + 5_000_000_000L);
+
+        assertThat(outcome.hits()).isEmpty();
+        assertThat(outcome.timedOut()).isTrue();
+        verify(selector, never()).select(anyString(), any(), any(), any());
+        verify(selector, never()).select(anyString(), any(), any(), any(), any());
+    }
+
+    @Test
+    void 응답_시간_예산이_있으면_LLM에_넘겨_대체_모델도_예산_안에서만_부른다() {
+        long deadline = System.nanoTime() + 12_000_000_000L;
+        when(selector.select(anyString(), any(), any(), any(), any())).thenReturn(List.of());
+
+        SceneSeeker.Outcome outcome = seeker.seek(2L, DESCRIPTION_ID, "홈런", 31L, 0, deadline);
+
+        assertThat(outcome.timedOut()).isFalse();
+        verify(selector).select("홈런", scenes, 31L, 0, deadline);
+    }
+
+    @Test
     void 목차가_없으면_LLM을_부르지_않고_빈_결과() {
         when(reader.read(DESCRIPTION_ID)).thenReturn(List.of());
 
@@ -190,7 +228,7 @@ class SceneSeekerTest {
 
     private SceneSeeker seeker(ChatTuningProperties tuning) {
         return new SceneSeeker(reader, new KeywordSceneScorer(tuning), selector, verifier, rateLimiter, tuning,
-                meterRegistry);
+                meterRegistry, gmsProperties);
     }
 
     private static List<SceneText> talky(String first, String second) {

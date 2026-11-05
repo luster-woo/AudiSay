@@ -35,6 +35,10 @@ public class JobEventSubscriber implements MessageListener {
         String channel = new String(message.getChannel(), StandardCharsets.UTF_8);
         try {
             Long jobId = Long.valueOf(channel.substring(channel.lastIndexOf(':') + 1));
+            if (!emitters.hasSubscribers(jobId)) {
+                // 알림은 모든 서버가 받는다. 이 서버에 구독자가 없으면 남은 시간 계산(DB 조회)을 하지 않는다
+                return;
+            }
             JobNotice notice = objectMapper.readValue(message.getBody(), JobNotice.class);
             JobTimeEstimator.Estimate estimate = JobNotice.COMPLETED.equals(notice.event()) || JobNotice.FAILED.equals(notice.event())
                     ? JobTimeEstimator.Estimate.NONE

@@ -97,17 +97,23 @@ public class ChatLog {
         this.seekSource = seekSource;
     }
 
-    /** 답변 스트림이 끝났다(실패·취소면 source는 null이고 받은 데까지만) */
+    /**
+     * 답변 스트림이 끝났다(실패·취소면 source는 null이고 받은 데까지만).
+     * 이미 끝난 답(예: "들으시겠어요?"까지 읽은 UNANSWERABLE)을 실패한 재답변(includeFuture)으로 덮지 않는다
+     */
     public void answer(String answerText, AnswerSource answerSource, Integer firstAudioMs, int totalLatencyMs) {
+        if (answerSource == null && this.answerSource != null) {
+            return;
+        }
         this.answerText = answerText;
         this.answerSource = answerSource;
         this.firstAudioMs = firstAudioMs;
         this.totalLatencyMs = totalLatencyMs;
     }
 
-    /** 답변을 한 번 만들었는지(다시 구독하면 done만 보낸다) */
+    /** 답변을 끝까지 만들었는지(다시 구독하면 done만 보낸다). 실패·취소한 답은 다시 구독하면 새로 만든다 */
     public boolean isAnswered() {
-        return totalLatencyMs != null;
+        return answerSource != null;
     }
 
     public boolean isAnswerable() {

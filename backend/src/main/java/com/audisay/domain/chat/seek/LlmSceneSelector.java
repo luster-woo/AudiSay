@@ -60,14 +60,20 @@ public class LlmSceneSelector {
      * @return 고른 장면(여럿이면 지금 시각 이후부터 시간순), 없으면 빈 목록. LLM 장애·한도·시간 초과는 CHAT_005·007·006
      */
     public List<Hit> select(String query, List<SceneText> scenes, Long chatLogId, Integer nowMs) {
+        return select(query, scenes, chatLogId, nowMs, null);
+    }
+
+    /** @param deadlineNanos 응답 시간 예산. 주 모델이 실패했을 때 대체 모델을 기다릴 시간이 없으면 부르지 않는다 */
+    public List<Hit> select(String query, List<SceneText> scenes, Long chatLogId, Integer nowMs, Long deadlineNanos) {
         if (scenes.isEmpty()) {
             return List.of();
         }
         String user = "[장면 목차]\n" + SceneToc.build(scenes) + "\n사용자 요청: " + query;
         LlmResult result;
         try {
-            result = llmClient.generate(LlmRequest.json(LlmPurpose.SEEK, exactOnly ? SYSTEM_EXACT : SYSTEM, user, MAX_OUTPUT_TOKENS)
-                    .withChatLogId(chatLogId));
+            LlmRequest request = LlmRequest.json(LlmPurpose.SEEK, exactOnly ? SYSTEM_EXACT : SYSTEM, user, MAX_OUTPUT_TOKENS)
+                    .withChatLogId(chatLogId);
+            result = llmClient.generate(request.withFallbackDeadline(deadlineNanos));
         } catch (LlmException e) {
             if (e.getKind() == LlmException.Kind.BLOCKED) {
                 return List.of();

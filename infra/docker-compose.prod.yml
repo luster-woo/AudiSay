@@ -31,7 +31,9 @@ services:
   rabbitmq:
     image: rabbitmq:3.13-management
     environment:
-      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS:  '-rabbitmq_management path_prefix "/rabbitmq"'
+      # consumer_timeout: 메시지를 받고 ack까지 기다리는 최대 시간(기본 30분). 업로드(LOCAL) 영상 분석은 영상 길이의
+      # 약 1.4배(시각장애인 한도 60분 영상 약 84분)라 30분이면 브로커가 채널을 닫고 다시 보낸다 → 2시간
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS:  '-rabbitmq_management path_prefix "/rabbitmq" -rabbit consumer_timeout 7200000'
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
     volumes:
@@ -59,7 +61,15 @@ services:
         condition: service_started
     ports:
       - "127.0.0.1:8081:8080"
-    mem_limit: 1g
+    # 큐·교환기는 백엔드가 기동하며 선언한다(ai는 있는 것만 확인). ai가 이 상태를 기다리게 한다
+    # 이미지에 curl이 없을 수 있어 bash /dev/tcp로 확인
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /api/actuator/health HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && grep -q '\"UP\"' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    mem_limit: 1536m                  # 인증 서류 OCR(ONNX Runtime, 힙 밖 메모리 약 200MB 이상) 때문에 1g에서 올림(286)
     restart: unless-stopped
 
   ai:
@@ -79,6 +89,8 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
+      backend:                        # 백엔드가 큐를 선언한 뒤에 뜨게(첫 배포에 큐가 없어 재시작을 반복하지 않게)
+        condition: service_healthy
     mem_limit: 2g                     # 업로드 영상 분석(ffmpeg 변환·장면 나누기). 60분 영상 실측 전 가정
     restart: unless-stopped
 

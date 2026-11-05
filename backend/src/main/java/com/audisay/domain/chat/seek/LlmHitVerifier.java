@@ -65,14 +65,20 @@ public class LlmHitVerifier {
 
     /** @return 실제로 일어난 후보만(순서 유지). LLM 실패·읽을 수 없는 응답이면 받은 그대로 */
     public List<Hit> verify(String query, List<Hit> hits, Long chatLogId) {
+        return verify(query, hits, chatLogId, null);
+    }
+
+    /** @param deadlineNanos 응답 시간 예산. 주 모델이 실패했을 때 대체 모델을 기다릴 시간이 없으면 부르지 않는다 */
+    public List<Hit> verify(String query, List<Hit> hits, Long chatLogId, Long deadlineNanos) {
         StringBuilder user = new StringBuilder("요청: ").append(query).append("\n\n[후보]\n");
         for (int i = 0; i < hits.size(); i++) {
             user.append(i + 1).append(". ").append(line(hits.get(i))).append('\n');
         }
         LlmResult result;
         try {
-            result = llmClient.generate(LlmRequest.json(LlmPurpose.SEEK, exactOnly ? SYSTEM_EXACT : SYSTEM, user.toString(), MAX_OUTPUT_TOKENS)
-                    .withChatLogId(chatLogId));
+            LlmRequest request = LlmRequest.json(LlmPurpose.SEEK, exactOnly ? SYSTEM_EXACT : SYSTEM, user.toString(),
+                    MAX_OUTPUT_TOKENS).withChatLogId(chatLogId);
+            result = llmClient.generate(request.withFallbackDeadline(deadlineNanos));
         } catch (LlmException e) {
             log.warn("장면 후보 확인을 건너뜁니다({}): {}", e.getKind(), e.getMessage());
             return hits;

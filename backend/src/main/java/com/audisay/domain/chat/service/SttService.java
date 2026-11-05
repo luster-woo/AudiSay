@@ -1,11 +1,14 @@
 package com.audisay.domain.chat.service;
 
 import com.audisay.domain.chat.dto.response.SttResponse;
+import com.audisay.domain.chat.ratelimit.ChatRateLimiter;
+import com.audisay.domain.description.service.VideoAccessValidator;
 import com.audisay.global.exception.BusinessException;
 import com.audisay.global.exception.ErrorCode;
 import com.audisay.global.external.ai.AiServerClient;
 import com.audisay.global.external.ai.AiServerException;
 import com.audisay.global.external.ai.SttResult;
+import com.audisay.global.security.AuthUser;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,8 +35,13 @@ public class SttService {
 
     private final AiServerClient aiServerClient;
     private final MeterRegistry meterRegistry;
+    private final ChatRateLimiter rateLimiter;
+    private final VideoAccessValidator videoAccessValidator;
 
-    public SttResponse transcribe(MultipartFile audio, Long videoId) {
+    /**
+     * 음성 받아쓰기 1분 제한(CHAT_009, 형식 확인 뒤에 센다). 볼 수 없는 영상이면 받아쓰기 힌트(제목·인물 이름)를 쓰지 않는다
+     */
+    public SttResponse transcribe(AuthUser authUser, MultipartFile audio, Long videoId) {
         if (audio == null || audio.isEmpty()) {
             throw new BusinessException(ErrorCode.SPEECH_NOT_RECOGNIZED, "녹음된 소리가 없어요. 다시 말씀해 주세요.");
         }
@@ -41,11 +49,13 @@ public class SttService {
         if (contentType == null || !AUDIO_TYPES.contains(baseType(contentType))) {
             throw new BusinessException(ErrorCode.INVALID_AUDIO_FILE, "webm, ogg, mp4, wav 녹음만 받을 수 있습니다.");
         }
+        rateLimiter.acquireStt(authUser.userId());
 
         long start = System.nanoTime();
         SttResult result;
         try {
-            result = aiServerClient.transcribe(readBytes(audio), filename(audio), contentType, videoId);
+            result = aiServerClient.transcribe(readBytes(audio), filename(audio), contentType,
+                    hintVideoId(authUser, videoId));
         } catch (AiServerException e) {
             ErrorCode errorCode = toErrorCode(e);
             meterRegistry.counter("audisay.stt.failed", "code", errorCode.getCode()).increment();
@@ -57,6 +67,19 @@ public class SttService {
         }
         meterRegistry.timer("audisay.stt", "engine", String.valueOf(result.engine())).record(latency);
         return new SttResponse(result.text().strip(), latency.toMillis());
+    }
+
+    /** 힌트로 쓸 영상. 없거나 볼 수 없는 영상이면 null(힌트 없이 받아쓴다) */
+    private Long hintVideoId(AuthUser authUser, Long videoId) {
+        if (videoId == null) {
+            return null;
+        }
+        try {
+            return videoAccessValidator.getAccessibleVideo(authUser, videoId).getId();
+        } catch (BusinessException e) {
+            log.info("[STT] 볼 수 없는 영상이라 힌트 없이 받아씁니다 userId={} videoId={}", authUser.userId(), videoId);
+            return null;
+        }
     }
 
     private static ErrorCode toErrorCode(AiServerException e) {

@@ -73,22 +73,24 @@ export function FavoriteVideoCard({
   return (
     <VideoCard
       {...video}
-      centerDetails
+      row
       metadata={
         <>
           {available && (
             <>
-              <p className="text-[1.375rem] leading-8 break-words">
-                {video.sourceType === 'UPLOAD' ? '올린 영상' : detail.data?.channelTitle}
+              <p className="text-xl leading-8">
+                {video.sourceType === 'UPLOAD'
+                  ? '직접 올린 영상'
+                  : detail.data?.channelTitle && `유튜브 · ${detail.data.channelTitle}`}
               </p>
-              <div className="flex flex-wrap items-baseline justify-between gap-x-2 text-[1.375rem] leading-8">
+              <div className="flex flex-wrap items-baseline gap-x-4 text-xl leading-8">
                 <p>{formatDurationShort(video.durationSec)}</p>
                 <p className="font-bold text-navy">{ready ? '해설 있음' : '해설 없음'}</p>
               </div>
             </>
           )}
           {!available && (
-            <p className="text-[1.375rem] leading-8 text-danger">더 이상 볼 수 없는 영상이에요.</p>
+            <p className="text-xl leading-8 text-danger">더 이상 볼 수 없는 영상이에요.</p>
           )}
           {remove.isError && (
             <p className="mt-2 text-lg text-danger">{toUserMessage(remove.error)}</p>

@@ -1,5 +1,6 @@
 package com.audisay.domain.video.service;
 
+import com.audisay.domain.video.entity.GenerationResult;
 import com.audisay.domain.video.entity.SourceType;
 import com.audisay.domain.video.repository.GenerationRequestRepository;
 import com.audisay.domain.video.repository.SourceTypeCount;
@@ -42,5 +43,11 @@ public class GenerationRequestService {
     @Transactional(readOnly = true)
     public boolean hasRequested(Long userId, Long jobId) {
         return generationRequestRepository.existsByUser_IdAndJobId(userId, jobId);
+    }
+
+    /** 그 영상에 거절되지 않은 요청을 남겼는지(다른 회원이 다시 요청해 새로 만든 작업도 볼 수 있게) */
+    @Transactional(readOnly = true)
+    public boolean hasRequestedVideo(Long userId, Long videoId) {
+        return generationRequestRepository.existsByUser_IdAndVideo_IdAndResultNot(userId, videoId, GenerationResult.REJECTED);
     }
 }

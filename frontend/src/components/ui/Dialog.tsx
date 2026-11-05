@@ -85,6 +85,8 @@ export function Dialog({
       className={cn(
         'm-auto max-h-[90svh] w-[min(48rem,calc(100%-2rem))] rounded-lg bg-paper text-ink',
         'backdrop:bg-ink/60 hc:backdrop:bg-black/80',
+        // 고대비: 검정 창이 검정 배경에 묻히지 않게 흰 테두리
+        'hc:border-2 hc:border-ink',
         longForm ? 'overflow-y-auto p-0' : 'p-8',
         className,
       )}

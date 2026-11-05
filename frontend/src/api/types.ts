@@ -805,6 +805,8 @@ export interface ChatStats {
   seek: {
     total: number
     keyword: number
+    /** 임베딩 검색(RAG)으로 찾음. BE가 아직 주지 않을 수 있다 */
+    rag?: number
     llm: number
     notFound: number
     keywordRate: number

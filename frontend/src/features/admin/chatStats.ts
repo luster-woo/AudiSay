@@ -56,7 +56,7 @@ export function deriveChatStats(d: ChatStats) {
   const question = a.byIntent.find((i) => i.intent === 'QUESTION')
   const direct = a.questions - a.notAnsweredDirectly
   const nowhere = a.notAnsweredDirectly - a.futureOffered
-  const seekFound = d.seek.keyword + d.seek.llm
+  const seekFound = d.seek.keyword + (d.seek.rag ?? 0) + d.seek.llm
   return {
     /** 질문 입력 중 답변 기록이 남지 않은 수 (답변 중 끊김 등, 추정) */
     droppedQuestions: Math.max(0, questionInputs - a.questions),

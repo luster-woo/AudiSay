@@ -48,10 +48,18 @@ public class AnswerContextReader {
         return read(descriptionId, nowMs, false);
     }
 
-    /**
-     * @param pastOnly true면 질문한 시각까지 자료만: 요약(영상 전체)과 아직 끝나지 않은 장면의 제목·설명(장면 전체 글)을 뺀다
-     */
+    /** 질문(QUESTION): pastOnly면 끝나지 않은 장면의 화면 글자도 뺀다 */
     public Optional<AnswerContext> read(Long descriptionId, int nowMs, boolean pastOnly) {
+        return read(descriptionId, nowMs, pastOnly, pastOnly);
+    }
+
+    /**
+     * @param pastOnly          true면 질문한 시각까지 자료만: 요약(영상 전체)과 아직 끝나지 않은 장면의 제목·설명(장면 전체 글)을 뺀다
+     * @param hideUnfinishedTexts true면 질문한 시각에 끝나지 않은 장면의 화면 글자도 뺀다. AI가 화면 글자에 글자가 나온 시각이 아니라
+     *                          장면의 시작·끝을 넣어서(describe.py) 장면 끝에 나오는 점수판·결과 자막을 미리 말할 수 있다(뒤 자료로 간다).
+     *                          지금 장면 설명(SCENE_NOW)은 지금 화면의 글자가 핵심이라 false
+     */
+    public Optional<AnswerContext> read(Long descriptionId, int nowMs, boolean pastOnly, boolean hideUnfinishedTexts) {
         Optional<Description> description = descriptionRepository.findById(descriptionId);
         if (description.isEmpty()) {
             return Optional.empty();
@@ -68,7 +76,8 @@ public class AnswerContextReader {
                 pastOnly && scene.getEndMs() > now ? null : scene.getSceneDescription(),
                 last(lines.stream().filter(l -> inScene(l.getStartMs(), scene))
                         .map(l -> new Narration(l.getStartMs(), l.getText())).toList(), MAX_NARRATIONS),
-                last(texts.stream().filter(t -> inScene(t.getStartMs(), scene)).map(AnswerContextReader::screenText)
+                last(texts.stream().filter(t -> inScene(t.getStartMs(), scene))
+                        .filter(t -> !hideUnfinishedTexts || t.getEndMs() <= now).map(AnswerContextReader::screenText)
                         .filter(t -> t != null && !t.isBlank()).distinct().toList(), MAX_SCREEN_TEXTS))).toList();
 
         List<Dialogue> dialogues = transcriptSegmentRepository
@@ -87,7 +96,10 @@ public class AnswerContextReader {
                 dialogues, characters));
     }
 
-    /** 질문한 시각 뒤 자료: 요약, 지금 장면부터 끝까지(설명 전체, 시각 뒤 해설 문장·화면 글자), 시각 뒤 대사 */
+    /**
+     * 질문한 시각 뒤 자료: 요약, 지금 장면부터 끝까지(설명 전체, 시각 뒤 해설 문장, 질문한 시각에 아직 끝나지 않은 화면 글자),
+     * 시각 뒤 대사. 화면 글자는 시각이 장면 시작이라 지금 장면 것도 넣는다(read의 pastOnly에서 뺀 것)
+     */
     public Optional<FutureContext> readFuture(Long descriptionId, int nowMs) {
         Optional<Description> description = descriptionRepository.findById(descriptionId);
         if (description.isEmpty()) {
@@ -99,8 +111,11 @@ public class AnswerContextReader {
                 .filter(scene -> scene.getEndMs() > now)
                 .toList();
         List<DescriptionLine> lines = descriptionLineRepository.findInRange(descriptionId, from, Integer.MAX_VALUE);
+        int textsFrom = scenes.isEmpty() ? from : Math.min(scenes.get(0).getStartMs(), from);
         List<ScreenText> texts = screenTextRepository
-                .findByDescription_IdAndStartMsBetweenOrderByStartMsAsc(descriptionId, from, Integer.MAX_VALUE);
+                .findByDescription_IdAndStartMsBetweenOrderByStartMsAsc(descriptionId, textsFrom, Integer.MAX_VALUE).stream()
+                .filter(t -> t.getEndMs() > now)
+                .toList();
         List<SceneInfo> sceneInfos = scenes.stream().map(scene -> new SceneInfo(scene.getStartMs(), scene.getTitle(),
                 scene.getSceneDescription(),
                 lines.stream().filter(l -> inScene(l.getStartMs(), scene))

@@ -292,7 +292,8 @@ class ChatEvalTest {
         for (SeekCombo combo : prodOnly ? SEEK_COMBOS.subList(0, 1) : SEEK_COMBOS) {
             KeywordSceneScorer scorer = new KeywordSceneScorer(combo.tuning());
             SceneSeeker seeker = new SceneSeeker(reader, scorer, new LlmSceneSelector(client, om, scorer, combo.tuning()),
-                    new LlmHitVerifier(client, om, combo.tuning()), limiter, combo.tuning(), new SimpleMeterRegistry());
+                    new LlmHitVerifier(client, om, combo.tuning()), limiter, combo.tuning(), new SimpleMeterRegistry(),
+                    mock(GmsProperties.class));
             Stats single = new Stats();
             Stats none = new Stats();
             double recallSum = 0;

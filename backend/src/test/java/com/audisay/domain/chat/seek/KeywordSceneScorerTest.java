@@ -168,6 +168,28 @@ class KeywordSceneScorerTest {
 
     @ParameterizedTest(name = "{0} → {1}")
     @CsvSource(delimiter = '|', textBlock = """
+            패스 못 받는 장면     | true
+            골이 안 들어간 장면   | true
+            득점 없는 장면       | true
+            공을 잡지 못한 장면   | true
+            연못에 빠지는 장면    | false
+            집 안 장면         | false
+            안타 치는 장면       | false
+            """)
+    void 검색어_자체의_부정은_어절_첫머리로_본다(String query, boolean negates) {
+        assertThat(KeywordSceneScorer.negates(query)).isEqualTo(negates);
+    }
+
+    @Test
+    void 끝_글자를_뗀_낱말이_문장_끝에서_맞아도_예외가_나지_않는다() {
+        assertThat(KeywordSceneScorer.negated("역전", List.of("역전골"))).isFalse();
+        assertThat(KeywordSceneScorer.negated("드디어 역전", List.of("역전골"))).isFalse();
+        assertThat(KeywordSceneScorer.negated("역전 못 했어요", List.of("역전골"))).isTrue();
+        assertThat(KeywordSceneScorer.negated("역전못함", List.of("역전골"))).isTrue();
+    }
+
+    @ParameterizedTest(name = "{0} → {1}")
+    @CsvSource(delimiter = '|', textBlock = """
             차가 공중에서 뒤집히는 장면       | 차,공중,뒤집히
             양들이 버스 타고 몰래 떠나는 장면    | 양들,버스,타고,몰래,떠나
             다 만들고 맛보는 장면             | 만들,맛보

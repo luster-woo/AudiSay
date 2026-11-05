@@ -133,6 +133,28 @@ class AnswerContextReaderTest {
     }
 
     @Test
+    void 화면_글자는_장면_시각이라_바로_하는_답에선_끝나지_않은_것을_빼고_뒤_자료로_넘긴다() {
+        // AI는 화면 글자에 장면의 시작·끝을 넣는다: 지난 장면(0~60초) 글자는 끝났고, 지금 장면(60~120초) 글자는 아직
+        List<ScreenText> past = List.of(screenText(0, 60_000, "1회 초 0:0"), screenText(60_000, 120_000, "최종 3:2"));
+        List<ScreenText> future = List.of(screenText(60_000, 120_000, "최종 3:2"), screenText(120_000, 180_000, "2회 초"));
+        when(screenTextRepository.findByDescription_IdAndStartMsBetweenOrderByStartMsAsc(DESC, 0, 90_000)).thenReturn(past);
+        when(screenTextRepository.findByDescription_IdAndStartMsBetweenOrderByStartMsAsc(DESC, 60_000, Integer.MAX_VALUE))
+                .thenReturn(future);
+
+        AnswerContext context = reader.read(DESC, 90_000, true).orElseThrow();
+        FutureContext later = reader.readFuture(DESC, 90_000).orElseThrow();
+
+        assertThat(context.scenes().get(0).screenTexts()).containsExactly("1회 초 0:0");
+        assertThat(context.currentScene().screenTexts()).isEmpty();
+        assertThat(later.scenes().get(0).screenTexts()).containsExactly("최종 3:2");
+        assertThat(later.scenes().get(1).screenTexts()).containsExactly("2회 초");
+        // 바로 하는 답이 아니거나 지금 장면 설명(SCENE_NOW)이면 그대로 넣는다
+        assertThat(reader.read(DESC, 90_000, false).orElseThrow().currentScene().screenTexts()).containsExactly("최종 3:2");
+        assertThat(reader.read(DESC, 90_000, true, false).orElseThrow().currentScene().screenTexts())
+                .containsExactly("최종 3:2");
+    }
+
+    @Test
     void 해설이_없으면_비어_있다() {
         assertThat(reader.read(1L, 0)).isEmpty();
     }
@@ -151,6 +173,12 @@ class AnswerContextReaderTest {
         when(line.getStartMs()).thenReturn(start);
         when(line.getText()).thenReturn(text);
         return line;
+    }
+
+    private static ScreenText screenText(int start, int end, String fullText) {
+        ScreenText text = screenText(start, null, fullText);
+        when(text.getEndMs()).thenReturn(end);
+        return text;
     }
 
     private static ScreenText screenText(int start, String headline, String fullText) {

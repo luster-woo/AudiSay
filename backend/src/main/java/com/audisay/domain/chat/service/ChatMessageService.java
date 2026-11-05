@@ -41,10 +41,12 @@ public class ChatMessageService {
     static final String OUTSIDE_VIDEO_MESSAGE = "영상을 연 뒤에 질문해 주세요.";
     static final String IN_VIDEO_SEARCH_MESSAGE = "다른 영상은 검색 화면에서 찾아 주세요.";
     static final String SCENE_NOT_FOUND_MESSAGE = "그런 장면을 찾지 못했어요. 다르게 말씀해 주세요.";
+    static final String SCENE_SEARCH_SLOW_MESSAGE = "지금은 장면을 찾는 데 시간이 오래 걸려요. 잠시 뒤 다시 말씀해 주세요.";
     private static final Set<ChatIntent> VIDEO_ONLY = EnumSet.of(ChatIntent.QUESTION, ChatIntent.SCENE_NOW,
             ChatIntent.SEEK_TIME, ChatIntent.SEEK_SCENE, ChatIntent.RECAP);
+    /** 장면 찾기는 해설이 없으면 에러 대신 "못 찾음" 안내(명세) */
     private static final Set<ChatIntent> NEEDS_DESCRIPTION = EnumSet.of(ChatIntent.QUESTION, ChatIntent.SCENE_NOW,
-            ChatIntent.SEEK_SCENE, ChatIntent.RECAP);
+            ChatIntent.RECAP);
     private static final int END_MARGIN_MS = 3000;
 
     private final ChatLogRepository chatLogRepository;
@@ -60,6 +62,7 @@ public class ChatMessageService {
     private final MeterRegistry meterRegistry;
 
     public ChatMessageResponse receive(AuthUser authUser, ChatMessageRequest request) {
+        long deadlineNanos = System.nanoTime() + SceneSeeker.RECEIVE_BUDGET.toNanos();
         rateLimiter.acquireRequest(authUser.userId());
         Video video = request.videoId() == null ? null
                 : videoAccessValidator.getAccessibleVideo(authUser, request.videoId());
@@ -91,15 +94,17 @@ public class ChatMessageService {
         meterRegistry.timer("audisay.chat.intent", "intent", intent.name(), "source", source).record(latency);
 
         ChatResult result = result(classified, chatLog.getId(), video, descriptionId, targetMs);
-        if (intent == ChatIntent.SEEK_SCENE && video != null) {
-            result = seekScene(authUser.userId(), classified.query(), chatLog.getId(), descriptionId, videoTimeMs);
+        if (intent == ChatIntent.SEEK_SCENE && video != null && descriptionId != null) {
+            result = seekScene(authUser.userId(), classified.query(), chatLog.getId(), descriptionId, videoTimeMs,
+                    deadlineNanos);
         }
         return new ChatMessageResponse(chatLog.getId(), chatLog.getInputMode(), chatLog.getUtterance(), intent, result);
     }
 
     /** 하나면 그곳으로(targetMs·chapterId), 여럿이면 후보 전부(지금 이후부터 시간순), 없으면 안내. 하나일 때만 이동 시각을 기록 */
-    private ChatResult seekScene(Long userId, String query, Long chatLogId, Long descriptionId, Integer videoTimeMs) {
-        SceneSeeker.Outcome outcome = sceneSeeker.seek(userId, descriptionId, query, chatLogId, videoTimeMs);
+    private ChatResult seekScene(Long userId, String query, Long chatLogId, Long descriptionId, Integer videoTimeMs,
+                                 long deadlineNanos) {
+        SceneSeeker.Outcome outcome = sceneSeeker.seek(userId, descriptionId, query, chatLogId, videoTimeMs, deadlineNanos);
         List<Hit> hits = outcome.hits();
         Hit single = hits.size() == 1 ? hits.get(0) : null;
         if (outcome.source() != null) {
@@ -113,7 +118,11 @@ public class ChatMessageService {
         if (single != null) {
             return ChatResult.seekScene(single.targetMs(), single.scene().chapterId(), candidates, null);
         }
-        return ChatResult.seekScene(null, null, candidates, hits.isEmpty() ? SCENE_NOT_FOUND_MESSAGE : null);
+        if (hits.isEmpty()) {
+            return ChatResult.seekScene(null, null, candidates,
+                    outcome.timedOut() ? SCENE_SEARCH_SLOW_MESSAGE : SCENE_NOT_FOUND_MESSAGE);
+        }
+        return ChatResult.seekScene(null, null, candidates, null);
     }
 
     private ChatResult result(ClassifiedIntent classified, Long chatLogId, Video video, Long descriptionId,
@@ -141,19 +150,21 @@ public class ChatMessageService {
 
     /** 영상 길이 안으로 자른다. 상대 이동은 입력 시각 기준(없으면 0), "끝으로"는 끝 3초 전 */
     static Integer seekTarget(ClassifiedIntent classified, Video video, Integer videoTimeMs) {
-        Integer durationMs = video.getDurationSec() == null ? null : video.getDurationSec() * 1000;
-        int target;
+        // long으로 계산한다("500시간 뒤로"처럼 큰 상대 이동이 int를 넘어 음수 → 처음으로 가지 않게)
+        Long durationMs = video.getDurationSec() == null ? null : video.getDurationSec() * 1000L;
+        long target;
         if (classified.toEnd()) {
             if (durationMs == null) {
                 return null;
             }
             target = durationMs - END_MARGIN_MS;
         } else if (classified.relativeMs() != null) {
-            target = (videoTimeMs == null ? 0 : videoTimeMs) + classified.relativeMs();
+            target = (videoTimeMs == null ? 0L : videoTimeMs.longValue()) + classified.relativeMs();
         } else {
             target = classified.targetMs();
         }
-        target = Math.max(0, target);
-        return durationMs == null ? target : Math.min(target, durationMs);
+        target = Math.max(0L, target);
+        target = Math.min(target, durationMs == null ? Integer.MAX_VALUE : durationMs);
+        return (int) target;
     }
 }

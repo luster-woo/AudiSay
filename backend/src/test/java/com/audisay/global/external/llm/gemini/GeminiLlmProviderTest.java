@@ -179,6 +179,24 @@ class GeminiLlmProviderTest {
     }
 
     @Test
+    void stream_끝_조각_없이_끊기면_UNAVAILABLE() {
+        server.stubFor(post(urlPathEqualTo(STREAM)).willReturn(aResponse()
+                .withHeader("Content-Type", "text/event-stream")
+                .withBody(sse("{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"잘린 \"}]}}]}"))));
+
+        assertKind(() -> provider.stream(answer(), MODEL, delta -> true), Kind.UNAVAILABLE);
+    }
+
+    @Test
+    void stream_도중_오류_조각은_상태대로_나눈다() {
+        server.stubFor(post(urlPathEqualTo(STREAM)).willReturn(aResponse()
+                .withHeader("Content-Type", "text/event-stream")
+                .withBody(sse("{\"error\":{\"code\":429,\"status\":\"RESOURCE_EXHAUSTED\",\"message\":\"quota\"}}"))));
+
+        assertKind(() -> provider.stream(answer(), MODEL, delta -> true), Kind.RATE_LIMIT);
+    }
+
+    @Test
     void stream_429는_RATE_LIMIT() {
         server.stubFor(post(urlPathEqualTo(STREAM)).willReturn(status(429)));
 

@@ -6,6 +6,7 @@ import org.springframework.util.unit.DataSize;
 import java.time.Duration;
 
 /**
+ * @param audioUrlExpiration        해설·답변 음성 주소(presigned GET) 유효기간(없으면 6시간)
  * @param uploadPartSize            업로드 조각 크기. 마지막 조각만 이보다 작을 수 있다(S3 최소 5MB)
  * @param uploadPartUrlExpiration   조각 업로드 주소(presigned PUT) 유효기간
  * @param playbackUrlExpiration     재생용 파일 주소(presigned GET) 유효기간
@@ -24,6 +25,7 @@ public record S3Properties(
         Duration thumbnailUrlExpiration
 ) {
     public S3Properties {
+        audioUrlExpiration = audioUrlExpiration == null ? Duration.ofHours(6) : audioUrlExpiration;
         thumbnailUrlExpiration = thumbnailUrlExpiration == null ? Duration.ofHours(6) : thumbnailUrlExpiration;
     }
 

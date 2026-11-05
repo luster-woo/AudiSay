@@ -121,6 +121,23 @@ class GmsLlmClientTest {
     }
 
     @Test
+    void 대체_금지_요청은_429여도_대체_모델을_부르지_않는다() {
+        when(primary.generate(any(), anyString())).thenThrow(new LlmException(Kind.RATE_LIMIT, 429, "limit", null));
+
+        assertKind(() -> client(true).generate(intent().withoutFallback()), Kind.RATE_LIMIT);
+        verify(fallback, never()).generate(any(), anyString());
+    }
+
+    @Test
+    void 응답_시간_예산_안에_대체_모델을_기다릴_수_없으면_부르지_않는다() {
+        when(primary.generate(any(), anyString())).thenThrow(new LlmException(Kind.RATE_LIMIT, 429, "limit", null));
+
+        assertKind(() -> client(true).generate(intent().withFallbackDeadline(System.nanoTime() + 1_000_000_000L)),
+                Kind.RATE_LIMIT);
+        verify(fallback, never()).generate(any(), anyString());
+    }
+
+    @Test
     void 기록이_실패해도_응답은_돌려준다() {
         when(primary.generate(any(), anyString())).thenReturn(new LlmResult("{}", MODEL, 1, 1, 10, false, null));
         when(recorder.record(any())).thenThrow(new IllegalStateException("db down"));

@@ -1,6 +1,7 @@
 package com.audisay.domain.job.repository;
 
 import com.audisay.domain.job.entity.JobChunk;
+import com.audisay.domain.job.entity.JobChunkStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -16,6 +17,8 @@ public interface JobChunkRepository extends JpaRepository<JobChunk, Long> {
     List<JobChunk> findByJob_IdOrderByChunkIndexAsc(Long jobId);
 
     boolean existsByJob_Id(Long jobId);
+
+    boolean existsByJob_IdAndStatus(Long jobId, JobChunkStatus status);
 
     @Query("select max(c.updatedAt) from JobChunk c where c.job.id = :jobId")
     Instant findLastUpdatedAt(@Param("jobId") Long jobId);

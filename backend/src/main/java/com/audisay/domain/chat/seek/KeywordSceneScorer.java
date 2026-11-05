@@ -39,6 +39,8 @@ public class KeywordSceneScorer {
     static final double EVIDENCE_BONUS = 0.3;
     /** 낱말 뒤 같은 마디(문장부호 전, 12자 안)에 오면 그 일이 일어나지 않은 것 */
     private static final Pattern NEGATION = Pattern.compile("없|못|아니|안 |실패|무산|놓치|놓쳤|빗나");
+    /** 검색어 어절이 이 말로 시작하면 검색어 자체가 부정을 말하는 것 */
+    private static final Pattern QUERY_NEGATION = Pattern.compile("^(?:못|않|아니|안됐|안된|안되|안들|실패|무산|놓치|놓친|놓쳤|빗나)");
     /** 낱말 앞에 오면 그 순간이 아니라 요약·기록을 말하는 것일 수 있음 */
     private static final Pattern SUMMARY_TALK = Pattern.compile("오늘|지금까지|이번 경기|이번 시즌|시즌|통산|기록|몇 개|몇 번");
     private static final Pattern CLAUSE_END = Pattern.compile("[.!?,~…]");
@@ -95,6 +97,10 @@ public class KeywordSceneScorer {
             return new Result(terms, List.of(), Decision.NONE, List.of());
         }
         double[] idf = idf(terms, scenes);
+        // 검색어 자체가 부정·요약을 말하면("패스 못 받는 장면", "시즌 첫 홈런") 그 문장을 빼거나 깎지 않는다
+        String loweredQuery = lower(query);
+        boolean dropNegated = negationFilter && !negates(loweredQuery);
+        boolean penalizeSummary = negationFilter && !SUMMARY_TALK.matcher(loweredQuery).find();
         List<Hit> hits = new ArrayList<>();
         for (SceneText scene : scenes) {
             Fields fields = new Fields(scene);
@@ -121,10 +127,10 @@ public class KeywordSceneScorer {
                     }
                 }
                 if (any && covers(matched.size(), terms.size())) {
-                    if (negationFilter && negated(text, terms)) {
+                    if (dropNegated && negated(text, terms)) {
                         continue;
                     }
-                    if (negationFilter && summarizing(text, terms)) {
+                    if (penalizeSummary && summarizing(text, terms)) {
                         score *= SUMMARY_PENALTY;
                     }
                     momentHit = true;
@@ -200,7 +206,9 @@ public class KeywordSceneScorer {
         List<List<Hit>> groups = new ArrayList<>();
         for (Hit hit : byTime) {
             List<Hit> last = groups.isEmpty() ? null : groups.get(groups.size() - 1);
-            if (last != null && hit.targetMs() - last.get(0).targetMs() <= MERGE_WINDOW_MS) {
+            // 같은 장면 안에서만 합친다(장면 경계를 넘으면 시각은 앞 장면, 장면 정보는 뒤 장면이 되어 섞였다)
+            if (last != null && hit.scene().equals(last.get(0).scene())
+                    && hit.targetMs() - last.get(0).targetMs() <= MERGE_WINDOW_MS) {
                 last.add(hit);
             } else {
                 groups.add(new ArrayList<>(List.of(hit)));
@@ -209,7 +217,9 @@ public class KeywordSceneScorer {
         List<Hit> merged = new ArrayList<>();
         for (List<Hit> group : groups) {
             Hit best = group.stream().max(Comparator.comparingDouble(Hit::score)).orElseThrow();
-            int evidence = (int) group.stream().map(h -> h.moment() == null ? null : h.moment().type()).distinct().count();
+            // 목차 후보(moment 없음)는 자료 종류로 세지 않는다
+            int evidence = Math.max(1, (int) group.stream().filter(h -> h.moment() != null)
+                    .map(h -> h.moment().type()).distinct().count());
             int matched = group.stream().mapToInt(Hit::matchedTerms).max().orElse(0);
             double score = evidenceBonus ? best.score() * (1 + EVIDENCE_BONUS * (evidence - 1)) : best.score();
             merged.add(new Hit(best.scene(), group.get(0).targetMs(), score, matched, best.moment(), best.snippet(), evidence));
@@ -224,12 +234,36 @@ public class KeywordSceneScorer {
             if (at < 0) {
                 continue;
             }
-            String after = text.substring(at + term.length(), Math.min(text.length(), at + term.length() + 12));
+            // 끝 글자를 뗀 앞부분으로 맞았으면(indexOf) 실제로 맞은 길이만큼만 건너뛴다(문장 끝이면 범위를 넘어 예외가 났다)
+            int from = at + (text.startsWith(term, at) ? term.length() : term.length() - 1);
+            String after = text.substring(from, Math.min(text.length(), from + 12));
             var end = CLAUSE_END.matcher(after);
             if (end.find()) {
                 after = after.substring(0, end.start());
             }
             if (NEGATION.matcher(after).find()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 검색어 자체가 부정을 말하는지("패스 못 받는", "골이 없는"). 낱말 속 글자("연못", "집 안 장면")로 켜지지 않게
+     * 어절 첫머리의 부정 말과 '없'만 본다
+     */
+    static boolean negates(String query) {
+        String[] words = query.strip().split("\\s+");
+        for (int i = 0; i < words.length; i++) {
+            String word = words[i];
+            if (word.equals("안")) {
+                // "골이 안 들어간"은 부정, "집 안 장면"·"차 안"은 장소
+                if (i + 1 < words.length && !words[i + 1].startsWith("장면") && !words[i + 1].startsWith("쪽")) {
+                    return true;
+                }
+                continue;
+            }
+            if (QUERY_NEGATION.matcher(word).find() || word.contains("없") || word.contains("지못") || word.contains("지않")) {
                 return true;
             }
         }

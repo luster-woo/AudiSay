@@ -125,6 +125,45 @@ class RuleIntentClassifierTest {
             요약 들려줘 | ACTION PLAY_SUMMARY
             너는 누구야 | UNKNOWN msg=저는 영상 내용을 알려 드리는 도우미예요. 영상에 대해 물어봐 주세요.
             넌 이름이 뭐야 | UNKNOWN msg=저는 영상 내용을 알려 드리는 도우미예요. 영상에 대해 물어봐 주세요.
+            0.75배속으로 읽어 줘 | SETTING speechRate=0.8
+            말 속도 1.5배로 | SETTING speechRate=1.5
+            10배 빠르게 말해 | LLM
+            10초 전에 뭐라고 했어 | QUESTION
+            5분 뒤에 뭐 나와 | QUESTION
+            1분 전에 나온 사람 누구야 | QUESTION
+            주인공이 멈춰 서는 장면으로 가 줘 | SEEK_SCENE q=주인공이 멈춰 서는
+            공을 되돌려 보내는 장면으로 가 줘 | SEEK_SCENE q=공을 되돌려 보내는
+            말이 천천히 걷는 장면으로 가 줘 | SEEK_SCENE q=말이 천천히 걷는
+            다음 장면에서 누가 나와 | LLM
+            아까 그 장면으로 돌아가 | ACTION UNDO_SEEK
+            소리 2배로 키워 줘 | SETTING originalVolume UP
+            소리 50으로 | SETTING originalVolume=50
+            볼륨 70 정도 | SETTING originalVolume=70
+            앞 장면으로 가 줘 | ACTION PREV_SCENE
+            전 장면으로 돌아가 줘 | ACTION PREV_SCENE
+            바로 다음 장면으로 가 | ACTION NEXT_SCENE
+            아까 보던 데로 가 줘 | ACTION UNDO_SEEK
+            지금까지 무슨 내용이야 | RECAP
+            바로 전 장면으로 돌아가 | ACTION PREV_SCENE
+            방금 전 장면으로 가 줘 | ACTION PREV_SCENE
+            그다음 장면 | ACTION NEXT_SCENE
+            홈런 친 다음 장면 보여 줘 | LLM
+            결혼식 이전 장면 보여 줘 | LLM
+            지금까지 무슨 내용이었는지 알려 줘 | RECAP
+            지금까지 범인이 무슨 얘기 했어 | QUESTION
+            그럼 다음 장면으로 가 줘 | ACTION NEXT_SCENE
+            빨리 이전 장면으로 | ACTION PREV_SCENE
+            방금 전 장면 설명해 줘 | LLM
+            응전 장면으로 가 줘 | SEEK_SCENE q=응전
+            지난 내용 무슨 얘기였어 | RECAP
+            홈런 직전 장면 보여 줘 | LLM
+            소리 10 정도 올려 줘 | SETTING originalVolume UP
+            볼륨 5 해도 돼 | LLM
+            지금까지 무슨 내용으로 싸웠어 | QUESTION
+            끝까지 봐 | LLM
+            영상에서 홈런 검색해 줘 | LLM
+            목차 몇 개야 | QUESTION
+            지금까지 나온 내용 중에 범인이 누구야 | QUESTION
             """)
     void 규칙(String utterance, String expected) {
         assertThat(format(classifier.classify(utterance))).isEqualTo(expected);

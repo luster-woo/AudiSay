@@ -8,6 +8,8 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -21,6 +23,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class ChatAnswerExecutors {
     private final Executor answer;
     private final Executor tts;
+    private final ScheduledExecutorService heartbeat;
 
     @Autowired
     public ChatAnswerExecutors(ChatAnswerProperties properties) {
@@ -31,6 +34,7 @@ public class ChatAnswerExecutors {
     ChatAnswerExecutors(Executor answer, Executor tts) {
         this.answer = answer;
         this.tts = tts;
+        this.heartbeat = heartbeatPool();
     }
 
     public Executor answer() {
@@ -41,13 +45,29 @@ public class ChatAnswerExecutors {
         return tts;
     }
 
+    /** 답변 SSE heartbeat(15초마다 주석 한 줄). 보내기는 짧아 스레드 하나로 */
+    public ScheduledExecutorService heartbeat() {
+        return heartbeat;
+    }
+
     @PreDestroy
     void shutdown() {
+        heartbeat.shutdownNow();
         for (Executor executor : new Executor[]{answer, tts}) {
             if (executor instanceof ExecutorService service) {
                 service.shutdownNow();
             }
         }
+    }
+
+    private static ScheduledExecutorService heartbeatPool() {
+        ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(1, runnable -> {
+            Thread thread = new Thread(runnable, "chat-answer-heartbeat");
+            thread.setDaemon(true);
+            return thread;
+        });
+        executor.setRemoveOnCancelPolicy(true);
+        return executor;
     }
 
     private static ThreadPoolExecutor pool(String prefix, int size, BlockingQueue<Runnable> queue) {

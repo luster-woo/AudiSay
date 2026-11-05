@@ -34,6 +34,7 @@ import com.audisay.global.external.s3.S3Properties;
 import com.audisay.global.external.s3.S3StorageClient;
 import com.audisay.global.external.s3.S3StorageClient.PresignedUrl;
 import com.audisay.global.external.s3.S3StorageClient.UploadedPart;
+import com.audisay.global.external.s3.UploadThumbnailStore;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -72,6 +73,7 @@ public class UploadService {
     private final JobLauncher jobLauncher;
     private final S3StorageClient s3StorageClient;
     private final S3Properties s3Properties;
+    private final UploadThumbnailStore uploadThumbnailStore;
     private final UsageLimitProperties usageLimitProperties;
 
     /**
@@ -186,19 +188,15 @@ public class UploadService {
     }
 
     /**
-     * 워커가 재생용 파일과 썸네일을 만들었다(LOCAL prepare 완료). 썸네일 키는 워커가 알려 주지 않아 AI 규칙
-     * (ai/app/pipeline/local.py thumb_key)대로 쓴다 — 워커는 재생용 파일 바로 뒤에 썸네일을 올린다
+     * 워커가 재생용 파일과 썸네일을 만들었다(LOCAL prepare 완료). 썸네일은 원본과 함께 지워지지 않게 따로 복사해 둔다
+     * (UploadThumbnailStore)
      */
     @Transactional
     public void finishTranscode(Long videoId, String playbackKey) {
         videoUploadRepository.findById(videoId).ifPresent(upload -> {
             upload.finishTranscode(playbackKey);
-            upload.getVideo().attachUploadThumbnail(thumbnailKey(videoId));
+            upload.getVideo().attachUploadThumbnail(uploadThumbnailStore.keep(videoId));
         });
-    }
-
-    static String thumbnailKey(Long videoId) {
-        return "uploads/%d/thumb.jpg".formatted(videoId);
     }
 
     /** 해설 작업이 실패했다. 재생용 파일을 이미 만들었으면 그대로 둔다 */

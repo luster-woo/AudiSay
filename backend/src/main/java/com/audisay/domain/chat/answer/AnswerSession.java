@@ -32,6 +32,9 @@ final class AnswerSession {
     private volatile Integer firstAudioMs;
     private boolean generated;
     private final List<String> heldDeltas = new ArrayList<>();
+    /** 음성을 맡긴 문장(순서대로)과 그중 sentence로 보낸 수. FE는 sentence로 받은 문장만 읽는다 */
+    private final List<String> queued = new ArrayList<>();
+    private int sentCount;
     private boolean holding;
     private boolean suppressed;
 
@@ -56,21 +59,22 @@ final class AnswerSession {
         }
         if (!delta.isEmpty()) {
             if (suppressed) {
-                return !sink.isClosed();
+                return false;
             }
             if (holding) {
-                generated = true;
+                markGenerated(delta);
                 heldDeltas.add(delta);
                 List<String> sentences = splitter.add(delta);
                 if (!sentences.isEmpty()) {
                     decideHeld(sentences);
                 }
-                return !sink.isClosed();
+                // 첫 문장이 "자료에 없어요"면 나머지는 버릴 글자라 스트림을 멈춘다(지연·토큰 절약)
+                return !suppressed && !sink.isClosed();
             }
             if (!generated) {
                 separate();
             }
-            generated = true;
+            markGenerated(delta);
             text.append(delta);
             sink.send("delta", new Delta(delta));
             splitter.add(delta).forEach(this::enqueue);
@@ -135,19 +139,51 @@ final class AnswerSession {
         try {
             last.get(wait.toMillis(), TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
-            log.warn("[CHAT] 답변 음성이 {} 안에 끝나지 않음", wait);
+            log.warn("[CHAT] 답변 음성이 {} 안에 끝나지 않음, 남은 문장은 음성 없이 보냄", wait);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } catch (Exception e) {
             log.warn("[CHAT] 답변 음성 실패: {}", e.getMessage());
         }
+        sendUnspoken();
+    }
+
+    /** 아직 sentence로 못 보낸 문장을 음성 없이(audioUrl null → 브라우저 음성) 보낸다. 늦게 끝난 음성 작업은 건너뛴다 */
+    private synchronized void sendUnspoken() {
+        for (int i = sentCount; i < queued.size(); i++) {
+            sink.send("sentence", new Sentence(queued.get(i), null));
+        }
+        sentCount = queued.size();
+    }
+
+    /** 대기 시간을 넘겨 이미 음성 없이 보낸 문장이면 TTS를 부르지 않는다 */
+    private synchronized boolean alreadySent(int index) {
+        return index < sentCount;
+    }
+
+    private synchronized void sendSentence(int index, String sentence, String audioUrl) {
+        if (index < sentCount) {
+            return;
+        }
+        if (firstAudioMs == null) {
+            firstAudioMs = elapsedMs();
+        }
+        sink.send("sentence", new Sentence(sentence, audioUrl));
+        sentCount = index + 1;
     }
 
     synchronized String text() {
         return text.toString().strip();
     }
 
-    /** LLM이 한 글자라도 냈는지 */
+    /** 공백·줄바꿈만 온 조각은 답으로 치지 않는다(빈 답이 STORED로 저장되지 않게) */
+    private void markGenerated(String delta) {
+        if (!delta.isBlank()) {
+            generated = true;
+        }
+    }
+
+    /** LLM이 한 글자라도(공백 말고) 냈는지 */
     boolean generated() {
         return generated;
     }
@@ -173,8 +209,10 @@ final class AnswerSession {
     }
 
     private synchronized void enqueue(String sentence) {
+        int index = queued.size();
+        queued.add(sentence);
         speaking = speaking.thenRunAsync(() -> {
-            if (sink.isClosed()) {
+            if (sink.isClosed() || alreadySent(index)) {
                 return;
             }
             String audioUrl = null;
@@ -183,10 +221,7 @@ final class AnswerSession {
             } catch (RuntimeException e) {
                 log.warn("[CHAT] 답변 문장 음성 실패: {}", e.getMessage());
             }
-            if (firstAudioMs == null) {
-                firstAudioMs = elapsedMs();
-            }
-            sink.send("sentence", new Sentence(sentence, audioUrl));
+            sendSentence(index, sentence, audioUrl);
         }, ttsExecutor).exceptionally(e -> {
             log.warn("[CHAT] 답변 문장 음성 작업 실패: {}", e.getMessage());
             return null;

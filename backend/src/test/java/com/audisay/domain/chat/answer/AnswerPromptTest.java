@@ -61,12 +61,38 @@ class AnswerPromptTest {
     }
 
     @Test
+    void 뒤_내용이_많아도_이른_장면과_대사를_시각_순서대로_남긴다() {
+        List<SceneInfo> scenes = new java.util.ArrayList<>();
+        List<Dialogue> dialogues = new java.util.ArrayList<>();
+        for (int i = 0; i < 3000; i++) {
+            scenes.add(new SceneInfo(i * 10_000, "장면 " + i, "가".repeat(50), List.of(), List.of()));
+            dialogues.add(new Dialogue(i * 10_000 + 5_000, null, "대사 " + i));
+        }
+        String json = prompt.futureJson(new FutureContext("요약", scenes, dialogues));
+
+        assertThat(json.length()).isLessThanOrEqualTo(AnswerPrompt.FUTURE_MAX_CHARS)
+                .isGreaterThan(AnswerPrompt.FUTURE_MAX_CHARS - 300);
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("\"제목\":\"장면 (\\d+)\"").matcher(json);
+        int lastScene = -1;
+        while (matcher.find()) {
+            lastScene = Integer.parseInt(matcher.group(1));
+        }
+        assertThat(lastScene).isPositive();
+        // 시각 순서로 잘렸으면 남은 마지막 장면 앞의 대사는 있고, 그 다음 장면 뒤의 대사는 없다
+        assertThat(json).contains("\"대사 " + (lastScene - 1) + "\"")
+                .doesNotContain("\"대사 " + (lastScene + 1) + "\"");
+    }
+
+    @Test
     void 뒤_내용에서_찾은_답_문장을_읽는다() {
         assertThat(prompt.evidence("{\"evidence\": \" 시속 60마일까지 0.81초 \"}")).isEqualTo("시속 60마일까지 0.81초");
         assertThat(prompt.evidence("```json\n{\"evidence\":\"\"}\n```")).isNull();
         assertThat(prompt.evidence("{\"evidence\": null}")).isNull();
         assertThat(prompt.evidence("모르겠어요")).isNull();
         assertThat(prompt.evidence(null)).isNull();
+        // 근거를 옮기다 출력 한도로 잘려도 글자가 있으면 답이 있는 것으로
+        assertThat(prompt.evidence("{\"evidence\": \"김태형 감독이 더그아웃에서")).isEqualTo("김태형 감독이 더그아웃에서");
+        assertThat(prompt.evidence("{\"evidence\": \"")).isNull();
     }
 
     @Test

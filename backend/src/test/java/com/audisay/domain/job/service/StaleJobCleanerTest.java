@@ -37,7 +37,7 @@ class StaleJobCleanerTest {
     @Test
     void 기준_시각으로_후보를_찾아_하나씩_정리하고_실패한_작업은_건너뛴다() {
         when(jobRepository.findStaleCandidateIds(eq(JobStatus.QUEUED), eq(QUEUED_BEFORE),
-                eq(JobStatus.RUNNING), eq(RUNNING_BEFORE), any(Pageable.class))).thenReturn(List.of(1L, 2L, 3L));
+                eq(JobStatus.RUNNING), eq(RUNNING_BEFORE), eq(0L), any(Pageable.class))).thenReturn(List.of(1L, 2L, 3L));
         when(jobEventService.failIfStale(1L, QUEUED_BEFORE, RUNNING_BEFORE)).thenReturn(true);
         when(jobEventService.failIfStale(2L, QUEUED_BEFORE, RUNNING_BEFORE)).thenThrow(new IllegalStateException("redis down"));
         when(jobEventService.failIfStale(3L, QUEUED_BEFORE, RUNNING_BEFORE)).thenReturn(false);
@@ -50,7 +50,7 @@ class StaleJobCleanerTest {
     void 꺼져_있으면_아무것도_하지_않는다() {
         cleaner(false).cleanUp();
 
-        verify(jobRepository, never()).findStaleCandidateIds(any(), any(), any(), any(), any());
+        verify(jobRepository, never()).findStaleCandidateIds(any(), any(), any(), any(), any(), any());
         verify(jobEventService, never()).failIfStale(anyLong(), any(), any());
     }
 

@@ -20,8 +20,13 @@ export interface PendingCandidates {
   candidates: SceneCandidate[]
 }
 
-/** "들으시겠어요?"를 물은 답변. 다음 말이 '네'면 같은 답변을 뒤 내용까지 넣어 다시 받는다 */
+/**
+ * "들으시겠어요?"를 물은 상태. 다음 말이 '네'면
+ * - future: 같은 답변을 뒤 내용까지 넣어 다시 받는다
+ * - summary: 재생 중 "요약 들려줘" — 요약에 뒤 내용이 있어 물어본 뒤 들려준다
+ */
 export interface FutureOffer {
+  kind: 'future' | 'summary'
   chatLogId: number
   videoTimeMs: number
 }
@@ -93,6 +98,9 @@ export function settingSpoken(key: keyof UserSettings, raw: string) {
                 : VALUE_LABEL[raw]
   return `${name}${value ? ` ${value}` : ''}`
 }
+
+/** 재생 중 요약을 청했을 때 먼저 묻는 말 */
+export const SUMMARY_OFFER = '요약에는 뒤 내용이 있어요. 들으시겠어요?'
 
 /** "들으시겠어요?" 다음 말이 그러겠다는 뜻인지 / 아니라는 뜻인지. 둘 다 아니면 새 질문으로 처리한다 */
 const YES = /^(네|넵|예|응|웅|그래|좋아|좋아요|들을게|들려|들어|듣고|듣기|계속|ㅇㅇ|ok|오케이)/i
@@ -239,7 +247,7 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
       }))
       // 답변 끝의 "들으시겠어요?"에 대한 대답을 기다린다 (다음 말이 '네'면 다시 받는다)
       const offering = !aborted && !failed && futureAvailable && !includeFuture
-      setOffer(offering ? { chatLogId, videoTimeMs } : null)
+      setOffer(offering ? { kind: 'future', chatLogId, videoTimeMs } : null)
       if (aborted) c.announce('답변을 멈췄어요. 입력칸에 있어요.')
       else if (failed) c.announce(failed, { politeness: 'assertive' })
       else if (offering)
@@ -282,8 +290,17 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
             return
           }
           if (candidates.length === 0) {
-            command(null)
-            c.announce('그런 장면을 찾지 못했어요. 다르게 말씀해 주세요.')
+            // 서버가 이유별 말을 준다 ("못 찾았어요" / "시간이 오래 걸려요")
+            const said = res.result.message || '그런 장면을 찾지 못했어요. 다르게 말씀해 주세요.'
+            push({
+              key: `cmd-${chatLogId}`,
+              kind: 'command',
+              chatLogId,
+              videoTimeMs,
+              text: `"${utterance}" → ${said}`,
+              targetMs: null,
+            })
+            c.announce(said)
             return
           }
           setPending({ chatLogId, utterance, videoTimeMs, candidates })
@@ -323,6 +340,21 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
           return
         }
         case 'ACTION': {
+          // 재생 중 "요약 들려줘": 요약에는 뒤 내용이 있어 먼저 묻는다 (스포일러)
+          if (res.result.actionCode === 'PLAY_SUMMARY' && videoTimeMs > 0) {
+            push({
+              key: `cmd-${chatLogId}`,
+              kind: 'command',
+              chatLogId,
+              videoTimeMs,
+              text: `"${utterance}" → ${SUMMARY_OFFER}`,
+              targetMs: null,
+            })
+            setOffer({ kind: 'summary', chatLogId, videoTimeMs })
+            c.announce(`${SUMMARY_OFFER} 들으려면 '네', 아니면 '아니요'라고 말하거나 적어 주세요.`)
+            c.focusInput()
+            return
+          }
           const done = c.runAction(res.result.actionCode)
           push({
             key: `cmd-${chatLogId}`,
@@ -361,15 +393,27 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
       const reply = asked ? answerToOffer(utterance) : null
       if (asked && reply === 'no') {
         push({
-          key: `cmd-${asked.chatLogId}-future`,
+          key: `cmd-${asked.chatLogId}-${asked.kind}`,
           kind: 'command',
           chatLogId: asked.chatLogId,
           videoTimeMs: asked.videoTimeMs,
-          text: `"${utterance}" → 뒤 내용은 듣지 않았어요`,
+          text: `"${utterance}" → ${asked.kind === 'summary' ? '요약은 듣지 않았어요' : '뒤 내용은 듣지 않았어요'}`,
           targetMs: null,
         })
         c.announce('알겠어요. 입력칸에 있어요.')
         c.focusInput()
+        return
+      }
+      if (asked?.kind === 'summary' && reply === 'yes') {
+        push({
+          key: `cmd-${asked.chatLogId}-summary`,
+          kind: 'command',
+          chatLogId: asked.chatLogId,
+          videoTimeMs: asked.videoTimeMs,
+          text: `"${utterance}" → 요약을 들었어요`,
+          targetMs: null,
+        })
+        c.runAction('PLAY_SUMMARY')
         return
       }
       setBusy(true)

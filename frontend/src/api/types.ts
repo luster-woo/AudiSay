@@ -620,7 +620,13 @@ export type ChatMessageResult = {
   | { intent: 'SEEK_TIME'; result: { targetMs: number } }
   | {
       intent: 'SEEK_SCENE'
-      result: { targetMs: number | null; chapterId: number | null; candidates: SceneCandidate[] }
+      result: {
+        targetMs: number | null
+        chapterId: number | null
+        candidates: SceneCandidate[]
+        /** 후보가 없을 때 읽어 줄 말 ("못 찾았어요" / "시간이 오래 걸려요" 등) */
+        message?: string | null
+      }
     }
   | {
       intent: 'SETTING'
@@ -666,6 +672,8 @@ export interface ChatHistoryItem {
   videoTimeMs: number | null
   targetMs: number | null
   answerText: string | null
+  /** 답변 intent 인데 null 이면 답을 끝까지 받지 못한 것 (실패·취소). answerText 는 받은 데까지 */
+  answerSource?: 'STORED' | 'UNANSWERABLE' | 'FUTURE' | null
   createdAt: string
 }
 

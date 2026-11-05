@@ -2,6 +2,7 @@ import { request } from './client'
 import type {
   AdminReport,
   AiUsageStats,
+  ChatStats,
   AdminUser,
   LineAudioResult,
   LineUpdateResult,
@@ -76,4 +77,7 @@ export const adminApi = {
   /** 기간(KST 날짜, 양끝 포함, 최대 92일) 안의 AI 호출·토큰·크레딧 통계 */
   aiUsage: (from: string, to: string) =>
     request<AiUsageStats>({ url: '/admin/stats/ai-usage', params: { from, to } }),
+  /** 기간(KST 날짜, 양끝 포함, 최대 92일) 안의 챗봇 입력·답변 품질 통계 */
+  chatStats: (from: string, to: string) =>
+    request<ChatStats>({ url: '/admin/stats/chat', params: { from, to } }),
 }

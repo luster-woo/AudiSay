@@ -6,6 +6,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Audisay - 시각장애인을 위한 화면해설 플레이어" />
     <title>AudiSay</title>
+    <!-- 새로고침 때 랜딩(남색)이 그려지기 전 밝은 기본 바탕이 번쩍이지 않게, CSS·JS보다 먼저 바탕을 칠한다. LandingPage 가 떠날 때 표시를 지운다 -->
+    <style>
+      html[data-page='landing'],
+      html[data-page='landing'] body {
+        background-color: #172a46;
+      }
+    </style>
+    <script>
+      if (location.pathname === '/landing') document.documentElement.dataset.page = 'landing'
+    </script>
   </head>
   <body>
     <div id="root"></div>

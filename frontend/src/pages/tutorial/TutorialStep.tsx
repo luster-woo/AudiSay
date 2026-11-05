@@ -71,25 +71,36 @@ export function TutorialStep({ step }: { step: number }) {
           <Practice done={done} onDone={markDone} />
         </section>
 
-        <div className="mt-8 flex flex-wrap gap-3">
+        {/* 버튼 셋은 같은 폭 (가장 긴 '사용법 마치고 시작하기'도 들어가게 여백을 줄였다) */}
+        <div className="mt-8 grid gap-3 sm:grid-cols-3">
           {last ? (
-            <Button variant="accent" size="lg" onClick={finish}>
+            <Button variant="accent" size="lg" onClick={finish} className="w-full px-4!">
               {data.next}
             </Button>
           ) : (
-            <ButtonLink to={`/tutorial/${step + 1}`} variant="accent" size="lg">
+            <ButtonLink
+              to={`/tutorial/${step + 1}`}
+              variant="accent"
+              size="lg"
+              className="w-full px-4!"
+            >
               {data.next}
             </ButtonLink>
           )}
-          <Button variant="secondary" size="lg" onClick={() => announce(data.guide)}>
+          <Button
+            variant="secondary"
+            size="lg"
+            onClick={() => announce(data.guide)}
+            className="w-full px-4!"
+          >
             다시 듣기
           </Button>
           {last ? (
-            <ButtonLink to="/tutorial/1" size="lg">
+            <ButtonLink to="/tutorial/1" size="lg" className="w-full px-4!">
               처음부터 다시 듣기
             </ButtonLink>
           ) : (
-            <Button variant="secondary" size="lg" onClick={finish}>
+            <Button variant="secondary" size="lg" onClick={finish} className="w-full px-4!">
               건너뛰고 시작하기
             </Button>
           )}

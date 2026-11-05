@@ -87,7 +87,6 @@ export function AskPractice({ done, onDone }: { done: boolean; onDone: () => voi
         <input
           ref={inputRef}
           aria-label="연습 질문"
-          placeholder="예: 지금 몇 분이야?"
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           className="min-h-touch min-w-0 flex-1 rounded-md border-2 border-line bg-paper px-4 text-lg"

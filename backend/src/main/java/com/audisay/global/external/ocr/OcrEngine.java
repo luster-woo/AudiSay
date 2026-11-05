@@ -31,25 +31,37 @@ public class OcrEngine implements DisposableBean {
     }
 
     /**
-     * 점수가 min-score 이상인 글자 줄(위에서 아래, 같은 줄은 왼쪽부터).
+     * 서류 파일을 이미지로 바꿔 점수가 min-score 이상인 글자 줄을 읽는다(위에서 아래, 같은 줄은 왼쪽부터).
+     * 이미지 디코딩도 동시 수 제한 안에서 한다(큰 이미지 여러 장이 한꺼번에 메모리를 잡지 않게).
      *
-     * @throws OcrException 모델 로드·추론 실패, 대기 시간 초과(ENGINE)
+     * @throws OcrException 대기 시간 초과(BUSY), 이미지로 못 읽음(UNREADABLE_INPUT), 모델 로드·추론 실패(ENGINE)
      */
-    public List<OcrLine> read(OcrImage image) {
+    public List<OcrLine> read(byte[] document, String contentType) {
         acquire();
         Timer.Sample sample = Timer.start(meterRegistry);
         String result = "error";
         try {
-            List<OcrLine> lines = pipeline().read(image).stream()
-                    .filter(line -> line.score() >= properties.minScore())
-                    .toList();
+            List<OcrLine> lines = read(OcrImage.decode(document, contentType));
             result = "ok";
             return lines;
-        } catch (OrtException e) {
-            throw new OcrException(OcrException.Kind.ENGINE, "OCR 실행에 실패했습니다.", e);
+        } catch (OcrException e) {
+            if (e.kind() == OcrException.Kind.UNREADABLE_INPUT) {
+                result = "unreadable";
+            }
+            throw e;
         } finally {
             sample.stop(meterRegistry.timer("audisay.ocr.read", "result", result));
             permits.release();
+        }
+    }
+
+    private List<OcrLine> read(OcrImage image) {
+        try {
+            return pipeline().read(image).stream()
+                    .filter(line -> line.score() >= properties.minScore())
+                    .toList();
+        } catch (OrtException e) {
+            throw new OcrException(OcrException.Kind.ENGINE, "OCR 실행에 실패했습니다.", e);
         }
     }
 
@@ -57,11 +69,11 @@ public class OcrEngine implements DisposableBean {
         try {
             if (!permits.tryAcquire(properties.waitTimeout().toMillis(), TimeUnit.MILLISECONDS)) {
                 meterRegistry.counter("audisay.ocr.busy").increment();
-                throw new OcrException(OcrException.Kind.ENGINE, "OCR 대기 시간이 초과되었습니다.");
+                throw new OcrException(OcrException.Kind.BUSY, "OCR 대기 시간이 초과되었습니다.");
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new OcrException(OcrException.Kind.ENGINE, "OCR 대기 중 중단되었습니다.", e);
+            throw new OcrException(OcrException.Kind.BUSY, "OCR 대기 중 중단되었습니다.", e);
         }
     }
 

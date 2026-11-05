@@ -107,7 +107,7 @@ audisay:
     min-score: 0.6                    # 이 점수 미만인 줄은 버림(H200 /ocr와 같음)
     threads: 2                        # OCR 한 번에 쓰는 CPU 스레드
     max-concurrent: 1                 # 동시에 돌리는 OCR 수(한 장 1초 안팎, 인증은 드물어 1개로 최대 메모리를 줄임). 넘으면 wait-timeout까지 기다림
-    wait-timeout: 10s
+    wait-timeout: 5s                  # 넘으면 승인하지 않고 USER_008(잠시 뒤 다시). FE 요청 시간 제한(15초) 안에 업로드·OCR까지 끝나게
     optimization-level: ALL           # ALL → BASIC → NONE. 모델 로드·첫 추론이 실패하면 자동으로 낮춤
 
   verification:

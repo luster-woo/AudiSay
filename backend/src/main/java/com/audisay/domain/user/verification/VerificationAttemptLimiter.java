@@ -29,7 +29,7 @@ public class VerificationAttemptLimiter {
     private final MeterRegistry meterRegistry;
 
     public void acquire(Long userId) {
-        String key = "user:verify:attempt:" + userId + ":" + LocalDate.now(KST);
+        String key = key(userId);
         Long count;
         try {
             count = redisTemplate.opsForValue().increment(key);
@@ -46,5 +46,21 @@ public class VerificationAttemptLimiter {
             meterRegistry.counter("audisay.verification.rate_limited").increment();
             throw new BusinessException(ErrorCode.VERIFICATION_ATTEMPT_LIMIT);
         }
+    }
+
+    /** 우리 쪽 사정(OCR 대기 초과)으로 확인하지 못한 시도는 되돌린다. 키가 없으면(날짜가 바뀜·Redis 장애) 건드리지 않는다 */
+    public void release(Long userId) {
+        String key = key(userId);
+        try {
+            if (Boolean.TRUE.equals(redisTemplate.hasKey(key))) {
+                redisTemplate.opsForValue().decrement(key);
+            }
+        } catch (DataAccessException e) {
+            log.warn("인증 시도 횟수를 되돌리지 못했습니다 key={}: {}", key, e.getMessage());
+        }
+    }
+
+    private static String key(Long userId) {
+        return "user:verify:attempt:" + userId + ":" + LocalDate.now(KST);
     }
 }

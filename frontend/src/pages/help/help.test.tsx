@@ -60,7 +60,7 @@ test('단축키로 진입하고 튜토리얼은 두 탭 뒤의 이동 링크로 
   expect(await axe(container)).toHaveNoViolations()
 })
 
-test('상위 탭과 분류 탭을 화살표로 바꾸어도 초점이 제목으로 튀지 않는다', async () => {
+test('상위 탭을 화살표로 바꾸어도 초점이 제목으로 튀지 않는다', async () => {
   renderRoute('/help')
   const first = await screen.findByRole('tab', { name: '단축키' })
   await waitFor(() => expect(screen.getByRole('heading', { level: 1 })).toHaveFocus())
@@ -71,37 +71,33 @@ test('상위 탭과 분류 탭을 화살표로 바꾸어도 초점이 제목으�
   expect(screen.getByRole('link', { name: '튜토리얼 이동' })).toHaveFocus()
   await userEvent.keyboard('{Shift>}{Tab}{/Shift}{ArrowLeft}')
   expect(screen.getByRole('tab', { name: '단축키' })).toHaveFocus()
-  await userEvent.click(screen.getByRole('tab', { name: '어디서나' }))
-  await userEvent.keyboard('{End}')
-  const last = screen.getByRole('tab', { name: '질문과 설정' })
-  expect(last).toHaveFocus()
-  expect(screen.getByRole('table', { name: '질문과 설정 단축키' })).toBeVisible()
-  await userEvent.keyboard('{Home}')
-  expect(screen.getByRole('tab', { name: '어디서나' })).toHaveFocus()
 })
 
-test('단축키 3개 분류는 확정된 와이어프레임 문구로 표시한다 (axe)', async () => {
+test('단축키는 분류 탭 없이 어디서나 3개, 영상 볼 때 8개를 한 화면에 보여 준다 (axe)', async () => {
   const { container } = renderRoute('/help')
   await openTab('단축키')
-  const table = screen.getByRole('table', { name: '어디서나 단축키' })
-  expect(within(table).getAllByRole('row')).toHaveLength(5)
-  expect(within(table).getByText('Alt+Shift+U')).toBeVisible()
+  expect(screen.queryByRole('tab', { name: '어디서나' })).not.toBeInTheDocument()
+  const everywhere = screen.getByRole('list', { name: '어디서나' })
+  const watch = screen.getByRole('list', { name: '영상 볼 때' })
+  expect(within(everywhere).getAllByRole('listitem')).toHaveLength(3)
+  expect(within(watch).getAllByRole('listitem')).toHaveLength(8)
+  for (const key of ['H', 'R', '/']) expect(within(everywhere).getByText(key)).toBeVisible()
+  for (const key of ['K', 'J', 'L', 'P', 'D', '1', '2', '3', 'Q', 'S', 'X']) {
+    expect(within(watch).getByText(key)).toBeVisible()
+  }
+  expect(watch).toHaveTextContent('재생 설정 열기')
+  expect(watch).toHaveTextContent('지금 해설 문장 신고')
+  // 뺀 키는 보이지 않는다
+  for (const key of ['U', 'V', 'C', 'N', 'G', 'F']) {
+    expect(within(container).queryByText(key)).not.toBeInTheDocument()
+  }
   await userEvent.keyboard('{Alt>}{Shift>}/{/Shift}{/Alt}')
   const dialog = screen.getByRole('dialog', { name: '단축키 안내' })
-  for (const key of ['Alt+Shift+R', 'Alt+Shift+/', 'Alt+Shift+H']) {
-    expect(within(table).getByText(key)).toBeVisible()
-    expect(within(dialog).getByText(key)).toBeVisible()
+  for (const combo of ['Alt+Shift+R', 'Alt+Shift+/', 'Alt+Shift+H']) {
+    expect(within(dialog).getByText(combo)).toBeVisible()
   }
   fireEvent(dialog, new Event('cancel', { bubbles: true, cancelable: true }))
-  await openTab('재생과 이동')
-  expect(screen.getByRole('table')).toHaveTextContent('Alt+Shift+J / L')
-  expect(within(screen.getByRole('table')).getAllByRole('row')).toHaveLength(5)
   expect(await axe(container)).toHaveNoViolations()
-  await openTab('질문과 설정')
-  expect(screen.getByRole('table')).toHaveTextContent('Alt+Shift+S')
-  expect(screen.getByRole('table')).toHaveTextContent('재생 설정 열기')
-  expect(screen.getByRole('table')).toHaveTextContent('Alt+Shift+Q / V')
-  expect(within(screen.getByRole('table')).getAllByRole('row')).toHaveLength(6)
 })
 
 test('음성 안내는 와이어프레임의 3단계 설명과 명령 16개(홈 음성 검색 포함)를 제공한다 (axe)', async () => {
@@ -109,7 +105,7 @@ test('음성 안내는 와이어프레임의 3단계 설명과 명령 16개(홈 
   await openTab('말로 하는 명령')
   expect(
     screen.getByRole('heading', {
-      name: '일 단계. 알트와 시프트를 누른 상태에서 브이 키를 누르세요.',
+      name: '일 단계. 알트와 시프트를 누른 상태에서 큐 키를 누르세요.',
     }),
   ).toBeVisible()
   expect(screen.getByText('원하는 요청을 말해 주세요.')).toBeVisible()
@@ -143,32 +139,23 @@ test('표시는 유지하면서 단축키와 안내를 기호 대신 한국어 �
   renderRoute('/help')
   await openTab('단축키')
   expect(
-    screen.getByText('Alt+Shift+/를 누르면 현재 화면의 단축키를 읽어 드려요.'),
+    screen.getByText('Alt+Shift+/를 누르면 지금 화면에서 쓸 수 있는 단축키를 알려 드려요.'),
   ).toHaveAttribute('aria-hidden', 'true')
-  expect(screen.getByText('키를 함께 누르세요. 예: Alt+Shift+H')).toHaveAttribute(
-    'aria-hidden',
-    'true',
-  )
+  const home = within(screen.getByRole('list', { name: '어디서나' })).getAllByRole('listitem')[0]
+  expect(home).toHaveTextContent('알트와 시프트를 누른 상태에서 에이치 키를 누르세요.')
+  expect(within(home).getByText('H').closest('[aria-hidden="true"]')).not.toBeNull()
 
-  const homeCommand = within(screen.getByRole('table')).getByRole('rowheader', {
-    name: '알트와 시프트를 누른 상태에서 에이치 키를 누르세요.',
-  })
-  expect(within(homeCommand).getByText('Alt+Shift+H')).toBeVisible()
-  expect(within(homeCommand).getByText('Alt+Shift+H')).toHaveAttribute('aria-hidden', 'true')
-  expect(
-    within(screen.getByRole('table')).queryByRole('rowheader', {
-      name: 'Alt+Shift+H',
-    }),
-  ).not.toBeInTheDocument()
-
-  for (const category of ['어디서나', '재생과 이동', '질문과 설정']) {
-    await openTab(category)
-    const table = screen.getByRole('table')
-    for (const cell of within(table).getAllByRole('rowheader')) {
-      expect(cell).toHaveAccessibleName(/^알트와 시프트를 누른 상태에서 [가-힣 ]+ 키를 누르세요\.$/)
-    }
-    for (const cell of within(table).getAllByRole('cell')) {
-      expect(cell).not.toHaveAccessibleName(/[+/~·]/)
+  for (const name of ['어디서나', '영상 볼 때']) {
+    for (const item of within(screen.getByRole('list', { name })).getAllByRole('listitem')) {
+      const spoken = [...item.querySelectorAll('.sr-only')].map((el) => el.textContent)
+      expect(spoken[0]).toMatch(/^알트와 시프트를 누른 상태에서 [가-힣 ]+ 키를 누르세요\.$/)
+      for (const text of spoken) expect(text).not.toMatch(/[+/~·]/)
+      const desc = item.querySelector('.help-shortcut-desc')!
+      const readable = [...desc.childNodes]
+        .filter((n) => !(n instanceof HTMLElement && n.getAttribute('aria-hidden') === 'true'))
+        .map((n) => n.textContent)
+        .join('')
+      expect(readable).not.toMatch(/[+/~·]/)
     }
   }
 })
@@ -176,7 +163,7 @@ test('표시는 유지하면서 단축키와 안내를 기호 대신 한국어 �
 test('음성 입력 단계와 모든 음성 명령 표는 따옴표와 슬래시를 중복 낭독하지 않는다', async () => {
   renderRoute('/help')
   await openTab('말로 하는 명령')
-  expect(screen.getByText('① Alt+Shift+V 누르기')).toHaveAttribute('aria-hidden', 'true')
+  expect(screen.getByText('① Alt+Shift+Q 누르기')).toHaveAttribute('aria-hidden', 'true')
   expect(screen.getByRole('heading', { name: '이 단계. 띵 소리가 나면 말하세요.' })).toBeVisible()
   expect(screen.getByRole('heading', { name: '삼 단계. 들은 내용을 확인하세요.' })).toBeVisible()
   expect(screen.getByText('내용이 틀리면 ‘아니’라고 말해 주세요.')).toHaveAttribute(

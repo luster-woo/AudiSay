@@ -360,7 +360,11 @@ function SeekResult({ data }: { data: ChatStats }) {
           total={s.total}
           parts={[
             { label: '키워드로 찾음', count: s.keyword, color: 'dark' },
-            { label: 'AI가 골라 찾음', count: s.llm, color: 'mid' },
+            // rag 는 BE가 주는 경우에만 칸을 보여 준다 (없을 때 0건으로 보이면 오해할 수 있음)
+            ...(s.rag != null
+              ? [{ label: '의미 검색(RAG)으로 찾음', count: s.rag, color: 'mid' as const }]
+              : []),
+            { label: 'AI가 골라 찾음', count: s.llm, color: s.rag != null ? 'light' : 'mid' },
             { label: '못 찾음', count: s.notFound, color: 'warn' },
           ]}
         />

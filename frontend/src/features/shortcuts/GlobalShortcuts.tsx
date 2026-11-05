@@ -1,5 +1,5 @@
 import { useAnnouncer } from '@/features/announcer/context'
-import { useShortcut } from './context'
+import { useShortcutEntry } from './context'
 import { useShortcutHelp } from './useShortcutHelp'
 import { ShortcutHelpDialog } from './ShortcutHelpDialog'
 
@@ -8,8 +8,9 @@ export function GlobalShortcuts() {
   const { repeat } = useAnnouncer()
   const openHelp = useShortcutHelp()
 
-  useShortcut('Alt+Shift+R', repeat, { description: '방금 안내 다시 듣기' })
-  useShortcut('Alt+Shift+/', openHelp, { description: '단축키 안내' })
+  // 다시 듣기는 대화상자 안에서도 쓴다 (창 안내를 놓쳤을 때)
+  useShortcutEntry('repeat', () => repeat(), { allowInDialog: true })
+  useShortcutEntry('help', () => openHelp())
 
   return <ShortcutHelpDialog />
 }

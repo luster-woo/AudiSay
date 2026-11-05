@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/Button'
 import { cn } from '@/components/ui/cn'
 import { useAnnouncer } from '@/features/announcer/context'
 import { useSettings } from '@/features/settings/context'
-import { useShortcut } from '@/features/shortcuts/context'
+import { useShortcutEntry } from '@/features/shortcuts/context'
 import { coerceSetting, settingSpoken } from '@/pages/watch/useAsk'
 import { formatClock } from '@/utils/time'
 import { isYoutubeUrl } from '@/utils/youtube'
@@ -141,10 +141,7 @@ export function SearchBar({
     }
   }, [voice, announce])
 
-  useShortcut('Alt+Shift+Q', () => void startVoice(), {
-    description: '음성 검색',
-    scope: 'user',
-  })
+  useShortcutEntry('voiceSearch', () => void startVoice(), { scope: 'user' })
 
   // 상태가 바뀌면 다음에 누를 버튼으로 포커스를 옮긴다
   useEffect(() => {

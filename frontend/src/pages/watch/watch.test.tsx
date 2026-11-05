@@ -732,3 +732,86 @@ test('영상 안에서 다른 영상을 찾으라고 하면 서버 안내를 읽
   await waitFor(() => expect(band()).toHaveTextContent('다른 영상은 검색 화면에서 찾아 주세요.'))
   expect(router.state.location.pathname).toBe('/watch/15')
 })
+
+const keys = (k: string) => `{Alt>}{Shift>}${k}{/Shift}{/Alt}`
+
+test('시청 화면 단축키: K 재생·멈춤, J/L 이동, P 위치, 1~3 상세도, S 설정, X 신고. 창이 열려 있으면 뒤 화면은 움직이지 않는다', async () => {
+  const user = userEvent.setup()
+  renderRoute('/watch/15')
+  await screen.findByRole('button', { name: '재생' })
+
+  await user.keyboard(keys('K'))
+  expect(controls.play).toHaveBeenCalledTimes(1)
+  await waitFor(() => expect(band()).toHaveTextContent('재생해요.'))
+  act(() => setPlayerState?.({ playing: true, currentMs: T(30) }))
+  await user.keyboard(keys('K'))
+  expect(controls.pause).toHaveBeenCalled()
+
+  // 기본 이동 간격 10초
+  await user.keyboard(keys('L'))
+  expect(controls.seek).toHaveBeenLastCalledWith(T(40))
+  act(() => setPlayerState?.({ currentMs: T(40) }))
+  await user.keyboard(keys('J'))
+  expect(controls.seek).toHaveBeenLastCalledWith(T(30))
+  act(() => setPlayerState?.({ currentMs: T(5) }))
+  await user.keyboard(keys('J'))
+  expect(controls.seek).toHaveBeenLastCalledWith(0)
+
+  act(() => setPlayerState?.({ currentMs: T(48) }))
+  await user.keyboard(keys('P'))
+  await waitFor(() => expect(band()).toHaveTextContent('48초.'))
+
+  await user.keyboard(keys('3'))
+  await waitFor(() =>
+    expect(usersApi.updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ detailLevel: 3 }),
+    ),
+  )
+  await waitFor(() => expect(band()).toHaveTextContent('해설 상세도 3 자세한 해설.'))
+
+  // 한 글자 1/2/3 은 더 이상 상세도를 바꾸지 않는다 (낭독기 제목 이동 키와 겹침)
+  vi.mocked(usersApi.updateSettings).mockClear()
+  screen.getByRole('button', { name: /^(재생|일시정지)$/ }).focus()
+  await user.keyboard('1')
+  expect(usersApi.updateSettings).not.toHaveBeenCalled()
+
+  await user.keyboard(keys('S'))
+  const settings = await screen.findByRole('dialog', { name: '재생 설정' })
+  vi.mocked(controls.play).mockClear()
+  await user.keyboard(keys('K'))
+  expect(controls.play).not.toHaveBeenCalled()
+  expect(controls.pause).toHaveBeenCalledTimes(1)
+  await user.click(within(settings).getByRole('button', { name: '닫기' }))
+  await waitFor(() => expect(settings).not.toHaveAttribute('open'))
+
+  await user.keyboard(keys('X'))
+  expect(await screen.findByRole('dialog', { name: '이 문장 신고' })).toBeInTheDocument()
+})
+
+test('Alt+Shift+/ 안내 창은 시청 화면에서 쓰는 키 8줄과 어디서나 3줄을 보여 준다', async () => {
+  const user = userEvent.setup()
+  renderRoute('/watch/15')
+  await screen.findByRole('button', { name: '재생' })
+  await user.keyboard(keys('/'))
+  const dialog = await screen.findByRole('dialog', { name: '단축키 안내' })
+  const desc = (name: string) =>
+    within(within(dialog).getByRole('list', { name }))
+      .getAllByRole('listitem')
+      .map((li) => li.querySelector('.shortcut-dialog-desc')?.textContent)
+  expect(desc('이 화면에서')).toEqual([
+    '재생 / 일시정지',
+    '뒤로 / 앞으로 이동',
+    '지금 재생 위치 듣기',
+    '지금 장면 설명 듣기',
+    '해설 짧게 / 기본 / 자세히',
+    '질문하기',
+    '재생 설정 열기',
+    '지금 해설 문장 신고',
+  ])
+  expect(desc('어디서나')).toEqual([
+    '홈으로 가기',
+    '방금 안내 다시 듣기',
+    '지금 화면의 단축키 보기',
+  ])
+  expect(dialog).toHaveAccessibleDescription(/단축키 11개예요/)
+})

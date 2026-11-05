@@ -7,9 +7,9 @@ import { voiceCategories, type VoiceCategory } from './helpContent'
 
 const steps = [
   {
-    title: 'Alt+Shift+V 누르기',
+    title: 'Alt+Shift+Q 누르기',
     description: '음성 입력을 시작해요.',
-    spokenTitle: '일 단계. 알트와 시프트를 누른 상태에서 브이 키를 누르세요.',
+    spokenTitle: '일 단계. 알트와 시프트를 누른 상태에서 큐 키를 누르세요.',
     spokenDescription: '음성 입력을 시작해요.',
   },
   {

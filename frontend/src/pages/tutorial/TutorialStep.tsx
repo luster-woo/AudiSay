@@ -57,7 +57,8 @@ export function TutorialStep({ step }: { step: number }) {
             지금 읽는 안내
           </h2>
           {/* 글자는 크게, 줄은 단어 단위로 바꾼다. 상자는 글자 양에 맞춰 늘어난다 */}
-          <p className="mt-3 text-[1.625rem] leading-relaxed font-bold break-keep text-yellow [overflow-wrap:anywhere]">
+          {/* 고대비에서는 상자가 연노랑(navy-deep)이 되어 노란 글자가 안 보이므로 검정 글자 */}
+          <p className="mt-3 text-[1.625rem] leading-relaxed font-bold break-keep text-yellow [overflow-wrap:anywhere] hc:text-black">
             {data.guide}
           </p>
         </section>

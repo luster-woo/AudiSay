@@ -6,9 +6,9 @@ import { usersApi } from '@/api/users'
 import { videosApi } from '@/api/videos'
 import { queryKeys } from '@/api/queryKeys'
 import { toUserMessage } from '@/api/errors'
+import type { Paged } from '@/api/types'
 import { Button } from '@/components/ui/Button'
 import { ButtonLink } from '@/components/ui/ButtonLink'
-import { PageNumbers } from '@/components/ui/PageNumbers'
 import { Tabs } from '@/components/ui/Tabs'
 import { useAnnouncer } from '@/features/announcer/context'
 import { usePageEntry } from '@/features/page/usePageEntry'
@@ -17,31 +17,57 @@ import { VideoCard } from '@/features/video/VideoCard'
 import { FavoriteVideoCard } from './FavoriteVideoCard'
 import { MyVideoCard } from './MyVideoCard'
 
-const PAGE_SIZE = 4
+/** 한 번에 더 보여 줄 개수 (홈과 같다) */
+const STEP = 10
+/** 서버가 한 번에 주는 최대 개수 (PageParams size 최대 50) */
+const MAX_SIZE = 50
 type VideoTab = 'requested' | 'favorites'
 
-/** 내 영상·즐겨찾기. 목록은 각각의 서버 페이지를 사용하고 현재 탭·페이지를 URL에 남긴다. */
+/** 앞에서부터 shown 개를 받는다. 50개를 넘으면 50개씩 나눠 받아 잇고, videoId 로 중복을 거른다 */
+async function fetchShown<T extends { videoId: number }>(
+  shown: number,
+  load: (page: number, size: number) => Promise<Paged<T>>,
+): Promise<Paged<T>> {
+  const chunks = Math.max(1, Math.ceil(shown / MAX_SIZE))
+  const size = chunks === 1 ? shown : MAX_SIZE
+  const pages = await Promise.all(Array.from({ length: chunks }, (_, page) => load(page, size)))
+  const seen = new Set<number>()
+  const content = pages
+    .flatMap((p) => p.content)
+    .filter((v) => !seen.has(v.videoId) && seen.add(v.videoId))
+    .slice(0, shown)
+  return { content, page: pages[pages.length - 1].page }
+}
+
+/**
+ * 내 영상·즐겨찾기. 홈과 같이 한 열 목록으로 10개씩 보여 주고 '더 보기'로 이어 붙인다.
+ * 지금 탭과 불러온 개수는 주소(?tab=&shown=)에 남겨, 영상을 보고 뒤로 오면 그대로 돌아온다.
+ */
 export default function MyVideosPage() {
   const [params, setParams] = useSearchParams()
   const tab: VideoTab = params.get('tab') === 'favorites' ? 'favorites' : 'requested'
-  const requestedPage = Number(params.get('page') ?? 0)
-  const page = Number.isSafeInteger(requestedPage) && requestedPage >= 0 ? requestedPage : 0
+  const requestedShown = Number(params.get('shown') ?? STEP)
+  const shown =
+    Number.isSafeInteger(requestedShown) && requestedShown >= STEP ? requestedShown : STEP
   const headingRef = useRef<HTMLHeadingElement>(null)
   const listRef = useRef<HTMLHeadingElement>(null)
-  const pendingFocus = useRef<'page' | 'tab' | null>(null)
+  const itemsRef = useRef<HTMLOListElement>(null)
+  const pendingFocus = useRef<'tab' | null>(null)
+  /** 더 보기로 새로 붙을 첫 영상 순번 */
+  const focusFrom = useRef<number | null>(null)
   const previousStatuses = useRef(new Map<number, string>())
   const { announce } = useAnnouncer()
 
   const mine = useQuery({
-    queryKey: queryKeys.myVideos(tab === 'requested' ? page : 0, PAGE_SIZE),
-    queryFn: () => usersApi.myVideos(tab === 'requested' ? page : 0, PAGE_SIZE),
+    queryKey: queryKeys.myVideos(0, tab === 'requested' ? shown : STEP),
+    queryFn: () => fetchShown(tab === 'requested' ? shown : STEP, usersApi.myVideos),
     placeholderData: keepPreviousData,
     refetchInterval: (q) =>
       q.state.data?.content.some((v) => v.descriptionStatus === 'GENERATING') ? 5000 : false,
   })
   const favorites = useQuery({
-    queryKey: queryKeys.favorites(tab === 'favorites' ? page : 0, PAGE_SIZE),
-    queryFn: () => favoritesApi.list(tab === 'favorites' ? page : 0, PAGE_SIZE),
+    queryKey: queryKeys.favorites(0, tab === 'favorites' ? shown : STEP),
+    queryFn: () => fetchShown(tab === 'favorites' ? shown : STEP, favoritesApi.list),
     placeholderData: keepPreviousData,
   })
   const active = tab === 'requested' ? mine : favorites
@@ -69,22 +95,29 @@ export default function MyVideosPage() {
     focusRef: headingRef,
   })
 
+  // 탭을 바꾼 뒤: 개수를 읽어 준다 (포커스는 탭에 둔다)
   useEffect(() => {
-    if (
-      !pendingFocus.current ||
-      active.isFetching ||
-      active.isPlaceholderData ||
-      total === undefined
-    )
-      return
-    if (pendingFocus.current === 'page') listRef.current?.focus({ preventScroll: true })
+    if (!pendingFocus.current || active.isPlaceholderData || total === undefined) return
     pendingFocus.current = null
-    const start = total === 0 ? 0 : page * PAGE_SIZE + 1
-    const end = Math.min((page + 1) * PAGE_SIZE, total)
+    announce(`${label} ${total}개.${total === 0 ? ' 아직 영상이 없어요.' : ''}`)
+  }, [active.isPlaceholderData, total, label, announce])
+
+  // 더 보기 뒤: 새로 붙은 첫 영상 제목으로 포커스를 옮기고 몇 개 불러왔는지 알린다
+  useEffect(() => {
+    const from = focusFrom.current
+    if (from === null || active.isPlaceholderData || !data) return
+    focusFrom.current = null
+    const added = data.content.length - from
+    if (added <= 0) {
+      announce('더 불러올 영상이 없어요.')
+      return
+    }
+    itemsRef.current?.querySelectorAll<HTMLElement>(':scope > li h3')[from]?.focus()
+    const done = data.content.length >= data.page.totalElements
     announce(
-      `${label} ${total}개. ${total === 0 ? '아직 영상이 없어요.' : `${start}번째부터 ${end}번째까지 보여 드려요.`}`,
+      `${added}개 더 불러왔어요. 전체 ${data.page.totalElements}개 중 ${data.content.length}개.${done ? ' 모든 영상을 불러왔어요.' : ''}`,
     )
-  }, [active.isFetching, active.isPlaceholderData, total, page, label, announce])
+  }, [data, active.isPlaceholderData, announce])
 
   useEffect(() => {
     if (active.isError)
@@ -93,32 +126,20 @@ export default function MyVideosPage() {
       })
   }, [active.isError, active.error, label, announce])
 
-  // 즐겨찾기 마지막 페이지의 마지막 항목이 삭제되거나 오래된 URL로 들어온 경우.
-  useEffect(() => {
-    if (
-      !data ||
-      active.isPlaceholderData ||
-      active.isFetching ||
-      page === 0 ||
-      page < data.page.totalPages
-    )
-      return
-    pendingFocus.current = 'page'
-    const next = new URLSearchParams(params)
-    next.set('page', String(Math.max(0, data.page.totalPages - 1)))
-    setParams(next, { replace: true })
-  }, [data, active.isPlaceholderData, active.isFetching, page, params, setParams])
-
   const changeTab = (next: VideoTab) => {
     if (next === tab) return
     pendingFocus.current = 'tab'
     setParams(next === 'favorites' ? { tab: next } : {})
   }
-  const changePage = (next: number) => {
-    if (active.isFetching) return
-    pendingFocus.current = 'page'
-    setParams({ ...(tab === 'favorites' ? { tab } : {}), page: String(next) })
+  const loadMore = () => {
+    if (!data || active.isPlaceholderData) return
+    focusFrom.current = data.content.length
+    const next = new URLSearchParams(params)
+    next.set('shown', String(shown + STEP))
+    // 쌓지 않고 바꾼다: 뒤로 가기는 이전 화면으로, 다시 오면 이 상태로
+    setParams(next, { replace: true, preventScrollReset: true })
   }
+  const remaining = data ? Math.max(0, data.page.totalElements - data.content.length) : 0
 
   const recommendations = useQuery({
     queryKey: queryKeys.videos({ page: 0, size: 3 }),
@@ -159,10 +180,7 @@ export default function MyVideosPage() {
         )}
         {!active.isError && data && data.content.length > 0 && (
           <>
-            <ul
-              className="mt-6 grid items-stretch gap-6 md:grid-cols-2 xl:grid-cols-4"
-              aria-label={label}
-            >
+            <ol ref={itemsRef} className="mt-6 space-y-3" aria-label={label}>
               {tab === 'requested'
                 ? mine.data?.content.map((video) => (
                     <li key={video.videoId} className="min-w-0">
@@ -177,15 +195,18 @@ export default function MyVideosPage() {
                       />
                     </li>
                   ))}
-            </ul>
-            {/* 홈과 같은 목록 아래 가운데 '이전 1 2 3 4 5 다음' */}
-            <PageNumbers
-              page={data.page.number}
-              totalPages={data.page.totalPages}
-              onChange={changePage}
-              size="xl"
-              className="mt-6"
-            />
+            </ol>
+            {remaining > 0 && (
+              <Button
+                variant="secondary"
+                size="xl"
+                onClick={loadMore}
+                disabled={active.isPlaceholderData}
+                className="mt-4 w-full"
+              >
+                {active.isPlaceholderData ? '불러오는 중' : `더 보기 (${remaining}개 남음)`}
+              </Button>
+            )}
           </>
         )}
         {!active.isError && data && data.page.totalElements === 0 && (

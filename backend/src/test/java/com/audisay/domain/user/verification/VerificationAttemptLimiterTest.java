@@ -16,6 +16,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -50,6 +51,16 @@ class VerificationAttemptLimiterTest {
         limiter.acquire(2L);
 
         verify(redisTemplate).expire(startsWith("user:verify:attempt:2:"), eq(Duration.ofDays(2)));
+    }
+
+    @Test
+    void 되돌리기는_오늘_키가_있을_때만_하나_뺀다() {
+        when(redisTemplate.hasKey(startsWith("user:verify:attempt:2:"))).thenReturn(true, false);
+
+        limiter.release(2L);
+        limiter.release(2L);
+
+        verify(values, times(1)).decrement(startsWith("user:verify:attempt:2:"));
     }
 
     @Test

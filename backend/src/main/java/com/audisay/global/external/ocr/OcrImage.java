@@ -7,9 +7,13 @@ import org.apache.pdfbox.rendering.ImageType;
 import org.apache.pdfbox.rendering.PDFRenderer;
 
 import javax.imageio.ImageIO;
+import javax.imageio.ImageReadParam;
+import javax.imageio.ImageReader;
+import javax.imageio.stream.ImageInputStream;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.util.Iterator;
 
 /**
  * OCR용 RGB 이미지(메모리에만). 크기 바꾸기·자르기는 OpenCV INTER_LINEAR와 같은 방식(픽셀 중심 기준, 가장자리 복제).
@@ -17,6 +21,10 @@ import java.io.IOException;
 public final class OcrImage {
     /** PaddleOCR max_side_limit와 같다 */
     static final int MAX_SIDE = 4000;
+    /** 이보다 화소가 많은 이미지는 읽지 않는다(1억 800만 화소 폰 사진까지). 작은 파일로 수 GB를 잡는 압축 폭탄 방어 */
+    static final long MAX_PIXELS = 120_000_000L;
+    /** 디코딩 때 이 화소 수 이하가 되게 건너뛰며 읽는다(4000 × 4000) */
+    static final long DECODE_PIXELS = 16_000_000L;
     private static final float PDF_DPI = 200f;
 
     private final int width;
@@ -42,16 +50,43 @@ public final class OcrImage {
         if ("application/pdf".equalsIgnoreCase(contentType)) {
             return of(renderPdf(bytes), 1);
         }
-        BufferedImage image;
-        try {
-            image = ImageIO.read(new ByteArrayInputStream(bytes));
+        return of(readImage(bytes), exifOrientation(bytes));
+    }
+
+    /** 머리글로 크기를 먼저 보고, 너무 크면 거절, 크면 건너뛰며 읽는다(디코딩 전에 메모리 상한을 정함) */
+    private static BufferedImage readImage(byte[] bytes) {
+        try (ImageInputStream in = ImageIO.createImageInputStream(new ByteArrayInputStream(bytes))) {
+            Iterator<ImageReader> readers = in == null ? null : ImageIO.getImageReaders(in);
+            if (readers == null || !readers.hasNext()) {
+                throw unreadable(null);
+            }
+            ImageReader reader = readers.next();
+            try {
+                reader.setInput(in, true, true);
+                long width = reader.getWidth(0);
+                long height = reader.getHeight(0);
+                if (width <= 0 || height <= 0 || width * height > MAX_PIXELS) {
+                    throw unreadable(null);
+                }
+                ImageReadParam param = reader.getDefaultReadParam();
+                int step = subsampling(width, height);
+                if (step > 1) {
+                    param.setSourceSubsampling(step, step, 0, 0);
+                }
+                return reader.read(0, param);
+            } finally {
+                reader.dispose();
+            }
+        } catch (OcrException e) {
+            throw e;
         } catch (IOException | RuntimeException e) {
             throw unreadable(e);
         }
-        if (image == null) {
-            throw unreadable(null);
-        }
-        return of(image, exifOrientation(bytes));
+    }
+
+    /** 가로·세로를 몇 칸마다 하나씩 읽을지(1이면 전부). 읽은 화소 수가 DECODE_PIXELS 이하가 된다 */
+    static int subsampling(long width, long height) {
+        return (int) Math.max(1, Math.ceil(Math.sqrt((double) width * height / DECODE_PIXELS)));
     }
 
     static OcrImage of(BufferedImage image, int orientation) {

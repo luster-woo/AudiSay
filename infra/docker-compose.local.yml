@@ -6,7 +6,7 @@ name: audisay-local
 
 services:
   postgres:
-    image: postgres:16
+    image: pgvector/pgvector:pg16-trixie
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-audisay}
       POSTGRES_USER: ${POSTGRES_USER:-audisay}

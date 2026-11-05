@@ -18,6 +18,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 class AnswerPromptTest {
     private final AnswerPrompt prompt = new AnswerPrompt(JsonMapper.builder().build());
 
+    @Test
+    void 줄거리_문장_수는_지난_장면_3개마다_늘고_2에서_5문장() {
+        assertThat(List.of(0, 1, 3, 5, 6, 9, 11, 30)).extracting(AnswerPrompt::recapSentences)
+                .containsExactly(2, 2, 3, 3, 4, 5, 5, 5);
+    }
+
     private final AnswerContext context = new AnswerContext("테슬라 신형 로드스터 공개 행사", "로드스터를 공개했어요.", 280_000,
             List.of(new SceneInfo(237_000, "무대 위로 등장한 로드스터", "문이 위로 열립니다.",
                             List.of(new Narration(240_000, "차가 무대에 섭니다")),

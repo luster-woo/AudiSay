@@ -102,18 +102,21 @@ public class AdminChatStatsService {
     private SeekStat seek(Instant start, Instant end) {
         long keyword = 0;
         long llm = 0;
+        long rag = 0;
         long notFound = 0;
         for (SeekRow row : repository.countSeekSources(start, end)) {
             if ("KEYWORD".equals(row.getSeekSource())) {
                 keyword += row.getCount();
             } else if ("LLM".equals(row.getSeekSource())) {
                 llm += row.getCount();
+            } else if ("RAG".equals(row.getSeekSource())) {
+                rag += row.getCount();
             } else {
                 notFound += row.getCount();
             }
         }
-        long total = keyword + llm + notFound;
-        return new SeekStat(total, keyword, llm, notFound, rate(keyword, total));
+        long total = keyword + llm + rag + notFound;
+        return new SeekStat(total, keyword, llm, rag, notFound, rate(keyword, total));
     }
 
     private static Long roundMs(Double ms) {

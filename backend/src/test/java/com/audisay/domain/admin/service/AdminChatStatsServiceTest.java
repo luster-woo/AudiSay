@@ -61,7 +61,7 @@ class AdminChatStatsServiceTest {
         assertThat(answer.futureChosenRate()).isEqualTo(2.0 / 4);
         assertThat(answer.byIntent()).extracting("intent", "answered", "stored", "unanswerable", "future", "firstAudioP95Ms")
                 .containsExactly(tuple("QUESTION", 20L, 12L, 6L, 2L, 2901L), tuple("SCENE_NOW", 5L, 5L, 0L, 0L, null));
-        assertThat(result.seek()).isEqualTo(new ChatStatsResponse.SeekStat(10, 7, 2, 1, 0.7));
+        assertThat(result.seek()).isEqualTo(new ChatStatsResponse.SeekStat(10, 7, 2, 0, 1, 0.7));
         assertThat(result.recentUnanswered()).extracting("chatLogId", "utterance").containsExactly(tuple(41L, "이 차 가격이 얼마야?"));
     }
 

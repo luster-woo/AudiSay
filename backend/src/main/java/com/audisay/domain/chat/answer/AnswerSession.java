@@ -26,7 +26,7 @@ final class AnswerSession {
     private final Function<String, String> speech;
     private final Executor ttsExecutor;
     private final long startedAt;
-    private final SentenceSplitter splitter = new SentenceSplitter();
+    private SentenceSplitter splitter = new SentenceSplitter();
     private final StringBuilder text = new StringBuilder();
     private CompletableFuture<Void> speaking = CompletableFuture.completedFuture(null);
     private volatile Integer firstAudioMs;
@@ -96,6 +96,15 @@ final class AnswerSession {
         if (!suppressed) {
             last.ifPresent(this::enqueue);
         }
+    }
+
+    /** "자료에 없어요"로 버린 답(보낸 글자 없음) 뒤에 자료를 더해 다시 받는다. 첫 문장은 다시 잡아 둔다 */
+    synchronized void retry() {
+        suppressed = false;
+        holding = true;
+        generated = false;
+        heldDeltas.clear();
+        splitter = new SentenceSplitter();
     }
 
     /** 첫 문장이 "자료에 없어요"였으면 true(그 답은 보내지 않았다) */

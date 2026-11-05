@@ -2,7 +2,7 @@ name: audisay        # 프로젝트 이름 고정 (없으면 컨테이너가 두
 
 services:
   postgres:
-    image: postgres:16
+    image: pgvector/pgvector:pg16-trixie
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}

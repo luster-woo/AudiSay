@@ -155,6 +155,25 @@ class AnswerContextReaderTest {
     }
 
     @Test
+    void 끝나지_않은_장면의_화면_글자도_해설이_이미_읽었으면_바로_하는_답에_넣고_뒤_자료에선_뺀다() {
+        ScreenText read = screenText(60_000, 120_000, "냉동실에서 약 20~30분 정도 굳혀주세요");
+        ScreenText notYet = screenText(60_000, 120_000, "약 170도에서 5분 정도 튀겨 주세요");
+        when(screenTextRepository.findByDescription_IdAndStartMsBetweenOrderByStartMsAsc(DESC, 0, 90_000))
+                .thenReturn(List.of(read, notYet));
+        when(screenTextRepository.findByDescription_IdAndStartMsBetweenOrderByStartMsAsc(DESC, 60_000, Integer.MAX_VALUE))
+                .thenReturn(List.of(read, notYet));
+        List<DescriptionLine> scene = List.of(line(70_000, "냉동실에서 20분에서 30분 정도 반죽을 굳힙니다."),
+                line(100_000, "170도로 달군 기름에 5분 정도 튀깁니다."));
+        when(lineRepository.findInRange(DESC, 60_000, 120_000)).thenReturn(scene);
+
+        AnswerContext context = reader.read(DESC, 90_000, true).orElseThrow();
+        FutureContext later = reader.readFuture(DESC, 90_000).orElseThrow();
+
+        assertThat(context.currentScene().screenTexts()).containsExactly("냉동실에서 약 20~30분 정도 굳혀주세요");
+        assertThat(later.scenes().get(0).screenTexts()).containsExactly("약 170도에서 5분 정도 튀겨 주세요");
+    }
+
+    @Test
     void 해설이_없으면_비어_있다() {
         assertThat(reader.read(1L, 0)).isEmpty();
     }

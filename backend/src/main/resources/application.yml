@@ -98,6 +98,21 @@ audisay:
       running-timeout: 45m            # 진행 중 작업(MERGE·TTS 등). 워커 메시지 제한 10분 × 3번 + 재시도 대기보다 길게.
                                       # 안 끝난 조각이 있거나 업로드(LOCAL) 영상 분석(PREPARE, 영상 길이의 약 1.4배)이면 queued-timeout
 
+  ocr:                                # 인증 서류 글자 읽기(286). PaddleOCR PP-OCRv5 ONNX를 서버 안 CPU로, 서류는 밖으로 안 나감
+    model-dir: ${OCR_MODEL_DIR:models/ocr}  # 실행 위치 기준. 로컬 backend/models/ocr(git 제외), 배포 이미지 /app/models/ocr
+    det-model: det_mobile.onnx        # PP-OCRv5_mobile_det(공식 PaddlePaddle ONNX, 4.8MB)
+    rec-model: rec.onnx               # korean_PP-OCRv5_mobile_rec(13MB)
+    dictionary: dict.txt
+    det-long-side: 960                # 긴 변을 이 크기로 바꿔 글자 위치를 찾음(모델 inference.yml resize_long)
+    min-score: 0.6                    # 이 점수 미만인 줄은 버림(H200 /ocr와 같음)
+    threads: 2                        # OCR 한 번에 쓰는 CPU 스레드
+    max-concurrent: 1                 # 동시에 돌리는 OCR 수(한 장 1초 안팎, 인증은 드물어 1개로 최대 메모리를 줄임). 넘으면 wait-timeout까지 기다림
+    wait-timeout: 10s
+    optimization-level: ALL           # ALL → BASIC → NONE. 모델 로드·첫 추론이 실패하면 자동으로 낮춤
+
+  verification:
+    daily-attempts: 5                 # 회원당 하루(KST) 인증 서류 확인 횟수. 넘으면 USER_007(429)
+
   # 역할별 이용 제한 (기획서 2.3 초기값, GMS 크레딧 확인 후 조정). 관리자는 제한 없음
   usage-limits:
     general:

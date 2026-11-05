@@ -23,6 +23,8 @@ public enum ErrorCode {
     ALREADY_VERIFIED(HttpStatus.CONFLICT, "USER_003", "이미 인증된 회원입니다."),
     SENSITIVE_INFO_NOT_AGREED(HttpStatus.BAD_REQUEST, "USER_004", "민감정보 처리에 동의해야 인증을 신청할 수 있습니다."),
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "USER_005", "존재하지 않는 회원입니다."),
+    VERIFICATION_DOCUMENT_REJECTED(HttpStatus.valueOf(422), "USER_006", "시각장애를 확인할 수 있는 서류가 아닙니다."),
+    VERIFICATION_ATTEMPT_LIMIT(HttpStatus.TOO_MANY_REQUESTS, "USER_007", "오늘은 인증 신청을 더 할 수 없습니다. 내일 다시 시도해 주세요."),
 
     INVALID_YOUTUBE_URL(HttpStatus.BAD_REQUEST, "VIDEO_001", "유튜브 링크 형식이 아닙니다."),
     YOUTUBE_VIDEO_UNAVAILABLE(HttpStatus.valueOf(422), "VIDEO_002", "비공개이거나 삭제된 영상입니다."),

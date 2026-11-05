@@ -69,20 +69,26 @@ async function withdrawDialog() {
   return within(screen.getByRole('alertdialog', { name: '정말 탈퇴할까요?' }))
 }
 
-test('계정 정보·설정·이용 횟수를 표시하고 제목에 초점을 둔다 (axe 포함)', async () => {
+test('계정 정보(재생 설정 포함)·이용 횟수를 표시하고 제목에 초점을 둔다 (axe 포함)', async () => {
   const { container } = renderRoute('/me')
   expect(await screen.findByText(me.email)).toBeVisible()
-  expect(screen.getByText('2026년 10월 22일')).toBeVisible()
-  expect(screen.getByText('시각장애인 인증 완료', { exact: false })).toBeVisible()
+  // 회원 등급에는 인증 날짜를 적지 않는다
+  expect(screen.queryByText('2026년 10월 22일')).not.toBeInTheDocument()
+  expect(screen.getByText('VIP')).toBeVisible()
   expect(screen.queryByRole('link', { name: '시각장애인 인증' })).not.toBeInTheDocument()
-  expect(screen.queryByRole('button', { name: /인증 완료/ })).not.toBeInTheDocument()
+  // 인증을 마친 회원은 인증 버튼 자리에 누를 수 없는 '인증 완료'가 있다
+  expect(screen.getByRole('button', { name: '인증 완료' })).toHaveAttribute('aria-disabled', 'true')
   await waitFor(() =>
     expect(screen.getByRole('heading', { level: 1, name: '내 정보' })).toHaveFocus(),
   )
   expect(screen.getByText('5번 중 4번 남음')).toBeInTheDocument()
-  expect(screen.getByRole('link', { name: '사용법 다시 듣기' })).toHaveAttribute(
-    'href',
-    '/tutorial/1',
+  // 설정 칸은 없애고 재생 설정은 계정 정보 목록 안에 둔다. 사용법 다시 듣기는 도움말에만 있다
+  expect(screen.queryByRole('heading', { name: '설정' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('link', { name: '사용법 다시 듣기' })).not.toBeInTheDocument()
+  const account = within(screen.getByRole('region', { name: '계정 정보' }))
+  expect(account.getByText('재생 설정')).toBeInTheDocument()
+  expect(await account.findByRole('button', { name: '재생 설정 바꾸기' })).not.toHaveAttribute(
+    'aria-disabled',
   )
   expect(await axe(container)).toHaveNoViolations()
 })
@@ -98,9 +104,10 @@ test('일반 회원에게 임의 인증 날짜를 보여 주지 않는다', asyn
   expect(await screen.findByText('일반 회원')).toBeVisible()
   expect(screen.getByRole('link', { name: '시각장애인 인증' })).toHaveAttribute('href', '/verify')
   expect(screen.queryByText('2026년 10월 22일')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '인증 완료' })).not.toBeInTheDocument()
 })
 
-test('미인증 회원은 키보드로 인증 화면에 이동하고 인증 후 돌아오면 등급·날짜·횟수가 갱신된다', async () => {
+test('미인증 회원은 키보드로 인증 화면에 이동하고 인증 후 돌아오면 등급·횟수가 갱신된다', async () => {
   vi.mocked(usersApi.me).mockResolvedValue({
     ...me,
     role: 'GENERAL',
@@ -145,8 +152,7 @@ test('미인증 회원은 키보드로 인증 화면에 이동하고 인증 후 
   await userEvent.click(screen.getByRole('button', { name: '인증 신청' }))
   await screen.findByRole('heading', { level: 1, name: '인증이 끝났어요' })
   await userEvent.click(within(screen.getByRole('main')).getByRole('link', { name: '내 정보' }))
-  expect(await screen.findByText('시각장애인 인증 완료', { exact: false })).toBeVisible()
-  expect(screen.getByText('2026년 10월 22일')).toBeVisible()
+  expect(await screen.findByText('VIP')).toBeVisible()
   expect(await screen.findByText('5번 중 5번 남음')).toBeInTheDocument()
   expect(screen.queryByRole('link', { name: '시각장애인 인증' })).not.toBeInTheDocument()
   expect(tokenStore.get()).toBe('verified-session')
@@ -308,13 +314,19 @@ test('탈퇴 통신 실패는 모달과 로그인을 유지하고 오류를 알�
 })
 
 test.each([false, true])(
-  '로그아웃은 서버 실패 여부(%s)와 관계없이 이 기기 상태를 비운다',
+  '헤더의 로그아웃은 서버 실패 여부(%s)와 관계없이 이 기기 상태를 비운다',
   async (fails) => {
     if (fails) vi.mocked(authApi.logout).mockRejectedValue(new Error('offline'))
     const { router, queryClient } = renderRoute('/me')
     await screen.findByText(me.email)
     queryClient.setQueryData(['private-test'], 'private')
-    await userEvent.click(screen.getByRole('button', { name: '로그아웃' }))
+    // 로그아웃은 내 정보 본문이 아니라 헤더(이름 오른쪽)에 있다
+    expect(
+      within(screen.getByRole('main')).queryByRole('button', { name: '로그아웃' }),
+    ).not.toBeInTheDocument()
+    const header = within(screen.getByRole('banner'))
+    expect(header.getByText(`${me.name} 님`)).toBeInTheDocument()
+    await userEvent.click(header.getByRole('button', { name: '로그아웃' }))
     await waitFor(() => expect(router.state.location.pathname).toBe('/landing'))
     expect(tokenStore.get()).toBeNull()
     expect(queryClient.getQueryData(['private-test'])).toBeUndefined()
@@ -342,11 +354,11 @@ test('재생 설정 저장 실패 시 이전 값으로 원복하고 성공 안�
   await waitFor(() => expect(open).not.toHaveAttribute('aria-disabled'))
   await userEvent.click(open)
   const dialog = within(screen.getByRole('dialog', { name: '재생 설정' }))
-  await userEvent.click(dialog.getByRole('radio', { name: '3 자세히' }))
-  await waitFor(() => expect(dialog.getByRole('radio', { name: '2 기본' })).toBeChecked())
+  await userEvent.click(dialog.getByRole('radio', { name: '3 자세한 해설' }))
+  await waitFor(() => expect(dialog.getByRole('radio', { name: '2 기본 해설' })).toBeChecked())
   expect(queryClient.getQueryData(queryKeys.settings)).toMatchObject({ detailLevel: 2 })
   expect(document.querySelector('[aria-live="polite"]')).not.toHaveTextContent(
-    '해설 상세도 3 자세히.',
+    '해설 상세도 3 자세한 해설.',
   )
 })
 

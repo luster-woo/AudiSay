@@ -37,7 +37,7 @@ test('단축키로 진입하고 튜토리얼은 두 탭 뒤의 이동 링크로 
   const { container } = renderRoute('/help')
   const heading = await screen.findByRole('heading', { level: 1, name: '도움말' })
   await waitFor(() => expect(heading).toHaveFocus())
-  expect(document.title).toBe('도움말 – AudiSay')
+  expect(document.title).toBe('AudiSay')
   const navigation = screen.getByRole('tablist', { name: '도움말 종류' })
   expect(
     within(navigation)

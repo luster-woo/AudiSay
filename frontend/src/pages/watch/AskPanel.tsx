@@ -1,7 +1,16 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent, type RefObject } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+  type RefObject,
+} from 'react'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/components/ui/cn'
 import { useAnnouncer } from '@/features/announcer/context'
+import { MIC_MESSAGES } from '@/features/search/micPermission'
 import { MAX_RECORD_SEC, useVoiceRecorder } from '@/features/search/useVoiceRecorder'
 import { useShortcut } from '@/features/shortcuts/context'
 import { formatClock } from '@/utils/time'
@@ -15,6 +24,8 @@ export interface AskPanelProps {
   onListenStart: () => void
   /** 듣기를 취소했거나 알아듣지 못했을 때 — 영상을 다시 재생한다 */
   onListenAbort: () => void
+  /** 보내기·음성 인식 옆에 같은 크기로 둘 버튼 (즐겨찾기) */
+  extraAction?: ReactNode
 }
 
 /**
@@ -27,6 +38,7 @@ export function AskPanel({
   onSubmit,
   onListenStart,
   onListenAbort,
+  extraAction,
 }: AskPanelProps) {
   const { announce } = useAnnouncer()
   const [text, setText] = useState('')
@@ -40,8 +52,10 @@ export function AskPanel({
     },
     onUnavailable: (reason) => {
       inputRef.current?.focus()
-      announce(`${reason} 입력칸에 글자로 적어 주세요.`, { politeness: 'assertive' })
+      announce(`${reason} 질문은 입력칸에 글자로 적어도 돼요.`, { politeness: 'assertive' })
     },
+    onAsking: () => announce(MIC_MESSAGES.asking, { politeness: 'assertive' }),
+    onRecovered: () => announce(`${MIC_MESSAGES.recovered} Alt+Shift+Q로 다시 물어보세요.`),
   })
 
   const startVoice = useCallback(async () => {
@@ -123,30 +137,28 @@ export function AskPanel({
           <input
             ref={inputRef}
             type="text"
-            aria-label="질문이나 명령"
-            placeholder='예: "5분 전으로", "지금 뭐가 보여?"'
+            aria-labelledby="ask-title"
             value={text}
             onChange={(e) => setText(e.target.value)}
             disabled={busy}
-            className="min-h-touch w-full rounded-md border-2 border-navy bg-paper px-5 text-lg placeholder:text-ink-muted"
+            className="min-h-touch w-full rounded-md border-2 border-navy bg-paper px-5 text-lg"
           />
-          <div className="mt-4 flex flex-wrap items-center gap-3">
-            <Button type="submit" size="xl" disabled={busy}>
+          {/* 아래 목차·대본·질문 기록 탭과 같은 3칸·같은 크기로 맞춘다 */}
+          <div className={cn('mt-4 grid gap-2', extraAction ? 'grid-cols-3' : 'grid-cols-2')}>
+            <Button type="submit" size="panel" disabled={busy}>
               보내기
             </Button>
             <Button
               type="button"
               variant="secondary"
-              size="xl"
+              size="panel"
               aria-keyshortcuts="Alt+Shift+Q"
               onClick={() => void startVoice()}
               disabled={busy}
             >
-              말로
+              음성 인식
             </Button>
-            <span aria-hidden="true" className="text-ink-muted">
-              Alt+Shift+Q
-            </span>
+            {extraAction}
           </div>
         </form>
       )}

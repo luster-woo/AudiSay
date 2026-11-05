@@ -94,20 +94,35 @@ beforeEach(() => {
   vi.mocked(subscribeSse).mockResolvedValue(undefined)
 })
 
+/** 단계 목록의 항목 글 ("영상 분석, 완료") */
+const steps = () =>
+  within(screen.getByRole('list', { name: '진행 단계' }))
+    .getAllByRole('listitem')
+    .map((li) => li.textContent)
+
 test('진행 중: 제목에 포커스, 영상 정보·진행률·남은 시간, 단계와 퍼센트를 읽어 준다', async () => {
   vi.mocked(jobsApi.get).mockResolvedValue(job())
   const { container } = renderRoute('/jobs/51')
   const h1 = await screen.findByRole('heading', { level: 1, name: '해설을 만들고 있어요' })
   await waitFor(() => expect(h1).toHaveFocus())
   expect(await screen.findByText('그래프를 읽는 방법 · 4분 42초')).toBeInTheDocument()
+  // 업로드 영상: 서버 50(DESCRIBE 20~70의 60%) → 화면 78(75~80의 60%) → 업로드 몫 15 + 78 × 0.85 = 81
   expect(screen.getByRole('progressbar', { name: '해설 만들기 진행률' })).toHaveAttribute(
     'aria-valuenow',
-    '50',
+    '81',
   )
   expect(screen.getByText('약 1분 20초 남았어요')).toBeInTheDocument()
+  expect(steps()).toEqual([
+    '영상 업로드, 완료',
+    '영상 분석, 완료',
+    '장면 해설 만들기, 진행 중',
+    '해설 합치고 다듬기, 대기',
+    '해설 음성 만들기, 대기',
+  ])
+  expect(screen.getByRole('listitem', { current: 'step' })).toHaveTextContent('장면 해설 만들기')
   expect(screen.getByRole('link', { name: '홈으로 가기' })).toHaveAttribute('href', '/')
   expect(screen.getByRole('link', { name: '영상 등록' })).toHaveAttribute('aria-current', 'page')
-  await waitFor(() => expect(band()).toHaveTextContent('장면 해설을 만드는 중이에요, 50퍼센트.'))
+  await waitFor(() => expect(band()).toHaveTextContent('장면 해설을 만드는 중이에요, 81퍼센트.'))
   expect(subscribeSse).toHaveBeenCalledWith('/jobs/51/stream', expect.anything())
   expect(await axe(container)).toHaveNoViolations()
 })
@@ -131,7 +146,8 @@ test('SSE 진행률은 10% 단위로만 읽고, 완료되면 준비 창의 지�
     }),
   )
   expect(await screen.findByText('약 1분 남았어요')).toBeInTheDocument()
-  expect(band()).toHaveTextContent('50퍼센트')
+  // 서버 54 → 화면 81 그대로라 같은 10% 구간: 다시 읽지 않는다
+  expect(band()).toHaveTextContent('장면 해설을 만드는 중이에요, 81퍼센트.')
 
   act(() =>
     sse().onMessage({
@@ -144,7 +160,14 @@ test('SSE 진행률은 10% 단위로만 읽고, 완료되면 준비 창의 지�
       }),
     }),
   )
-  await waitFor(() => expect(band()).toHaveTextContent('해설 음성을 만드는 중이에요, 90퍼센트.'))
+  await waitFor(() => expect(band()).toHaveTextContent('해설 음성을 만드는 중이에요, 92퍼센트.'))
+  expect(steps()).toEqual([
+    '영상 업로드, 완료',
+    '영상 분석, 완료',
+    '장면 해설 만들기, 완료',
+    '해설 합치고 다듬기, 완료',
+    '해설 음성 만들기, 진행 중',
+  ])
 
   vi.mocked(jobsApi.get).mockResolvedValue(
     job({
@@ -266,4 +289,50 @@ test('없는 작업이면 안내와 홈 링크', async () => {
   renderRoute('/jobs/999')
   expect(await screen.findByRole('heading', { name: '작업을 찾을 수 없어요' })).toBeInTheDocument()
   expect(screen.getByRole('link', { name: '홈으로 가기' })).toBeInTheDocument()
+})
+
+test('유튜브 영상: 영상 업로드 없이 4단계, 서버 진행률을 그대로 보여 준다', async () => {
+  vi.mocked(videosApi.get).mockResolvedValue({
+    ...video,
+    sourceType: 'YOUTUBE',
+    youtubeVideoId: 'abcdEFGhijk',
+  })
+  vi.mocked(jobsApi.get).mockResolvedValue(
+    job({ currentStage: 'PREPARE', progress: 10, startedAt: null }),
+  )
+  renderRoute('/jobs/51')
+  await screen.findByRole('heading', { level: 1, name: '해설을 만들고 있어요' })
+  // 서버 10(PREPARE 0~20의 절반) → 화면 37.5(0~75의 절반). 유튜브는 업로드 몫이 없다
+  expect(screen.getByRole('progressbar', { name: '해설 만들기 진행률' })).toHaveAttribute(
+    'aria-valuenow',
+    '37',
+  )
+  expect(steps()).toEqual([
+    '영상 분석, 진행 중',
+    '장면 해설 만들기, 대기',
+    '해설 합치고 다듬기, 대기',
+    '해설 음성 만들기, 대기',
+  ])
+  await waitFor(() => expect(band()).toHaveTextContent('영상을 분석하는 중이에요, 37퍼센트.'))
+})
+
+test('실패하면 멈춘 단계를 멈춤으로 보여 준다', async () => {
+  vi.mocked(jobsApi.get).mockResolvedValue(
+    job({
+      status: 'FAILED',
+      currentStage: 'MERGE',
+      progress: 72,
+      errorCode: 'UNKNOWN',
+      retryable: true,
+    }),
+  )
+  renderRoute('/jobs/51')
+  await screen.findByRole('heading', { level: 1, name: '해설을 만들지 못했어요' })
+  expect(steps()).toEqual([
+    '영상 업로드, 완료',
+    '영상 분석, 완료',
+    '장면 해설 만들기, 완료',
+    '해설 합치고 다듬기, 멈춤',
+    '해설 음성 만들기, 대기',
+  ])
 })

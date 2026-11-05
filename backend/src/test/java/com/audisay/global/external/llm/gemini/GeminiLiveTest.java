@@ -24,7 +24,7 @@ class GeminiLiveTest {
 
     private final GeminiLlmProvider provider = new GeminiLlmProvider(new GmsProperties(GmsProperties.Mode.REAL,
             System.getenv("GMS_API_KEY"), "https://gms.ssafy.io/gmsapi/generativelanguage.googleapis.com", null,
-            Duration.ofSeconds(2), 0, new GmsProperties.Models(MODEL, MODEL, MODEL),
+            Duration.ofSeconds(2), 0, null, new GmsProperties.Models(MODEL, MODEL, MODEL),
             new GmsProperties.Timeouts(Duration.ofSeconds(5), Duration.ofSeconds(10), Duration.ofSeconds(60)),
             Duration.ofSeconds(10), Map.of(), null, null, null), JsonMapper.builder().build());
 

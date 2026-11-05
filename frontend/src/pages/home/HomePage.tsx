@@ -3,7 +3,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { videosApi } from '@/api/videos'
 import { queryKeys } from '@/api/queryKeys'
 import type { VideoCategory } from '@/api/types'
-import { Pagination } from '@/components/ui/Pagination'
+import { PageNumbers } from '@/components/ui/PageNumbers'
 import { Select } from '@/components/ui/Select'
 import { useAnnouncer } from '@/features/announcer/context'
 import { usePageEntry } from '@/features/page/usePageEntry'
@@ -77,9 +77,14 @@ export default function HomePage() {
             className="text-[1.75rem] font-bold outline-none"
           >
             해설이 준비된 영상
+            {/* 개수는 제목 옆에 작게. 진입 안내에서 이미 읽어 주므로 제목 이름에는 넣지 않는다 */}
+            {data && (
+              <span aria-hidden="true" className="ml-3 text-xl font-normal text-ink-muted">
+                {data.page.totalElements}개
+              </span>
+            )}
           </h2>
           <div className="flex items-center gap-4">
-            {data && <p className="text-xl">{data.page.totalElements}개</p>}
             <Select
               label="카테고리"
               options={CATEGORY_OPTIONS}
@@ -110,7 +115,13 @@ export default function HomePage() {
                 </li>
               ))}
             </ul>
-            <Pagination page={data.page} onChange={changePage} size="xl" className="mt-6" />
+            <PageNumbers
+              page={data.page.number}
+              totalPages={data.page.totalPages}
+              onChange={changePage}
+              size="xl"
+              className="mt-6"
+            />
           </>
         )}
       </section>

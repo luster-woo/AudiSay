@@ -317,7 +317,10 @@ public class KeywordSceneScorer {
         return t;
     }
 
-    /** 글에 낱말이 있는지. 한 글자("차", "양")는 낱말 맨 앞에서만, 세 글자 이상은 끝 한 글자를 뗀 것도("뒤집히" → "뒤집") */
+    /**
+     * 글에 낱말이 있는지. 한 글자("차", "양")는 낱말 맨 앞에서만, 세 글자 이상은 끝 한 글자를 뗀 것도("뒤집히" → "뒤집"),
+     * 끝 글자 모음이 줄어든 꼴도("튀기" → "튀겨")
+     */
     static boolean contains(String text, String term) {
         if (term.length() == 1) {
             for (String word : SPLIT.split(text)) {
@@ -327,7 +330,33 @@ public class KeywordSceneScorer {
             }
             return false;
         }
-        return text.contains(term) || (term.length() >= 3 && text.contains(term.substring(0, term.length() - 1)));
+        if (text.contains(term) || (term.length() >= 3 && text.contains(term.substring(0, term.length() - 1)))) {
+            return true;
+        }
+        String contracted = contracted(term);
+        return contracted != null && text.contains(contracted);
+    }
+
+    /**
+     * 받침 없는 끝 글자의 ㅣ·ㅗ·ㅜ가 어미와 줄어든 꼴: "튀기" → "튀겨", "나오" → "나와", "세우" → "세워". 없으면 null.
+     * ㅡ는 앞 모음에 따라 갈리고(아프 → 아파, 슬프 → 슬퍼) "버스"·"소스" 같은 낱말이 많아 뺀다
+     */
+    static String contracted(String term) {
+        char last = term.charAt(term.length() - 1);
+        if (last < '가' || last > '힣' || (last - '가') % 28 != 0) {
+            return null;
+        }
+        int syllable = (last - '가') / 28;
+        int vowel = switch (syllable % 21) {
+            case 20 -> 6;
+            case 8 -> 9;
+            case 13 -> 14;
+            default -> -1;
+        };
+        if (vowel < 0) {
+            return null;
+        }
+        return term.substring(0, term.length() - 1) + (char) ('가' + (syllable - syllable % 21 + vowel) * 28);
     }
 
     private static String lower(String s) {

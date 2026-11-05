@@ -84,6 +84,17 @@ class LlmHitVerifierTest {
         assertThat(LlmHitVerifier.worthVerifying(List.of(hits.get(0)))).isFalse();
     }
 
+    @Test
+    void 비슷한_다른_일도_빼라는_프롬프트를_쓴다() {
+        answer("{\"ok\":[1]}");
+
+        verifier.verify("안타 친 장면", hits, 31L);
+
+        ArgumentCaptor<LlmRequest> captor = ArgumentCaptor.forClass(LlmRequest.class);
+        verify(llmClient).generate(captor.capture());
+        assertThat(captor.getValue().system()).isEqualTo(LlmHitVerifier.SYSTEM_EXACT);
+    }
+
     private void answer(String text) {
         when(llmClient.generate(any())).thenReturn(new LlmResult(text, "gemini-3.1-flash-lite", 300, 5, 600, false, 9L));
     }

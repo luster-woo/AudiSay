@@ -45,6 +45,13 @@ public class AnswerContextReader {
     private final CharacterRepository characterRepository;
 
     public Optional<AnswerContext> read(Long descriptionId, int nowMs) {
+        return read(descriptionId, nowMs, false);
+    }
+
+    /**
+     * @param pastOnly true면 질문한 시각까지 자료만: 요약(영상 전체)과 아직 끝나지 않은 장면의 제목·설명(장면 전체 글)을 뺀다
+     */
+    public Optional<AnswerContext> read(Long descriptionId, int nowMs, boolean pastOnly) {
         Optional<Description> description = descriptionRepository.findById(descriptionId);
         if (description.isEmpty()) {
             return Optional.empty();
@@ -56,8 +63,9 @@ public class AnswerContextReader {
         List<ScreenText> texts = screenTextRepository
                 .findByDescription_IdAndStartMsBetweenOrderByStartMsAsc(descriptionId, from, now);
 
-        List<SceneInfo> sceneInfos = scenes.stream().map(scene -> new SceneInfo(scene.getStartMs(), scene.getTitle(),
-                scene.getSceneDescription(),
+        List<SceneInfo> sceneInfos = scenes.stream().map(scene -> new SceneInfo(scene.getStartMs(),
+                pastOnly && scene.getEndMs() > now ? null : scene.getTitle(),
+                pastOnly && scene.getEndMs() > now ? null : scene.getSceneDescription(),
                 last(lines.stream().filter(l -> inScene(l.getStartMs(), scene))
                         .map(l -> new Narration(l.getStartMs(), l.getText())).toList(), MAX_NARRATIONS),
                 last(texts.stream().filter(t -> inScene(t.getStartMs(), scene)).map(AnswerContextReader::screenText)
@@ -75,8 +83,36 @@ public class AnswerContextReader {
                 .toList();
 
         Description d = description.get();
-        return Optional.of(new AnswerContext(d.getVideo().getTitle(), d.getSummaryText(), now, sceneInfos,
+        return Optional.of(new AnswerContext(d.getVideo().getTitle(), pastOnly ? null : d.getSummaryText(), now, sceneInfos,
                 dialogues, characters));
+    }
+
+    /** 질문한 시각 뒤 자료: 요약, 지금 장면부터 끝까지(설명 전체, 시각 뒤 해설 문장·화면 글자), 시각 뒤 대사 */
+    public Optional<FutureContext> readFuture(Long descriptionId, int nowMs) {
+        Optional<Description> description = descriptionRepository.findById(descriptionId);
+        if (description.isEmpty()) {
+            return Optional.empty();
+        }
+        int now = Math.max(0, nowMs);
+        int from = now + 1;
+        List<Scene> scenes = sceneRepository.findByDescription_IdOrderBySceneIndexAsc(descriptionId).stream()
+                .filter(scene -> scene.getEndMs() > now)
+                .toList();
+        List<DescriptionLine> lines = descriptionLineRepository.findInRange(descriptionId, from, Integer.MAX_VALUE);
+        List<ScreenText> texts = screenTextRepository
+                .findByDescription_IdAndStartMsBetweenOrderByStartMsAsc(descriptionId, from, Integer.MAX_VALUE);
+        List<SceneInfo> sceneInfos = scenes.stream().map(scene -> new SceneInfo(scene.getStartMs(), scene.getTitle(),
+                scene.getSceneDescription(),
+                lines.stream().filter(l -> inScene(l.getStartMs(), scene))
+                        .map(l -> new Narration(l.getStartMs(), l.getText())).toList(),
+                texts.stream().filter(t -> inScene(t.getStartMs(), scene)).map(AnswerContextReader::screenText)
+                        .filter(t -> t != null && !t.isBlank()).distinct().toList())).toList();
+        List<Dialogue> dialogues = transcriptSegmentRepository
+                .findInRangeWithCharacter(descriptionId, from, Integer.MAX_VALUE).stream()
+                .map(t -> new Dialogue(t.getStartMs(), t.getCharacter() == null ? null : t.getCharacter().getName(),
+                        t.getText()))
+                .toList();
+        return Optional.of(new FutureContext(description.get().getSummaryText(), sceneInfos, dialogues));
     }
 
     /** 앞 장면과 지금 장면. 입력 시각이 첫 장면보다 앞이면 첫 장면만 */

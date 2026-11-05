@@ -3,6 +3,8 @@ import { Button } from '@/components/ui/Button'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { useAnnouncer } from '@/features/announcer/context'
 import { usePageEntry } from '@/features/page/usePageEntry'
+import { JobSteps } from '@/features/job/JobSteps'
+import { uploadOverallPercent, uploadSteps } from '@/features/job/stages'
 import { formatSize } from '@/features/upload/fileRules'
 import { StatusDialog } from '@/features/upload/StatusDialog'
 import type { UploadPhase } from '@/features/upload/useVideoUpload'
@@ -13,7 +15,11 @@ function remainText(etaSec: number | null) {
   return `약 ${Math.round(etaSec / 60)}분 남았어요`
 }
 
-/** 올리는 중: 진행률 + 업로드 멈추기. 연결이 끊기면 '업로드 멈춤' 창 */
+/**
+ * 올리는 중: 해설 만들기 전체 진행률 + 단계 목록(영상 업로드 진행 중) + 업로드 멈추기.
+ * 전체 진행률에서 업로드는 앞 15%다(features/job/stages). 다 올리면 RegisterPage 가 /jobs/:id 로 넘긴다.
+ * 연결이 끊기면 '업로드 멈춤' 창.
+ */
 export function UploadingStep({
   title,
   totalBytes,
@@ -40,6 +46,8 @@ export function UploadingStep({
     phase === 'done' ? 100 : totalBytes ? Math.min(100, Math.floor((loaded / totalBytes) * 100)) : 0
   const finished = phase === 'completing' || phase === 'done'
   const remain = finished ? '다 올렸어요' : remainText(etaSec)
+  const overall = uploadOverallPercent(percent)
+  const steps = uploadSteps(phase === 'failed' ? 'failed' : finished ? 'done' : 'active')
 
   usePageEntry({
     title: '영상 올리는 중',
@@ -53,11 +61,13 @@ export function UploadingStep({
     const bucket = Math.floor(percent / 10)
     if (bucket <= lastBucket.current || percent >= 100) return
     lastBucket.current = bucket
-    announce(`${bucket * 10}퍼센트 올렸어요. ${remain}.`)
+    announce(
+      `영상 업로드 중이에요, ${bucket * 10}퍼센트 올렸어요. 전체 ${uploadOverallPercent(bucket * 10)}퍼센트. ${remain}.`,
+    )
   }, [percent, remain, announce])
 
   useEffect(() => {
-    if (phase === 'completing') announce('다 올렸어요. 해설 만들기를 준비하고 있어요.')
+    if (phase === 'completing') announce('영상을 다 올렸어요. 해설 만들기를 시작하고 있어요.')
     if (phase === 'failed') {
       announce('연결이 끊겨 업로드가 멈췄어요. 처음부터 다시 올리기 버튼에 있어요.', {
         politeness: 'assertive',
@@ -67,7 +77,7 @@ export function UploadingStep({
 
   return (
     <div className="max-w-[60rem]">
-      <p className="text-2xl font-bold text-navy">영상 올리기</p>
+      <p className="text-2xl font-bold text-navy">해설 만들기</p>
       <h1 ref={headingRef} tabIndex={-1} className="mt-6 text-[2.75rem] font-bold outline-none">
         {phase === 'completing' || phase === 'done' ? '다 올렸어요' : '영상을 올리고 있어요'}
       </h1>
@@ -75,20 +85,22 @@ export function UploadingStep({
         {title} · {formatSize(totalBytes)}
       </p>
       <p aria-hidden="true" className="mt-6 text-[6rem] leading-none font-bold">
-        {percent}%
+        {overall}%
       </p>
       <ProgressBar
-        value={percent}
-        label="업로드 진행률"
-        valueText={`${percent}퍼센트, ${remain}`}
+        value={overall}
+        label="해설 만들기 진행률"
+        valueText={`전체 ${overall}퍼센트, 영상 업로드 ${percent}퍼센트, ${remain}`}
         className="mt-10 h-7"
       />
       <p className="mt-6 text-2xl text-ink-muted">
-        {formatSize(finished ? totalBytes : loaded)} / {formatSize(totalBytes)} · {remain}
+        영상 업로드 {percent}% · {formatSize(finished ? totalBytes : loaded)} /{' '}
+        {formatSize(totalBytes)} · {remain}
       </p>
+      <JobSteps steps={steps} className="mt-10" />
       <p className="mt-8 text-2xl">
         {finished
-          ? '해설 만들기를 준비하고 있어요.'
+          ? '해설 만들기를 시작하고 있어요.'
           : '다 올라가면 해설 만들기가 바로 시작돼요. 올리는 동안 이 화면에 머물러 주세요.'}
       </p>
       {!finished && (

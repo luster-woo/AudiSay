@@ -109,7 +109,7 @@ public class AdminStatsService {
         return new Reuse(newJob, reused, joinedJob, avg, scale(saved), savedRate);
     }
 
-    private static void validateRange(LocalDate from, LocalDate to) {
+    static void validateRange(LocalDate from, LocalDate to) {
         if (from.isAfter(to)) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "시작일이 종료일보다 늦어요.");
         }

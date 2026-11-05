@@ -70,7 +70,6 @@ const userRoutes: RouteObject[] = [
           { path: 'register', element: <RegisterPage /> },
           // 업로드 단계는 한 화면(/register) 안에서 바뀐다. 예전 주소는 처음 단계로 보낸다
           { path: 'register/*', element: <Navigate to="/register" replace /> },
-          { path: 'upload/*', element: <Navigate to="/register" replace /> },
           { path: 'jobs/:jobId', element: <JobPage /> },
           { path: 'watch/:videoId', element: <WatchPage /> },
           { path: 'tutorial/:step', element: <TutorialPage /> },

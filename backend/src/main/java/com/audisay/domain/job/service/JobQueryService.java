@@ -25,12 +25,13 @@ public class JobQueryService {
     private final JobProgressStore progressStore;
     private final GenerationRequestService generationRequestService;
     private final DescriptionService descriptionService;
+    private final JobTimeEstimator timeEstimator;
 
     public JobStatusResponse getJob(AuthUser authUser, Long jobId) {
         Job job = getViewableJob(authUser, jobId);
         if (!job.isFinished()) {
             JobProgress progress = progressStore.find(jobId).orElseGet(() -> JobProgress.from(job));
-            return JobStatusResponse.inProgress(job, progress);
+            return JobStatusResponse.inProgress(job, progress, timeEstimator.estimate(job, progress.progress()));
         }
         if (job.getStatus() == JobStatus.FAILED) {
             return JobStatusResponse.finished(job, null, null);

@@ -5,7 +5,6 @@ import { queryKeys } from '@/api/queryKeys'
 import { Button } from '@/components/ui/Button'
 import { ButtonLink } from '@/components/ui/ButtonLink'
 import { useAnnouncer } from '@/features/announcer/context'
-import { useAuth } from '@/features/auth/context'
 import { useAudio } from '@/features/audio/useAudio'
 import { usePageEntry } from '@/features/page/usePageEntry'
 import { useSettings } from '@/features/settings/context'
@@ -16,24 +15,15 @@ import { WithdrawDialog } from './WithdrawDialog'
 
 const ROLE_LABELS = {
   GENERAL: '일반 회원',
-  VISUALLY_IMPAIRED: '시각장애인 인증 완료',
+  VISUALLY_IMPAIRED: 'VIP',
   ADMIN: '관리자',
 } as const
-const dateFormatter = new Intl.DateTimeFormat('ko-KR', {
-  timeZone: 'Asia/Seoul',
-  year: 'numeric',
-  month: 'long',
-  day: 'numeric',
-})
 
 export default function MyInfoPage() {
-  const { logout } = useAuth()
   const { announce, setMuted } = useAnnouncer()
   const { settings } = useSettings()
   const { play, stop } = useAudio()
   const headingRef = useRef<HTMLHeadingElement>(null)
-  const logoutBusy = useRef(false)
-  const [loggingOut, setLoggingOut] = useState(false)
   const [dialog, setDialog] = useState<'password' | 'settings' | 'withdraw' | null>(null)
   const profile = useQuery({ queryKey: queryKeys.me, queryFn: usersApi.me })
   const settingsQuery = useQuery({ queryKey: queryKeys.settings, queryFn: usersApi.settings })
@@ -67,25 +57,6 @@ export default function MyInfoPage() {
     })
   }
 
-  const signOut = async () => {
-    if (logoutBusy.current) return
-    logoutBusy.current = true
-    setLoggingOut(true)
-    try {
-      await logout()
-    } catch {
-      // 서버 연결이 실패해도 AuthProvider 가 토큰·사용자·캐시를 함께 비운다.
-      announce(
-        '이 기기의 로그인 정보를 지웠어요. 서버 연결이 실패해 새로고침하면 다시 로그인될 수 있어요.',
-        { politeness: 'assertive' },
-      )
-    } finally {
-      logoutBusy.current = false
-      setLoggingOut(false)
-    }
-  }
-
-  const verifiedDate = me?.verifiedAt ? new Date(me.verifiedAt) : null
   const card = '@container rounded-md border-2 border-line bg-paper px-4 py-3 sm:px-6'
   const row = 'grid items-center gap-x-6 gap-y-2 @min-[34rem]:grid-cols-[10.5rem_minmax(0,1fr)]'
 
@@ -126,16 +97,7 @@ export default function MyInfoPage() {
               <div className={row}>
                 <dt className="font-bold">회원 등급</dt>
                 <dd className="flex min-w-0 flex-wrap items-center justify-between gap-4">
-                  <span className="min-w-0 wrap-anywhere">
-                    {ROLE_LABELS[me.role]}
-                    {me.verified && verifiedDate && !Number.isNaN(verifiedDate.getTime()) && (
-                      <>
-                        {' '}
-                        ·{' '}
-                        <time dateTime={me.verifiedAt!}>{dateFormatter.format(verifiedDate)}</time>
-                      </>
-                    )}
-                  </span>
+                  <span className="min-w-0 wrap-anywhere">{ROLE_LABELS[me.role]}</span>
                   {me.role === 'GENERAL' && !me.verified && (
                     <ButtonLink
                       to="/verify"
@@ -145,6 +107,17 @@ export default function MyInfoPage() {
                     >
                       시각장애인 인증
                     </ButtonLink>
+                  )}
+                  {/* 인증을 마쳤으면 같은 자리에 누를 수 없는 '인증 완료'를 둔다 (aria-disabled 라 Tab·낭독은 된다) */}
+                  {(me.role === 'VISUALLY_IMPAIRED' || me.verified) && (
+                    <Button
+                      variant="secondary"
+                      size="xl"
+                      className="w-[14.375rem] max-w-full"
+                      disabled
+                    >
+                      인증 완료
+                    </Button>
                   )}
                 </dd>
               </div>
@@ -165,59 +138,38 @@ export default function MyInfoPage() {
                   </Button>
                 </dd>
               </div>
+              {/* 재생 설정도 계정 정보 목록 안에서 같은 크기의 버튼으로 바꾼다 */}
+              <div className={`${row} pt-2`}>
+                <dt className="font-bold">재생 설정</dt>
+                <dd className="flex min-w-0 flex-wrap items-center justify-between gap-4">
+                  <span className="flex min-w-0 flex-wrap items-center gap-3 text-xl text-ink-muted">
+                    {settingsQuery.isPending && '설정을 불러오는 중이에요.'}
+                    {settingsQuery.isError && (
+                      <>
+                        설정을 불러오지 못했어요.
+                        <Button variant="secondary" onClick={() => void settingsQuery.refetch()}>
+                          설정 다시 불러오기
+                        </Button>
+                      </>
+                    )}
+                  </span>
+                  <Button
+                    variant="secondary"
+                    size="xl"
+                    className="w-[14.375rem] max-w-full"
+                    disabled={!settingsQuery.isSuccess}
+                    onClick={() => setDialog('settings')}
+                  >
+                    재생 설정 바꾸기
+                  </Button>
+                </dd>
+              </div>
             </dl>
           )}
         </section>
 
-        <section aria-labelledby="account-settings" className={`${card} mt-7 w-full max-w-[30rem]`}>
-          <h2 id="account-settings" className="text-[1.75rem] font-bold text-navy">
-            설정
-          </h2>
-          <dl className="mt-5 space-y-4 text-2xl">
-            <div className="grid items-center gap-4 @min-[26rem]:grid-cols-[minmax(0,1fr)_auto]">
-              <dt className="font-bold">재생 설정</dt>
-              <dd>
-                <Button
-                  variant="secondary"
-                  size="xl"
-                  className="w-full"
-                  disabled={!settingsQuery.isSuccess}
-                  onClick={() => setDialog('settings')}
-                >
-                  재생 설정 바꾸기
-                </Button>
-              </dd>
-            </div>
-            <div className="grid items-center gap-4 @min-[26rem]:grid-cols-[minmax(0,1fr)_auto]">
-              <dt className="font-bold">사용법</dt>
-              <dd>
-                <ButtonLink to="/tutorial/1" variant="secondary" size="xl" className="w-full">
-                  사용법 다시 듣기
-                </ButtonLink>
-              </dd>
-            </div>
-          </dl>
-          {settingsQuery.isPending && <p className="mt-4 text-lg">설정을 불러오는 중이에요.</p>}
-          {settingsQuery.isError && (
-            <div className="mt-4 space-y-3">
-              <p className="text-lg">설정을 불러오지 못했어요.</p>
-              <Button variant="secondary" onClick={() => void settingsQuery.refetch()}>
-                설정 다시 불러오기
-              </Button>
-            </div>
-          )}
-        </section>
-
         <div className="mt-5 flex flex-wrap gap-5">
-          <Button
-            variant="secondary"
-            size="xl"
-            className="min-w-48"
-            loading={loggingOut}
-            onClick={() => void signOut()}
-          >
-            {loggingOut ? '로그아웃 중' : '로그아웃'}
-          </Button>
+          {/* 로그아웃은 헤더(이름 오른쪽)로 옮겼다. 되돌릴 수 없는 탈퇴만 여기에 둔다 */}
           <Button
             variant="danger"
             size="xl"

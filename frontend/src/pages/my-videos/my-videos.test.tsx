@@ -280,7 +280,10 @@ test('다음 페이지는 해당 서버 페이지를 조회하고 목록 제목�
   await waitFor(() =>
     expect(screen.getByRole('heading', { level: 2, name: '요청·올린 영상' })).toHaveFocus(),
   )
-  expect(screen.getByText('전체 5개 중 5번째부터 5번째까지')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '2쪽' })).toHaveAttribute('aria-current', 'page')
+  await userEvent.click(screen.getByRole('button', { name: '1쪽' }))
+  expect(await screen.findByRole('link', { name: '재생, 영상 1' })).toBeInTheDocument()
+  expect(router.state.location.search).toBe('?page=0')
 })
 
 test('마지막 즐겨찾기를 해제하면 이전 페이지로 돌아가고 누락된 카드를 다시 받는다', async () => {

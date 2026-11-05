@@ -6,10 +6,10 @@ import { useAnnouncer } from '@/features/announcer/context'
 import { usePageEntry } from '@/features/page/usePageEntry'
 import { Button } from '@/components/ui/Button'
 import { ButtonLink } from '@/components/ui/ButtonLink'
-import { Checkbox } from '@/components/ui/Checkbox'
 import { Notice } from '@/components/ui/Notice'
 import { PasswordField } from '@/components/ui/PasswordField'
 import { TextField } from '@/components/ui/TextField'
+import { TermsAgreement, type Agreement } from '@/features/terms/TermsAgreement'
 import { isEmail, isValidPassword } from '@/utils/validation'
 
 type Field = 'name' | 'email' | 'password' | 'confirm' | 'terms'
@@ -32,7 +32,7 @@ export default function SignupPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
-  const [terms, setTerms] = useState(false)
+  const [agreement, setAgreement] = useState<Agreement>({ terms: false, privacy: false })
   const [emailCheck, setEmailCheck] = useState<EmailCheck>('idle')
   const [errors, setErrors] = useState<Errors>({})
   const [summary, setSummary] = useState<string | null>(null)
@@ -40,7 +40,7 @@ export default function SignupPage() {
 
   usePageEntry({
     title: '회원가입',
-    announce: '회원가입 화면이에요. 칸이 4개 있어요. 이름 칸에 있어요.',
+    announce: '회원가입 화면이에요. 칸 4개와 약관 동의가 있어요. 이름 칸에 있어요.',
     focusRef: nameRef,
   })
 
@@ -81,7 +81,8 @@ export default function SignupPage() {
       next.password = '8~20자로, 영문·숫자·특수문자를 모두 넣어 주세요.'
     if (!confirm) next.confirm = '비밀번호를 한 번 더 입력해 주세요.'
     else if (confirm !== password) next.confirm = '비밀번호가 서로 달라요.'
-    if (!terms) next.terms = '이용약관과 개인정보 처리에 동의해야 가입할 수 있어요.'
+    if (!agreement.terms || !agreement.privacy)
+      next.terms = '이용약관과 개인정보 수집·이용에 모두 동의해야 가입할 수 있어요.'
     return next
   }
 
@@ -194,26 +195,18 @@ export default function SignupPage() {
           onChange={(e) => setConfirm(e.target.value)}
           error={errors.confirm}
         />
-        <div>
-          <Checkbox
-            ref={termsRef}
-            label="이용약관과 개인정보 처리에 동의해요 (필수)"
-            checked={terms}
-            onChange={(e) => {
-              setTerms(e.target.checked)
-              if (e.target.checked) setError('terms', undefined)
-            }}
-            required
-            aria-invalid={errors.terms ? true : undefined}
-            aria-describedby={errors.terms ? 'terms-error' : undefined}
-          />
-          {errors.terms && (
-            <p id="terms-error" className="mt-1 flex items-center gap-2 font-bold text-danger">
-              <span aria-hidden="true">●</span>
-              {errors.terms}
-            </p>
-          )}
-        </div>
+        <TermsAgreement
+          ref={termsRef}
+          value={agreement}
+          onChange={(next) => {
+            setAgreement(next)
+            if (next.terms && next.privacy) setError('terms', undefined)
+          }}
+          error={errors.terms}
+        />
+        <p className="-mt-1 text-base text-ink-muted">
+          시각장애인 인증(복지카드)에 필요한 민감정보 동의는 다음 단계인 인증 화면에서 따로 받아요.
+        </p>
         <div className="flex flex-wrap gap-3">
           <Button type="submit" size="lg" loading={submitting} className="min-w-[10rem]">
             {submitting ? '가입하는 중' : '가입하기'}

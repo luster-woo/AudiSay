@@ -5,7 +5,6 @@ import { Dialog } from '@/components/ui/Dialog'
 export interface SummaryDialogProps {
   open: boolean
   summaryText: string | null
-  recommend: boolean
   /** Enter(처음 포커스 버튼) — 요약을 듣고 재생 */
   onListen: () => void
   /** Esc 또는 '바로 재생' */
@@ -16,24 +15,15 @@ export interface SummaryDialogProps {
  * 영상을 열면 먼저 묻는 '30초 요약을 먼저 들을까요?' (NAV-06, 원칙 1장: 자동 재생 없음).
  * 답이 없다고 저절로 넘어가지 않는다.
  */
-export function SummaryDialog({
-  open,
-  summaryText,
-  recommend,
-  onListen,
-  onSkip,
-}: SummaryDialogProps) {
+export function SummaryDialog({ open, summaryText, onListen, onSkip }: SummaryDialogProps) {
   const listenRef = useRef<HTMLButtonElement>(null)
   return (
     <Dialog
       open={open}
       onClose={onSkip}
       title="30초 요약을 먼저 들을까요?"
-      description={
-        recommend
-          ? '이 영상은 대사가 많아 요약을 먼저 듣는 걸 권해요.'
-          : '요약을 들으면 무슨 내용인지 미리 알 수 있어요.'
-      }
+      // 요약 듣기 권장(recommendSummary)은 기획에서 뺐다 (2026-11-05). 모든 영상에 같은 안내
+      description="요약을 들으면 무슨 내용인지 미리 알 수 있어요."
       hideCloseButton
       initialFocusRef={listenRef}
       className="p-10"

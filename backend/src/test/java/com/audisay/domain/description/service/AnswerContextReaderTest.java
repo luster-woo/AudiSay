@@ -107,6 +107,32 @@ class AnswerContextReaderTest {
     }
 
     @Test
+    void 바로_하는_답은_요약과_끝나지_않은_장면의_제목_설명을_뺀다() {
+        AnswerContext context = reader.read(DESC, 90_000, true).orElseThrow();
+
+        assertThat(context.summary()).isNull();
+        assertThat(context.scenes().get(0).title()).isEqualTo("1회 초");
+        assertThat(context.scenes().get(0).description()).isEqualTo("1회 초 설명");
+        assertThat(context.currentScene().title()).isNull();
+        assertThat(context.currentScene().description()).isNull();
+    }
+
+    @Test
+    void 뒤_자료는_지금_장면부터_끝까지_질문한_시각_뒤만() {
+        List<DescriptionLine> lines = List.of(line(100_000, "홈런입니다"), line(150_000, "2회가 시작됩니다"));
+        when(lineRepository.findInRange(DESC, 90_001, Integer.MAX_VALUE)).thenReturn(lines);
+
+        FutureContext future = reader.readFuture(DESC, 90_000).orElseThrow();
+
+        assertThat(future.summary()).isEqualTo("두산이 이겼어요.");
+        assertThat(future.scenes()).extracting(AnswerContext.SceneInfo::title).containsExactly("1회 말", "2회 초");
+        assertThat(future.scenes().get(0).description()).isEqualTo("1회 말 설명");
+        assertThat(future.scenes().get(0).narrations()).containsExactly(new AnswerContext.Narration(100_000, "홈런입니다"));
+        assertThat(future.scenes().get(1).narrations()).containsExactly(new AnswerContext.Narration(150_000, "2회가 시작됩니다"));
+        verify(transcriptRepository).findInRangeWithCharacter(DESC, 90_001, Integer.MAX_VALUE);
+    }
+
+    @Test
     void 해설이_없으면_비어_있다() {
         assertThat(reader.read(1L, 0)).isEmpty();
     }

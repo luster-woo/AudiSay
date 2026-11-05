@@ -146,7 +146,7 @@ class KeywordSceneScorerTest {
 
     @Test
     void 부정_거르기를_끄면_부정_문장도_후보다() {
-        KeywordSceneScorer noFilter = new KeywordSceneScorer(new ChatTuningProperties(true, true, false, true, true));
+        KeywordSceneScorer noFilter = new KeywordSceneScorer(new ChatTuningProperties(true, true, false, true, true, true, true, true, true));
         List<SceneText> withTalk = List.of(chapter(1, 0, 600_000, "경기", "야구", List.of("야구"),
                 dialogue(95_000, "중견수 앞 안타!"), dialogue(480_000, "오늘 안타가 하나도 없네요")));
 
@@ -176,6 +176,34 @@ class KeywordSceneScorerTest {
             """)
     void 조사와_어미를_떼고_흔한_말은_뺀다(String query, String expected) {
         assertThat(KeywordSceneScorer.terms(query)).containsExactly(expected.split(","));
+    }
+
+    @ParameterizedTest(name = "{0} → {1}")
+    @CsvSource(delimiter = '|', textBlock = """
+            튀기 | 튀겨
+            묻히 | 묻혀
+            모이 | 모여
+            나오 | 나와
+            세우 | 세워
+            보 | 봐
+            끄 | null
+            안타 | null
+            버스 | null
+            """)
+    void 끝_글자_모음이_줄어든_꼴(String term, String expected) {
+        assertThat(KeywordSceneScorer.contracted(term)).isEqualTo("null".equals(expected) ? null : expected);
+    }
+
+    @Test
+    void 줄어든_꼴로_쓴_장면도_후보다() {
+        List<SceneText> scenes = List.of(
+                chapter(1, 0, 60_000, "반죽 튀기기", "", List.of(), narration(10_000, "반죽을 기름에 넣어 튀깁니다.")),
+                chapter(2, 60_000, 120_000, "남은 반죽 튀겨서 설탕 묻히기", "", List.of(),
+                        narration(70_000, "남은 반죽도 노릇하게 튀겨냅니다.")));
+
+        KeywordSceneScorer.Result result = scorer.score("반죽 튀기는", scenes, 0);
+
+        assertThat(result.chosen()).extracting(h -> h.scene().chapterIndex()).containsExactly(1, 2);
     }
 
     private static SceneText chapter(int n, int startMs, int endMs, String title, String summary, List<String> keywords,

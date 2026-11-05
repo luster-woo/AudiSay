@@ -24,7 +24,7 @@ class ClaudeLiveTest {
 
     private final ClaudeLlmProvider provider = new ClaudeLlmProvider(new GmsProperties(GmsProperties.Mode.REAL,
             System.getenv("GMS_API_KEY"), null, "https://gms.ssafy.io/gmsapi/api.anthropic.com",
-            Duration.ofSeconds(2), 0, new GmsProperties.Models(MODEL, MODEL, MODEL),
+            Duration.ofSeconds(2), 0, null, new GmsProperties.Models(MODEL, MODEL, MODEL),
             new GmsProperties.Timeouts(Duration.ofSeconds(5), Duration.ofSeconds(10), Duration.ofSeconds(60)),
             Duration.ofSeconds(10), Map.of(), null, null, null), JsonMapper.builder().build());
 

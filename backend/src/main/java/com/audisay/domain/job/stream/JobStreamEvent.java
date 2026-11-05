@@ -7,6 +7,7 @@ import com.audisay.domain.job.dto.response.JobProgressEvent;
 import com.audisay.domain.job.dto.response.JobStatusResponse;
 import com.audisay.domain.job.entity.JobStage;
 import com.audisay.domain.job.entity.JobStatus;
+import com.audisay.domain.job.service.JobTimeEstimator;
 
 /** SSE로 보낼 이벤트 하나. name은 progress / completed / failed */
 record JobStreamEvent(String name, JobStage stage, int progress, Object data) {
@@ -23,17 +24,22 @@ record JobStreamEvent(String name, JobStage stage, int progress, Object data) {
             case SUCCEEDED, PARTIAL -> completed(s.status(), s.currentStage(), s.descriptionId(), s.coveredUntilMs());
             case FAILED -> failed(s.currentStage(), s.progress(), s.errorCode(), s.retryable());
             case QUEUED, RUNNING -> new JobStreamEvent(PROGRESS, s.currentStage(), s.progress(),
-                    new JobProgressEvent(s.status(), s.currentStage(), s.progress(), s.estimatedRemainingSec()));
+                    new JobProgressEvent(s.status(), s.currentStage(), s.progress(), s.estimatedRemainingSec(),
+                            s.estimatedTotalSec()));
         };
     }
 
-    static JobStreamEvent from(JobNotice n) {
+    static JobStreamEvent from(JobNotice n, JobTimeEstimator.Estimate estimate) {
         return switch (n.event()) {
             case JobNotice.COMPLETED -> completed(n.status(), n.currentStage(), n.descriptionId(), n.coveredUntilMs());
             case JobNotice.FAILED -> failed(n.currentStage(), n.progress(), n.errorCode(), n.retryable());
-            default -> new JobStreamEvent(PROGRESS, n.currentStage(), n.progress(),
-                    new JobProgressEvent(n.status(), n.currentStage(), n.progress(), null));
+            default -> progress(n.status(), n.currentStage(), n.progress(), estimate);
         };
+    }
+
+    static JobStreamEvent progress(JobStatus status, JobStage stage, int progress, JobTimeEstimator.Estimate estimate) {
+        return new JobStreamEvent(PROGRESS, stage, progress,
+                new JobProgressEvent(status, stage, progress, estimate.remainingSec(), estimate.totalSec()));
     }
 
     private static JobStreamEvent completed(JobStatus status, JobStage stage, Long descriptionId, Integer coveredUntilMs) {

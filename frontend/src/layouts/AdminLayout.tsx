@@ -44,7 +44,8 @@ export function AdminLayout() {
   return (
     <>
       <SkipLink />
-      <div className="flex min-h-svh">
+      {/* 관리자 화면은 고대비 대상이 아니다(원칙 12장). index.css 가 이 표시로 고대비 색을 끈다 */}
+      <div data-layout="admin" className="flex min-h-svh">
         {/* 치수는 Figma 관리자 프레임 기준 (관리자 글자 크기 15px = 1rem) */}
         <aside className="sticky top-0 flex h-svh w-[15.4667rem] shrink-0 flex-col bg-sidebar px-[1.0667rem] pt-[1.5rem] pb-[1.3667rem] text-on-sidebar">
           <p className="px-[0.4rem] text-[1.6rem] leading-tight font-bold">
@@ -111,4 +112,4 @@ export function AdminLayout() {
       </div>
     </>
   )
-}
+}

@@ -241,6 +241,16 @@ class ChatMessageServiceTest {
     }
 
     @Test
+    void 재생_중_영상_검색은_안내만_하고_검색어를_주지_않는다() {
+        ChatMessageResponse response = service.receive(USER, inVideo("치즈케이크 만드는 영상 찾아 줘", 1000));
+
+        assertThat(response.intent()).isEqualTo(ChatIntent.SEARCH_VIDEO);
+        assertThat(response.result().message()).isEqualTo(ChatMessageService.IN_VIDEO_SEARCH_MESSAGE);
+        assertThat(response.result().query()).isNull();
+        assertThat(saved.getIntent()).isEqualTo(ChatIntent.SEARCH_VIDEO);
+    }
+
+    @Test
     void 해설이_없는_영상에서_질문하면_DESC_001() {
         when(descriptionService.resolveForChat(eq(VIDEO_ID), any())).thenReturn(Optional.empty());
 

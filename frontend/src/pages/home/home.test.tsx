@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { axe } from 'vitest-axe'
 import { reissueAccessToken } from '@/api/client'
@@ -127,7 +127,8 @@ describe('홈', () => {
     expect(screen.getByRole('search', { name: '영상 찾기' })).toBeInTheDocument()
 
     const section = screen.getByRole('region', { name: '해설이 준비된 영상' })
-    const list = within(section).getByRole('list')
+    // 첫 번째 목록이 영상 카드 (두 번째는 쪽 번호)
+    const list = within(section).getAllByRole('list')[0]
     expect(within(list).getAllByRole('listitem')).toHaveLength(4)
     // 카드 하나 = 링크 하나. 이름에 제목·채널·길이가 함께 들어가고 안의 h3 로 제목 탐색도 된다
     const card = screen.getByRole('link', { name: '김치볶음밥, 10분이면 충분해요 채널 7분 05초' })
@@ -136,7 +137,18 @@ describe('홈', () => {
       '김치볶음밥, 10분이면 충분해요',
     )
     expect(screen.queryByRole('button', { name: /재생|즐겨찾기/ })).not.toBeInTheDocument()
-    expect(screen.getByText('전체 48개 중 1번째부터 4번째까지')).toBeInTheDocument()
+    // 개수는 제목 옆, 목록 아래는 '1–4 / 48개' 글자 대신 쪽 번호 (48개 / 4개 = 12쪽 → 1~5)
+    expect(within(section).getByRole('heading', { level: 2 })).toHaveTextContent(
+      '해설이 준비된 영상48개',
+    )
+    expect(screen.queryByText(/1–4 \/ 48/)).not.toBeInTheDocument()
+    const nav = screen.getByRole('navigation', { name: '페이지' })
+    expect(
+      within(nav)
+        .getAllByRole('listitem')
+        .map((li) => li.textContent),
+    ).toEqual(['1', '2', '3', '4', '5'])
+    expect(within(nav).getByRole('button', { name: '1쪽' })).toHaveAttribute('aria-current', 'page')
     expect(await axe(container)).toHaveNoViolations()
   })
 
@@ -183,7 +195,8 @@ describe('홈', () => {
     renderRoute('/')
     expect(
       await screen.findByRole('link', {
-        name: '해설 만드는 중, 3주차 물리 실험 진자의 주기, 62%, 약 1분 남음',
+        // 업로드 영상: 서버 62 → 화면 79.2 → 업로드 몫 15 + 79.2 × 0.85 = 82 (해설 만들기 화면과 같은 계산)
+        name: '해설 만드는 중, 3주차 물리 실험 진자의 주기, 82%, 약 1분 남음',
       }),
     ).toHaveAttribute('href', '/jobs/31')
   })
@@ -216,7 +229,28 @@ describe('음성으로 찾기', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
     Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: undefined })
+    Object.defineProperty(navigator, 'permissions', { configurable: true, value: undefined })
   })
+
+  /** 마이크 권한 상태를 정한다. change() 로 상태를 바꾸면 change 이벤트를 낸다 */
+  function micPermission(initial: PermissionState) {
+    const status = Object.assign(new EventTarget(), { state: initial })
+    Object.defineProperty(navigator, 'permissions', {
+      configurable: true,
+      value: { query: vi.fn().mockResolvedValue(status) },
+    })
+    return {
+      change(next: PermissionState) {
+        status.state = next
+        status.dispatchEvent(new Event('change'))
+      },
+    }
+  }
+  const denyMic = (name: string) =>
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockRejectedValue(new DOMException('x', name)) },
+    })
 
   test('듣는 중 → 말 끝내기 → 알아들은 말로 검색한다', async () => {
     vi.mocked(sttApi.transcribe).mockResolvedValue({ text: '그래프 읽는 법', latencyMs: 1 })
@@ -248,9 +282,63 @@ describe('음성으로 찾기', () => {
     expect(
       (
         await screen.findAllByText(
-          '이 브라우저에서는 음성으로 찾기를 쓸 수 없어요. 검색 칸에 글자로 적어 주세요.',
+          '이 브라우저에서는 음성 입력을 쓸 수 없어요. 글자로 찾기는 그대로 쓸 수 있어요. 검색 칸에 있어요.',
         )
       ).length,
+    ).toBeGreaterThan(0)
+  })
+  test('마이크를 처음 쓰면 허용 팝업이 뜬다고 먼저 알리고, 허용하면 바로 듣는다', async () => {
+    micPermission('prompt')
+    renderRoute('/')
+    await userEvent.click(await screen.findByRole('button', { name: '음성으로 찾기' }))
+    expect(
+      (await screen.findAllByText(/브라우저가 마이크를 써도 되는지 물어봐요/)).length,
+    ).toBeGreaterThan(0)
+    expect(await screen.findByRole('button', { name: '말 끝내기' })).toHaveFocus()
+  })
+
+  test('마이크가 막혀 있으면 푸는 방법을 알리고, 사이트 설정에서 허용하면 바로 알려 준다', async () => {
+    const perm = micPermission('denied')
+    denyMic('NotAllowedError')
+    renderRoute('/')
+    await userEvent.click(await screen.findByRole('button', { name: '음성으로 찾기' }))
+    expect(
+      (await screen.findAllByText(/마이크가 막혀 있어요. 주소창 왼쪽의 자물쇠/)).length,
+    ).toBeGreaterThan(0)
+    await waitFor(() =>
+      expect(screen.getByRole('searchbox', { name: '검색어나 유튜브 주소로 찾기' })).toHaveFocus(),
+    )
+
+    act(() => perm.change('granted'))
+    expect(
+      (await screen.findAllByText('이제 마이크를 쓸 수 있어요. 음성으로 찾기를 다시 눌러 주세요.'))
+        .length,
+    ).toBeGreaterThan(0)
+  })
+
+  test('팝업을 그냥 닫으면 다시 누르면 다시 물어본다고 알린다', async () => {
+    micPermission('prompt')
+    denyMic('NotAllowedError')
+    renderRoute('/')
+    await userEvent.click(await screen.findByRole('button', { name: '음성으로 찾기' }))
+    expect(
+      (await screen.findAllByText(/마이크 사용을 허용하지 않았어요. 다시 누르면 다시 물어봐요./))
+        .length,
+    ).toBeGreaterThan(0)
+  })
+
+  test('마이크가 없거나 다른 프로그램이 쓰는 중이면 그 이유를 알린다', async () => {
+    denyMic('NotFoundError')
+    const { unmount } = renderRoute('/')
+    await userEvent.click(await screen.findByRole('button', { name: '음성으로 찾기' }))
+    expect((await screen.findAllByText(/마이크가 연결돼 있지 않아요/)).length).toBeGreaterThan(0)
+    unmount()
+
+    denyMic('NotReadableError')
+    renderRoute('/')
+    await userEvent.click(await screen.findByRole('button', { name: '음성으로 찾기' }))
+    expect(
+      (await screen.findAllByText(/다른 프로그램이 마이크를 쓰고 있어요/)).length,
     ).toBeGreaterThan(0)
   })
 })

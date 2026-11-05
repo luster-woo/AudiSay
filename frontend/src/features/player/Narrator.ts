@@ -27,9 +27,15 @@ export class Narrator {
   private audio: HTMLAudioElement | null = null
   private utterance: SpeechSynthesisUtterance | null = null
   private generation = 0
+  private lastItem: VoiceItem | null = null
 
   get busy() {
     return this.current !== null
+  }
+
+  /** 마지막으로 읽기 시작한 소리 ('방금 거 다시' 명령용) */
+  get last(): VoiceItem | null {
+    return this.lastItem
   }
 
   /** 줄 끝에 넣고, 다 읽혔을 때(또는 끊겼을 때) 끝난다. 읽었으면 true */
@@ -73,6 +79,7 @@ export class Narrator {
     const p = this.queue.shift()
     if (!p) return
     this.current = p
+    this.lastItem = p.item
     const gen = this.generation
     let played = false
     try {

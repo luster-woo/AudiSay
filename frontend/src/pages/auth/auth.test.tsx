@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { axe } from 'vitest-axe'
 import { reissueAccessToken } from '@/api/client'
@@ -162,6 +162,57 @@ describe('회원가입', () => {
       'aria-invalid',
       'true',
     )
+    expect(screen.getByRole('checkbox', { name: /개인정보/ })).toHaveAttribute(
+      'aria-invalid',
+      'true',
+    )
+  })
+
+  test('약관 동의: 그룹·요약이 읽히고, 모두 동의가 둘을 켜고, 전문 창에서 동의하고 닫으면 체크된다', async () => {
+    const { container } = renderRoute('/signup')
+    const group = await screen.findByRole('group', { name: '약관 동의' })
+    const terms = within(group).getByRole('checkbox', { name: '[필수] 이용약관에 동의해요' })
+    const privacy = within(group).getByRole('checkbox', {
+      name: '[필수] 개인정보 수집·이용에 동의해요',
+    })
+    const all = within(group).getByRole('checkbox', { name: '모두 동의해요' })
+    expect(terms).toHaveAccessibleDescription(/AI가 영상에 화면 해설을 붙여 주는 서비스예요/)
+    expect(privacy).toHaveAccessibleDescription(/이름, 이메일, 비밀번호를 받아요/)
+
+    await userEvent.click(all)
+    expect(terms).toBeChecked()
+    expect(privacy).toBeChecked()
+    await userEvent.click(terms)
+    expect(all).not.toBeChecked()
+    expect(all).toBePartiallyChecked()
+
+    // 전문 창: 제목에 포커스, 조항은 h3, 동의하고 닫기 → 체크 + 안내, 포커스는 전문 보기 버튼으로
+    const view = within(group).getByRole('button', { name: '이용약관 전문 보기' })
+    await userEvent.click(view)
+    const dialog = await screen.findByRole('dialog', { name: 'AudiSay 이용약관' })
+    expect(within(dialog).getByRole('heading', { level: 2 })).toHaveFocus()
+    expect(within(dialog).getAllByRole('heading', { level: 3 })).toHaveLength(10)
+    expect(within(dialog).getByText('조항 10개 · 2026년 11월 4일 시행')).toBeInTheDocument()
+    expect(await axe(container)).toHaveNoViolations()
+
+    await userEvent.click(within(dialog).getByRole('button', { name: '동의하고 닫기' }))
+    await waitFor(() => expect(dialog).not.toBeVisible())
+    expect(terms).toBeChecked()
+    expect(all).toBeChecked()
+    expect(view).toHaveFocus()
+    expect(screen.getByRole('region', { name: '방금 안내', hidden: true })).toHaveTextContent(
+      '이용약관에 동의했어요.',
+    )
+
+    // 닫기만 하면 체크는 그대로 (Esc 는 브라우저가 cancel 로 같은 onClose 를 부른다. jsdom 은 cancel 을 내지 않음)
+    await userEvent.click(within(group).getByRole('button', { name: '개인정보 안내 전문 보기' }))
+    const privacyDialog = await screen.findByRole('dialog', {
+      name: 'AudiSay 개인정보 수집·이용 안내',
+    })
+    await userEvent.click(within(privacyDialog).getAllByRole('button', { name: '닫기' })[0])
+    await waitFor(() => expect(privacyDialog).not.toBeVisible())
+    expect(privacy).toBeChecked()
+    expect(within(group).getByRole('button', { name: '개인정보 안내 전문 보기' })).toHaveFocus()
   })
 
   test('이메일 칸을 벗어나면 사용 가능 여부를 알려 준다', async () => {
@@ -190,7 +241,7 @@ describe('회원가입', () => {
     await userEvent.type(screen.getByRole('textbox', { name: '이메일' }), 'a@b.co')
     await userEvent.type(screen.getAllByLabelText(/비밀번호/)[0], 'pass1234!')
     await userEvent.type(screen.getByLabelText(/^비밀번호 확인/), 'pass1234!')
-    await userEvent.click(screen.getByRole('checkbox', { name: /이용약관/ }))
+    await userEvent.click(screen.getByRole('checkbox', { name: '모두 동의해요' }))
     await userEvent.click(screen.getByRole('button', { name: '가입하기' }))
 
     // (startTransition) DOM 이 실제로 바뀔 때까지 기다린다
@@ -252,10 +303,11 @@ describe('시각장애인 인증', () => {
     expect(usersApi.verify).toHaveBeenCalledOnce()
   })
 
-  test('이미 인증된 회원은 신청 양식이 없다', async () => {
+  test('이미 인증된 회원이 주소로 들어오면 내 정보로 보낸다 (기록에 남기지 않음)', async () => {
     loggedIn('VISUALLY_IMPAIRED')
-    renderRoute('/verify')
-    expect(await screen.findByText(/이미 인증된 회원이에요/)).toBeInTheDocument()
+    const { router } = renderRoute('/verify')
+    await waitFor(() => expect(router.state.location.pathname).toBe('/me'))
+    expect(router.state.historyAction).toBe('REPLACE')
     expect(screen.queryByRole('button', { name: '인증 신청' })).not.toBeInTheDocument()
   })
 })

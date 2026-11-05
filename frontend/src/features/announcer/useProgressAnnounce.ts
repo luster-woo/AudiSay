@@ -4,7 +4,7 @@ import type { JobStage } from '@/api/types'
 
 /** 단계 이름 ("~ 중이에요" / "~ 중에 멈췄어요" 앞에 붙는다) */
 export const STAGE_NAME: Record<JobStage, string> = {
-  PREPARE: '영상을 확인하고 대사를 받아 적는',
+  PREPARE: '영상을 분석하는',
   DESCRIBE: '장면 해설을 만드는',
   MERGE: '해설을 합치고 다듬는',
   TTS: '해설 음성을 만드는',

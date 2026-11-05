@@ -3,6 +3,7 @@ import { useAnnouncer } from '@/features/announcer/context'
 import { useShortcut } from '@/features/shortcuts/context'
 import { Button } from '@/components/ui/Button'
 import { StatusLine } from '@/components/ui/StatusLine'
+import { MIC_MESSAGES, queryMic, recognitionErrorMessage } from '@/features/search/micPermission'
 
 /** 브라우저 음성 인식 (크롬은 webkit 접두사) */
 function getRecognition(): SpeechRecognition | null {
@@ -45,7 +46,7 @@ export function AskPractice({ done, onDone }: { done: boolean; onDone: () => voi
     answer(q)
   }
 
-  const listen = () => {
+  const listen = async () => {
     const rec = getRecognition()
     if (!rec) {
       inputRef.current?.focus()
@@ -57,17 +58,26 @@ export function AskPractice({ done, onDone }: { done: boolean; onDone: () => voi
       setQuestion(text)
       answer(text)
     }
-    rec.onerror = () => announce('말을 알아듣지 못했어요. 다시 말씀해 주세요.')
+    rec.onerror = (e) => {
+      const mic = recognitionErrorMessage(e.error)
+      if (mic) {
+        inputRef.current?.focus()
+        announce(`${mic} 질문은 글자로 적어도 돼요.`, { politeness: 'assertive' })
+      } else announce('말을 알아듣지 못했어요. 다시 말씀해 주세요.')
+    }
     rec.onend = () => setListening(false)
     setListening(true)
-    announce("'띠' 소리 뒤에 말씀해 주세요.")
+    // 처음이면 브라우저가 마이크 허용 팝업을 띄운다
+    announce(
+      (await queryMic()) === 'prompt' ? MIC_MESSAGES.asking : "'띠' 소리 뒤에 말씀해 주세요.",
+    )
     rec.start()
   }
 
   // Alt+Shift+Q 하나로 질문한다: 입력창으로 옮기고 바로 듣기 시작. 말 대신 글자를 적어도 된다
   const ask = () => {
     inputRef.current?.focus()
-    listen()
+    void listen()
   }
   useShortcut('Alt+Shift+Q', ask, { description: '질문하기 (말로, 또는 글자로)', scope: 'user' })
 
@@ -82,7 +92,7 @@ export function AskPractice({ done, onDone }: { done: boolean; onDone: () => voi
           onChange={(e) => setQuestion(e.target.value)}
           className="min-h-touch min-w-0 flex-1 rounded-md border-2 border-line bg-paper px-4 text-lg"
         />
-        <Button onClick={listen} loading={listening} aria-keyshortcuts="Alt+Shift+Q">
+        <Button onClick={() => void listen()} loading={listening} aria-keyshortcuts="Alt+Shift+Q">
           {listening ? '듣는 중' : '말로 묻기'}
         </Button>
       </form>

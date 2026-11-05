@@ -111,6 +111,6 @@ public class ChatLog {
     }
 
     public boolean isAnswerable() {
-        return intent == ChatIntent.QUESTION || intent == ChatIntent.SCENE_NOW;
+        return intent == ChatIntent.QUESTION || intent == ChatIntent.SCENE_NOW || intent == ChatIntent.RECAP;
     }
 }

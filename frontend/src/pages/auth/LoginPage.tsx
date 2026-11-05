@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from 'react'
+import { useId, useRef, useState, type FormEvent } from 'react'
 import { useLocation } from 'react-router-dom'
 import { ApiError, toUserMessage } from '@/api/errors'
 import { useAnnouncer } from '@/features/announcer/context'
@@ -29,6 +29,7 @@ export default function LoginPage() {
   const [errors, setErrors] = useState<Errors>({})
   const [summary, setSummary] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const headingId = useId()
 
   usePageEntry({
     title: '로그인',
@@ -85,7 +86,9 @@ export default function LoginPage() {
   return (
     <div>
       <p className="text-lg font-bold text-ink-muted">AudiSay 계정</p>
-      <h1 className="mt-2 text-[2.5rem] font-bold">로그인</h1>
+      <h1 id={headingId} className="mt-2 text-[2.5rem] font-bold">
+        로그인
+      </h1>
 
       {summary ? (
         <Notice title="로그인하지 못했어요" className="mt-8 max-w-[35rem]">
@@ -99,7 +102,13 @@ export default function LoginPage() {
         )
       )}
 
-      <form noValidate onSubmit={onSubmit} className="mt-6 flex max-w-[35rem] flex-col gap-5">
+      {/* 이름 있는 서식 랜드마크: '로그인 서식 랜드마크' 로 읽힌다 */}
+      <form
+        noValidate
+        aria-labelledby={headingId}
+        onSubmit={onSubmit}
+        className="mt-6 flex max-w-[35rem] flex-col gap-5"
+      >
         <TextField
           ref={emailRef}
           label="이메일"
@@ -114,7 +123,6 @@ export default function LoginPage() {
           ref={passwordRef}
           label="비밀번호"
           autoComplete="current-password"
-          placeholder="비밀번호"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           error={errors.password}

@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from 'react'
+import { useId, useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { authApi } from '@/api/auth'
 import { ApiError, toUserMessage } from '@/api/errors'
@@ -38,6 +38,7 @@ export default function SignupPage() {
   const [summary, setSummary] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
+  const headingId = useId()
   usePageEntry({
     title: '회원가입',
     announce: '회원가입 화면이에요. 칸 4개와 약관 동의가 있어요. 이름 칸에 있어요.',
@@ -135,7 +136,9 @@ export default function SignupPage() {
   return (
     <div className="max-w-[38rem]">
       <p className="text-lg font-bold text-ink-muted">AudiSay 계정</p>
-      <h1 className="mt-2 text-[2.5rem] font-bold">회원가입</h1>
+      <h1 id={headingId} className="mt-2 text-[2.5rem] font-bold">
+        회원가입
+      </h1>
       <p className="mt-2 text-lg text-ink-muted">칸 4개를 모두 채우고 약관에 동의하면 가입돼요.</p>
 
       {summary && (
@@ -144,13 +147,18 @@ export default function SignupPage() {
         </Notice>
       )}
 
-      <form noValidate onSubmit={onSubmit} className="mt-6 flex flex-col gap-5">
+      {/* 이름 있는 서식 랜드마크: '회원가입 서식 랜드마크' 로 읽힌다 */}
+      <form
+        noValidate
+        aria-labelledby={headingId}
+        onSubmit={onSubmit}
+        className="mt-6 flex flex-col gap-5"
+      >
         <TextField
           ref={nameRef}
           label="이름"
           required
           autoComplete="name"
-          placeholder="이름"
           maxLength={50}
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -179,7 +187,6 @@ export default function SignupPage() {
           required
           hint="8~20자, 영문·숫자·특수문자를 모두 넣어요."
           autoComplete="new-password"
-          placeholder="비밀번호"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           error={errors.password}

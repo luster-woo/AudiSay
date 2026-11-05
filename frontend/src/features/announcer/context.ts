@@ -17,6 +17,15 @@ export interface AnnouncerValue {
 
 export const AnnouncerContext = createContext<AnnouncerValue | null>(null)
 
+/**
+ * 열린 모달 대화상자를 안내 영역의 자리로 등록한다. 돌려받은 함수로 등록을 푼다.
+ * showModal() 은 창 바깥을 inert 로 막아 바깥 aria-live 영역을 낭독기가 읽지 않는다.
+ * 그래서 창이 열려 있는 동안에는 안내 영역을 맨 위 창 안으로 옮겨 그린다.
+ * Provider 밖(부품 단독 테스트)에서는 아무 일도 하지 않는다.
+ */
+export type RegisterLiveHost = (el: HTMLElement) => () => void
+export const LiveHostContext = createContext<RegisterLiveHost>(() => () => {})
+
 export function useAnnouncer() {
   const ctx = useContext(AnnouncerContext)
   if (!ctx) throw new Error('useAnnouncer 는 AnnouncerProvider 안에서만 쓸 수 있어요')

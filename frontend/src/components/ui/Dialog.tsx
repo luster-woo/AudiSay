@@ -1,4 +1,5 @@
-import { useEffect, useId, useRef, type ReactNode, type RefObject } from 'react'
+import { useContext, useEffect, useId, useRef, type ReactNode, type RefObject } from 'react'
+import { LiveHostContext } from '@/features/announcer/context'
 import { cn } from './cn'
 
 export interface DialogProps {
@@ -12,6 +13,11 @@ export interface DialogProps {
   alert?: boolean
   /** 열릴 때 포커스를 줄 요소. 없으면 브라우저 기본(첫 번째 포커스 가능한 요소) */
   initialFocusRef?: RefObject<HTMLElement | null>
+  /**
+   * 닫힌 뒤 열기 전 자리로 포커스를 돌려보낼지 (기본 true).
+   * 닫을 때 부모가 직접 다른 곳으로 포커스를 옮기면 false — 두 번 옮겨져 낭독기가 두 곳을 읽는다
+   */
+  restoreFocus?: boolean
   /** 열릴 때 제목(h2)에 포커스. 긴 글 창처럼 처음부터 읽어 내려가야 할 때 */
   focusTitle?: boolean
   /** 긴 글 창: 창 전체가 스크롤되고(안쪽 스크롤 상자 없음) 제목 줄과 버튼 줄은 위·아래에 붙어 있다 */
@@ -38,6 +44,7 @@ export function Dialog({
   footer,
   alert = false,
   initialFocusRef,
+  restoreFocus = true,
   focusTitle = false,
   longForm = false,
   hideCloseButton = false,
@@ -50,19 +57,34 @@ export function Dialog({
   const returnFocusRef = useRef<HTMLElement | null>(null)
   const titleId = useId()
   const descId = useId()
+  const registerLiveHost = useContext(LiveHostContext)
+  const unregisterRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     const el = ref.current
     if (!el) return
     if (open && !el.open) {
-      returnFocusRef.current = document.activeElement as HTMLElement | null
+      returnFocusRef.current = restoreFocus ? (document.activeElement as HTMLElement | null) : null
       el.showModal()
+      // 창 바깥은 inert 가 되므로 안내 영역(aria-live)을 이 창 안으로 옮긴다
+      unregisterRef.current = registerLiveHost(el)
       if (focusTitle) titleRef.current?.focus()
       else initialFocusRef?.current?.focus()
     } else if (!open && el.open) {
       el.close()
+      unregisterRef.current?.()
+      unregisterRef.current = null
     }
-  }, [open, initialFocusRef, focusTitle])
+  }, [open, initialFocusRef, focusTitle, restoreFocus, registerLiveHost])
+
+  // 창이 열린 채로 화면을 떠나면(라우트 이동) 안내 영역 자리를 돌려놓는다
+  useEffect(
+    () => () => {
+      unregisterRef.current?.()
+      unregisterRef.current = null
+    },
+    [],
+  )
 
   // 닫히면 열기 전에 포커스가 있던 곳(보통 이 창을 연 버튼)으로 돌려보낸다
   useEffect(() => {

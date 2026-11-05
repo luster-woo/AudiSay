@@ -50,10 +50,12 @@ async function submitLogin() {
 }
 
 describe('랜딩', () => {
-  test('지금 시작하기에 포커스가 있고 로그인으로 간다', async () => {
+  test('제목에 포커스가 있고, 지금 시작하기는 로그인으로 간다', async () => {
     const { container } = renderRoute('/landing')
-    const start = await screen.findByRole('link', { name: '지금 시작하기' })
-    await waitFor(() => expect(start).toHaveFocus())
+    const heading = await screen.findByRole('heading', { level: 1, name: /영상 화면해설/ })
+    await waitFor(() => expect(heading).toHaveFocus())
+    expect(document.title).toBe('AudiSay - 시작하기')
+    const start = screen.getByRole('link', { name: '지금 시작하기' })
     expect(start).toHaveAttribute('href', '/login')
     expect(await axe(container)).toHaveNoViolations()
   })

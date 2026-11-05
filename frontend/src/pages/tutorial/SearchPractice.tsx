@@ -27,7 +27,6 @@ export function SearchPractice({ done, onDone }: { done: boolean; onDone: () => 
         <input
           ref={inputRef}
           aria-label="연습 검색어"
-          placeholder="예: 김치볶음밥"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           className="min-h-touch min-w-0 flex-1 rounded-md border-2 border-line bg-paper px-4 text-lg"

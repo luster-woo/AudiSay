@@ -175,4 +175,18 @@
     * {
     color: #000000;
   }
+  /*
+   * 노란 면 안의 흰(=고대비에서 검정) 버튼(질문 기록 '다시 듣기'·'그 장면 보기' 등)은 검정 바탕에 노란 글자로 되돌린다.
+   * 위 규칙대로면 검정 바탕 위 검정 글자가 되어 버튼이 안 보인다. 노랑 위 검정 버튼이라 면과도 구별된다
+   */
+  html[data-contrast='high']:not(:has([data-layout='admin']))
+    :is([class~='bg-yellow'], [class~='bg-[#ffc93c]'])
+    :is(button, a)[class~='bg-paper'],
+  html[data-contrast='high']:not(:has([data-layout='admin']))
+    :is([class~='bg-yellow'], [class~='bg-[#ffc93c]'])
+    :is(button, a)[class~='bg-paper']
+    * {
+    color: #ffd600;
+    border-color: #000000;
+  }
 }

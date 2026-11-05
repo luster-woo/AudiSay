@@ -76,18 +76,18 @@ export function MyVideoCard({ video }: { video: MyVideo }) {
   const privateUpload = detail.data?.visibility === 'PRIVATE'
   const channel =
     video.sourceType === 'UPLOAD'
-      ? `올린 영상${detail.data?.isOwner ? ` · ${privateUpload ? '비공개' : '공개'}` : ''}`
-      : detail.data?.channelTitle
+      ? `직접 올린 영상${detail.data?.isOwner ? ` · ${privateUpload ? '비공개' : '공개'}` : ''}`
+      : detail.data?.channelTitle && `유튜브 · ${detail.data.channelTitle}`
   const error = retry.error ?? visibility.error
 
   return (
     <VideoCard
       {...video}
-      centerDetails
+      row
       metadata={
         <>
-          {channel && <p className="text-[1.375rem] leading-8 break-words">{channel}</p>}
-          <div className="flex flex-wrap items-baseline justify-between gap-x-2 text-[1.375rem] leading-8">
+          {channel && <p className="text-xl leading-8">{channel}</p>}
+          <div className="flex flex-wrap items-baseline gap-x-4 text-xl leading-8">
             <p>{formatDurationShort(video.durationSec)}</p>
             <p
               className={`font-bold ${!available || video.descriptionStatus === 'FAILED' ? 'text-danger' : 'text-navy'}`}

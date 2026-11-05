@@ -153,25 +153,25 @@ beforeEach(() => {
   }))
 })
 
-test('내 영상은 서버에서 4개씩 받고 제목에 초점을 두며 카드·횟수·상태를 읽을 수 있다', async () => {
+test('내 영상은 한 열 목록으로 10개씩 받고 제목에 초점을 두며 카드·횟수·상태를 읽을 수 있다', async () => {
   const { container } = renderRoute('/me/videos')
   const title = await screen.findByRole('heading', { level: 1, name: '내 영상' })
   await waitFor(() => expect(title).toHaveFocus())
   const list = await screen.findByRole('list', { name: '요청·올린 영상' })
   expect(within(list).getAllByRole('listitem')).toHaveLength(4)
-  expect(usersApi.myVideos).toHaveBeenCalledWith(0, 4)
-  expect(favoritesApi.list).toHaveBeenCalledWith(0, 4)
+  expect(list.tagName).toBe('OL')
+  expect(usersApi.myVideos).toHaveBeenCalledWith(0, 10)
+  expect(favoritesApi.list).toHaveBeenCalledWith(0, 10)
   expect(await screen.findByRole('link', { name: '재생, 영상 1' })).toHaveAttribute(
     'href',
     '/watch/1',
   )
-  expect((await screen.findAllByText('수학하는 민쌤')).length).toBeGreaterThan(0)
+  expect((await screen.findAllByText('유튜브 · 수학하는 민쌤')).length).toBeGreaterThan(0)
   expect(screen.getByText('5번 중 4번 남음')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: '다시 요청, 영상 4' })).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: '이전 페이지' })).toHaveAttribute(
-    'aria-disabled',
-    'true',
-  )
+  // 4개뿐이라 더 보기는 없다 (쪽 번호도 없다)
+  expect(screen.queryByRole('button', { name: /더 보기/ })).not.toBeInTheDocument()
+  expect(screen.queryByRole('navigation', { name: '페이지' })).not.toBeInTheDocument()
   expect(await axe(container)).toHaveNoViolations()
 })
 
@@ -217,7 +217,7 @@ test('본인 업로드만 공개 범위 버튼을 제공하고 실제 응답으�
   await userEvent.click(button)
   expect(videosApi.updateVisibility).toHaveBeenCalledWith(2, 'PRIVATE')
   expect(await screen.findByRole('button', { name: '공개로, 영상 2' })).toBeInTheDocument()
-  expect(screen.getByText('올린 영상 · 비공개')).toBeInTheDocument()
+  expect(screen.getByText('직접 올린 영상 · 비공개')).toBeInTheDocument()
 })
 
 test('공개 범위 변경 실패 시 기존 공개 상태와 버튼을 유지한다', async () => {
@@ -269,33 +269,35 @@ test('진행 중인 해설은 작업 링크를 제공한다', async () => {
   )
 })
 
-test('다음 페이지는 해당 서버 페이지를 조회하고 목록 제목으로 초점을 옮긴다', async () => {
-  myItems.push(mine(8))
+test('더 보기는 10개씩 이어 붙이고 새 첫 영상 제목으로 초점을 옮긴다', async () => {
+  for (let id = 11; id <= 23; id++) myItems.push(mine(id))
   const { router } = renderRoute('/me/videos')
   await screen.findByRole('link', { name: '재생, 영상 1' })
-  await userEvent.click(screen.getByRole('button', { name: '다음 페이지' }))
-  expect(await screen.findByRole('link', { name: '재생, 영상 8' })).toBeInTheDocument()
-  expect(usersApi.myVideos).toHaveBeenCalledWith(1, 4)
-  expect(router.state.location.search).toBe('?page=1')
-  await waitFor(() =>
-    expect(screen.getByRole('heading', { level: 2, name: '요청·올린 영상' })).toHaveFocus(),
-  )
-  expect(screen.getByRole('button', { name: '2쪽' })).toHaveAttribute('aria-current', 'page')
-  await userEvent.click(screen.getByRole('button', { name: '1쪽' }))
-  expect(await screen.findByRole('link', { name: '재생, 영상 1' })).toBeInTheDocument()
-  expect(router.state.location.search).toBe('?page=0')
+  expect(screen.queryByRole('heading', { name: '영상 17' })).not.toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: '더 보기 (7개 남음)' }))
+  // 11번째 줄 = 영상 17 (앞 10줄: 영상 1~4, 11~16)
+  const eleventh = await screen.findByRole('heading', { name: '영상 17' })
+  await waitFor(() => expect(eleventh).toHaveFocus())
+  expect(usersApi.myVideos).toHaveBeenLastCalledWith(0, 20)
+  expect(router.state.location.search).toBe('?shown=20')
+  expect(
+    (await screen.findAllByText('7개 더 불러왔어요. 전체 17개 중 17개. 모든 영상을 불러왔어요.'))
+      .length,
+  ).toBeGreaterThan(0)
+  expect(screen.queryByRole('button', { name: /더 보기/ })).not.toBeInTheDocument()
 })
 
-test('마지막 즐겨찾기를 해제하면 이전 페이지로 돌아가고 누락된 카드를 다시 받는다', async () => {
+test('즐겨찾기를 해제하면 목록에서 빠지고 개수가 줄어든다', async () => {
   favoriteItems = [saved(11), saved(12), saved(13), saved(14), saved(15)]
-  const { router } = renderRoute('/me/videos?tab=favorites&page=1')
+  renderRoute('/me/videos?tab=favorites')
   await userEvent.click(
     await screen.findByRole('button', { name: '즐겨찾기 해제, 즐겨찾기 영상 15' }),
   )
-  await screen.findByRole('heading', { name: '즐겨찾기 영상 11' })
-  expect(router.state.location.search).toBe('?tab=favorites&page=0')
-  expect(favoritesApi.list).toHaveBeenCalledWith(0, 4)
-  expect(screen.getByRole('tab', { name: '즐겨찾기 4' })).toBeInTheDocument()
+  await waitFor(() =>
+    expect(screen.queryByRole('heading', { name: '즐겨찾기 영상 15' })).not.toBeInTheDocument(),
+  )
+  expect(screen.getByRole('heading', { name: '즐겨찾기 영상 11' })).toBeInTheDocument()
+  expect(await screen.findByRole('tab', { name: '즐겨찾기 4' })).toBeInTheDocument()
 })
 
 test('내 영상이 비어 있으면 홈과 영상 등록으로 이동할 수 있다', async () => {

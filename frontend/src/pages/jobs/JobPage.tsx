@@ -15,7 +15,7 @@ import { JobSteps } from '@/features/job/JobSteps'
 import { jobSteps, type SourceType } from '@/features/job/stages'
 import { useDisplayProgress } from '@/features/job/useDisplayProgress'
 import { StatusDialog } from '@/features/upload/StatusDialog'
-import { APP_TITLE } from '@/features/page/usePageEntry'
+import { pageTitle } from '@/features/page/usePageEntry'
 import { formatDurationSpoken } from '@/utils/time'
 
 const POLL_MS = 5_000
@@ -157,7 +157,7 @@ function JobPage({ jobId }: { jobId: number }) {
   // ── 화면 진입: 탭 제목 + 제목으로 포커스 (대화상자가 떠 있으면 그대로 둔다) ──
   const ready = !!job && !!source
   useEffect(() => {
-    document.title = APP_TITLE
+    document.title = pageTitle('해설 만드는 중')
     if (!ready) return
     if (!document.querySelector('dialog[open]')) headingRef.current?.focus({ preventScroll: true })
   }, [ready])

@@ -75,7 +75,7 @@ const FEATURES: { label: string; icon: ReactNode }[] = [
 
 /** 로그인 전 첫 화면. BareLayout 안이라 헤더·안내 띠가 없다 */
 export default function LandingPage() {
-  const startRef = useRef<HTMLAnchorElement>(null)
+  const headingRef = useRef<HTMLHeadingElement>(null)
   const openHelp = useShortcutHelp()
 
   // 바탕을 남색으로 칠하는 표시 (index.html 이 새로고침 때 먼저 붙인다). 다른 화면으로 가면 지운다
@@ -89,8 +89,9 @@ export default function LandingPage() {
 
   usePageEntry({
     title: '시작하기',
-    announce: 'AudiSay예요. 지금 시작하기 링크에 있어요. 단축키 안내는 Alt+Shift+슬래시.',
-    focusRef: startRef,
+    // 처음 온 사람이 무슨 서비스인지 듣도록 포커스는 제목(h1)에. 다음 Tab 이 '지금 시작하기'
+    announce: "AudiSay예요. Tab을 누르면 '지금 시작하기', 로그인 화면으로 가요.",
+    focusRef: headingRef,
   })
 
   return (
@@ -121,7 +122,11 @@ export default function LandingPage() {
 
         <div className="flex flex-1 items-center justify-between gap-12 py-16">
           <div>
-            <h1 className="text-[4.5rem] leading-[1.25] font-bold break-keep">
+            <h1
+              ref={headingRef}
+              tabIndex={-1}
+              className="text-[4.5rem] leading-[1.25] font-bold break-keep outline-none"
+            >
               시각장애인을 위한
               <br />
               영상 화면해설
@@ -130,7 +135,6 @@ export default function LandingPage() {
               보이지 않는 장면까지 목소리로 들려드려요.
             </p>
             <Link
-              ref={startRef}
               to="/login"
               className="mt-12 inline-flex min-h-[4.25rem] min-w-[17.5rem] items-center justify-center rounded-md bg-yellow px-10 text-2xl font-bold text-navy focus-visible:bg-yellow focus-visible:outline-dashed focus-visible:outline-cream hc:bg-black! hc:text-[#ffd600]!"
             >

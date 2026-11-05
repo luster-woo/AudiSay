@@ -189,12 +189,18 @@ export function SearchBar({
   const box = 'flex min-h-touch min-w-0 flex-1 items-center gap-4 rounded-md border-2 px-5 text-2xl'
 
   return (
-    <div role="search" aria-label="영상 찾기">
+    // 검색 랜드마크는 form 하나만 (div role=search + form 이면 '검색 랜드마크'·'서식 랜드마크'가 두 번 읽힌다)
+    <div>
       {/* 아래 검색 칸의 안내라 제목보다 검색 칸에 가깝게 둔다 */}
       <p aria-hidden="true" className="mt-3 text-2xl text-ink">
         검색어나 유튜브 주소 입력하기
       </p>
-      <form onSubmit={onSubmit} className="mt-2 flex flex-wrap items-stretch gap-4">
+      <form
+        role="search"
+        aria-label="영상 찾기"
+        onSubmit={onSubmit}
+        className="mt-2 flex flex-wrap items-stretch gap-4"
+      >
         {voice.state === 'idle' && (
           <>
             <input

@@ -295,8 +295,9 @@ export function Player({ video }: { video: VideoDetail }) {
   /* ── 신고 (여는 동안 영상을 멈춘다) ── */
   const reportResume = useRef(false)
   const openReport = useCallback(() => {
-    reportResume.current = state.playing
-    interrupt(false)
+    // 해설을 읽느라 잠깐 멈춰 둔 상태도 '재생 중'으로 본다
+    const holding = interrupt(false)
+    reportResume.current = state.playing || holding
     controls.pause()
     setReport({ line: currentLine, ms: state.currentMs })
     announce(
@@ -309,6 +310,28 @@ export function Player({ video }: { video: VideoDetail }) {
     setReport(null)
     if (reportResume.current) controls.play()
     reportResume.current = false
+  }
+
+  /* ── 재생 설정 (재생 중이었으면 여는 동안 멈추고 닫으면 이어서 재생. 멈춰 있었으면 그대로) ──
+   * 창 안의 안내를 낭독기가 읽는 동안 영상·해설 소리가 겹치지 않게 한다 (원칙 1장, 2026-11-06 변경) */
+  const settingsResume = useRef(false)
+  const openSettings = useCallback(() => {
+    const holding = interrupt(false)
+    const wasPlaying = state.playing || holding
+    settingsResume.current = wasPlaying
+    if (wasPlaying) {
+      controls.pause()
+      announce('영상을 멈췄어요. 창을 닫으면 이어서 재생해요.')
+    }
+    setSettingsOpen(true)
+  }, [state.playing, interrupt, controls, announce])
+  const closeSettings = () => {
+    setSettingsOpen(false)
+    if (settingsResume.current && !state.ended) {
+      controls.play()
+      announce('이어서 재생해요.')
+    }
+    settingsResume.current = false
   }
 
   /* ── 지금 장면 설명 (ASK-03, Alt+Shift+D) ── */
@@ -463,7 +486,7 @@ export function Player({ video }: { video: VideoDetail }) {
   useShortcutEntry('position', () => void runAction('CURRENT_POSITION'), { scope: 'user' })
   useShortcutEntry('describe', () => void describeScene(), { scope: 'user' })
   useShortcutEntry('detail', (key) => setDetail(Number(key) as 1 | 2 | 3), { scope: 'user' })
-  useShortcutEntry('settings', () => setSettingsOpen(true), { scope: 'user' })
+  useShortcutEntry('settings', () => openSettings(), { scope: 'user' })
   useShortcutEntry('report', () => openReport(), { scope: 'user' })
 
   const initialEntries = useMemo(
@@ -763,7 +786,7 @@ export function Player({ video }: { video: VideoDetail }) {
               </Button>
               <Button
                 variant="secondary"
-                onClick={() => setSettingsOpen(true)}
+                onClick={openSettings}
                 aria-keyshortcuts="Alt+Shift+S"
                 className={CONTROL}
               >
@@ -845,9 +868,7 @@ export function Player({ video }: { video: VideoDetail }) {
       />
       <SettingsDialog
         open={settingsOpen}
-        onClose={() => {
-          setSettingsOpen(false)
-        }}
+        onClose={closeSettings}
         onPreview={() =>
           void narrator.say({
             text: '안녕하세요. 지금 설정한 속도로 해설을 읽어 드려요.',

@@ -862,6 +862,7 @@ test('시청 화면 단축키: K 재생·멈춤, J/L 이동, P 위치, 1~3 상�
   act(() => setPlayerState?.({ playing: true, currentMs: T(30) }))
   await user.keyboard(keys('K'))
   expect(controls.pause).toHaveBeenCalled()
+  act(() => setPlayerState?.({ playing: false }))
 
   // 기본 이동 간격 10초
   await user.keyboard(keys('L'))
@@ -902,6 +903,43 @@ test('시청 화면 단축키: K 재생·멈춤, J/L 이동, P 위치, 1~3 상�
 
   await user.keyboard(keys('X'))
   expect(await screen.findByRole('dialog', { name: '이 문장 신고' })).toBeInTheDocument()
+})
+
+test('재생 설정: 재생 중이면 열 때 멈추고 닫으면 이어서 재생, 멈춰 있었으면 그대로 둔다', async () => {
+  const user = userEvent.setup()
+  renderRoute('/watch/15')
+  const open = await screen.findByRole('button', { name: '재생 설정' })
+  // 화면 진입 안내가 끝난 뒤에 조작한다 (진입 안내가 늦게 오면 띠 문구를 덮어쓴다)
+  await waitFor(() => expect(band()).toHaveTextContent('영상 보기예요.'))
+
+  // 재생 중 → 열면 멈춤, 닫으면 이어서 재생
+  act(() => setPlayerState?.({ playing: true, currentMs: T(30) }))
+  vi.mocked(controls.pause).mockClear()
+  vi.mocked(controls.play).mockClear()
+  await user.click(open)
+  const dialog = await screen.findByRole('dialog', { name: '재생 설정' })
+  expect(controls.pause).toHaveBeenCalledTimes(1)
+  await waitFor(() => expect(band()).toHaveTextContent('영상을 멈췄어요.'))
+  // 창이 열린 동안 안내 영역은 창 안에 있어야 낭독기가 읽는다 (바깥은 inert)
+  await waitFor(() =>
+    expect(dialog.querySelector('[aria-live="polite"]')).toHaveTextContent('영상을 멈췄어요.'),
+  )
+  act(() => setPlayerState?.({ playing: false }))
+  await user.click(within(dialog).getByRole('button', { name: '닫기' }))
+  await waitFor(() => expect(dialog).not.toHaveAttribute('open'))
+  expect(controls.play).toHaveBeenCalledTimes(1)
+  await waitFor(() => expect(band()).toHaveTextContent('이어서 재생해요.'))
+  expect(dialog.querySelector('[aria-live]')).toBeNull()
+
+  // 멈춰 있음 → 열고 닫아도 그대로
+  vi.mocked(controls.pause).mockClear()
+  vi.mocked(controls.play).mockClear()
+  await user.click(screen.getByRole('button', { name: '재생 설정' }))
+  await screen.findByRole('dialog', { name: '재생 설정' })
+  await user.click(within(dialog).getByRole('button', { name: '닫기' }))
+  await waitFor(() => expect(dialog).not.toHaveAttribute('open'))
+  expect(controls.pause).not.toHaveBeenCalled()
+  expect(controls.play).not.toHaveBeenCalled()
 })
 
 test('Alt+Shift+/ 안내 창은 시청 화면에서 쓰는 키 8줄과 어디서나 3줄을 보여 준다', async () => {

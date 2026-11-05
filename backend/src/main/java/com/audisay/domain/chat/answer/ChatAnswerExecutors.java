@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
@@ -24,6 +25,7 @@ public class ChatAnswerExecutors {
     private final Executor answer;
     private final Executor tts;
     private final ScheduledExecutorService heartbeat;
+    private final ExecutorService embed = Executors.newVirtualThreadPerTaskExecutor();
 
     @Autowired
     public ChatAnswerExecutors(ChatAnswerProperties properties) {
@@ -45,6 +47,11 @@ public class ChatAnswerExecutors {
         return tts;
     }
 
+    /** 질문 임베딩(질문 답변 RAG). 첫 LLM 답과 동시에 돌려 "자료에 없어요"일 때 기다리지 않게 */
+    public Executor embed() {
+        return embed;
+    }
+
     /** 답변 SSE heartbeat(15초마다 주석 한 줄). 보내기는 짧아 스레드 하나로 */
     public ScheduledExecutorService heartbeat() {
         return heartbeat;
@@ -53,6 +60,7 @@ public class ChatAnswerExecutors {
     @PreDestroy
     void shutdown() {
         heartbeat.shutdownNow();
+        embed.shutdownNow();
         for (Executor executor : new Executor[]{answer, tts}) {
             if (executor instanceof ExecutorService service) {
                 service.shutdownNow();

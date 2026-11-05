@@ -10,6 +10,9 @@ import com.audisay.domain.chat.entity.ChatLog;
 import com.audisay.domain.chat.entity.InputMode;
 import com.audisay.domain.chat.ratelimit.ChatRateLimiter;
 import com.audisay.domain.chat.repository.ChatLogRepository;
+import com.audisay.domain.chat.search.AnswerRetriever;
+import com.audisay.domain.chat.search.SceneSearchProperties.Mode;
+import com.audisay.domain.chat.search.VectorLine;
 import com.audisay.domain.chat.tuning.ChatTuningProperties;
 import com.audisay.domain.description.service.AnswerContext;
 import com.audisay.domain.description.service.AnswerContext.Narration;
@@ -50,6 +53,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -86,6 +90,7 @@ class ChatAnswerServiceTest {
     private FutureOffer futureOffer;
     private RecapReader recapReader;
     private VideoAccessValidator videoAccessValidator;
+    private AnswerRetriever answerRetriever;
     private SimpleMeterRegistry meterRegistry;
     private CapturingEmitter emitter;
     private ChatAnswerService service;
@@ -101,6 +106,8 @@ class ChatAnswerServiceTest {
         futureOffer = mock(FutureOffer.class);
         recapReader = mock(RecapReader.class);
         videoAccessValidator = mock(VideoAccessValidator.class);
+        answerRetriever = mock(AnswerRetriever.class);
+        when(answerRetriever.mode()).thenReturn(Mode.OFF);
         meterRegistry = new SimpleMeterRegistry();
         emitter = new CapturingEmitter();
         when(inProgress.start(anyLong(), any())).thenReturn(true);
@@ -113,7 +120,7 @@ class ChatAnswerServiceTest {
                 new ChatAnswerExecutors(Runnable::run, Runnable::run),
                 new ChatAnswerProperties(null, null, null, null, Duration.ofSeconds(1), null),
                 new TransactionTemplate(mock(PlatformTransactionManager.class)), meterRegistry,
-                ChatTuningProperties.DEFAULT, futureOffer, recapReader, videoAccessValidator) {
+                ChatTuningProperties.DEFAULT, futureOffer, recapReader, videoAccessValidator, answerRetriever) {
             @Override
             SseEmitter newEmitter() {
                 return emitter;
@@ -249,7 +256,7 @@ class ChatAnswerServiceTest {
                 new ChatAnswerProperties(null, null, null, Duration.ofSeconds(30), Duration.ofSeconds(1),
                         Duration.ofSeconds(60)),
                 new TransactionTemplate(mock(PlatformTransactionManager.class)), meterRegistry,
-                ChatTuningProperties.DEFAULT, futureOffer, recapReader, videoAccessValidator) {
+                ChatTuningProperties.DEFAULT, futureOffer, recapReader, videoAccessValidator, answerRetriever) {
             @Override
             SseEmitter newEmitter() {
                 return emitter;
@@ -288,7 +295,7 @@ class ChatAnswerServiceTest {
                 new ChatAnswerProperties(null, null, null, null, Duration.ofSeconds(1), null),
                 new TransactionTemplate(mock(PlatformTransactionManager.class)), meterRegistry,
                 new ChatTuningProperties(true, true, true, true, true, true, true, false, false), futureOffer,
-                recapReader, videoAccessValidator) {
+                recapReader, videoAccessValidator, answerRetriever) {
             @Override
             SseEmitter newEmitter() {
                 return emitter;
@@ -433,7 +440,7 @@ class ChatAnswerServiceTest {
                 }, Runnable::run),
                 new ChatAnswerProperties(null, null, null, null, null, null),
                 new TransactionTemplate(mock(PlatformTransactionManager.class)), meterRegistry,
-                ChatTuningProperties.DEFAULT, futureOffer, recapReader, videoAccessValidator);
+                ChatTuningProperties.DEFAULT, futureOffer, recapReader, videoAccessValidator, answerRetriever);
 
         assertError(31L, ErrorCode.CHAT_AI_UNAVAILABLE);
         verify(inProgress).finish(31L);
@@ -464,6 +471,155 @@ class ChatAnswerServiceTest {
     }
 
     @Test
+    void ALWAYS면_지금_자료보다_앞에서_찾은_비슷한_줄을_처음부터_함께_넣어_답한다() {
+        ChatLog chat = chatLog(31L, ChatIntent.QUESTION, "클템의 역할이 뭐야?");
+        when(answerRetriever.mode()).thenReturn(Mode.ALWAYS);
+        float[] vector = {0.1f, 0.2f};
+        when(answerRetriever.embed(DESC, "클템의 역할이 뭐야?", 31L)).thenReturn(vector);
+        when(answerRetriever.before(DESC, vector, 180_000)).thenReturn(
+                List.of(new VectorLine("DIALOGUE", 7L, 20_000, "오늘 해설을 맡은 클템입니다", 0.8)));
+        stream("해설을 맡았어요.");
+
+        service.subscribe(USER, 31L);
+
+        assertThat(chat.getAnswerSource()).isEqualTo(AnswerSource.STORED);
+        ArgumentCaptor<LlmRequest> captor = ArgumentCaptor.forClass(LlmRequest.class);
+        verify(llmClient).stream(captor.capture(), any());
+        assertThat(captor.getValue().system()).isEqualTo(AnswerPrompt.QUESTION_EARLIER_SYSTEM);
+        assertThat(captor.getValue().user()).contains("앞에서 나온 관련 내용", "오늘 해설을 맡은 클템입니다", "대사")
+                .endsWith("질문: 클템의 역할이 뭐야?");
+        assertThat(meterRegistry.get("audisay.chat.answer.rag").tag("result", "always").counter().count()).isEqualTo(1);
+    }
+
+    @Test
+    void FALLBACK은_지금_자료로_답하지_못하면_앞_줄을_더해_다시_묻는다() {
+        ChatLog chat = chatLog(31L, ChatIntent.QUESTION, "클템의 역할이 뭐야?");
+        when(answerRetriever.mode()).thenReturn(Mode.FALLBACK);
+        float[] vector = {0.1f, 0.2f};
+        when(answerRetriever.embed(DESC, "클템의 역할이 뭐야?", 31L)).thenReturn(vector);
+        when(answerRetriever.before(DESC, vector, 180_000)).thenReturn(
+                List.of(new VectorLine("DIALOGUE", 7L, 20_000, "오늘 해설을 맡은 클템입니다", 0.8)));
+        streamInTurn("그건 해설 자료에 없어요.", "해설을 맡았어요.");
+
+        service.subscribe(USER, 31L);
+
+        assertThat(emitter.data(Sentence.class)).extracting(Sentence::text).containsExactly("해설을 맡았어요.");
+        assertThat(chat.getAnswerText()).isEqualTo("해설을 맡았어요.");
+        assertThat(chat.getAnswerSource()).isEqualTo(AnswerSource.STORED);
+        ArgumentCaptor<LlmRequest> captor = ArgumentCaptor.forClass(LlmRequest.class);
+        verify(llmClient, times(2)).stream(captor.capture(), any());
+        assertThat(captor.getAllValues()).extracting(LlmRequest::system)
+                .containsExactly(AnswerPrompt.QUESTION_SYSTEM, AnswerPrompt.QUESTION_EARLIER_SYSTEM);
+        assertThat(captor.getAllValues().get(1).user()).contains("오늘 해설을 맡은 클템입니다");
+        verify(rateLimiter, times(2)).acquireLlm(2L);
+        verify(llmClient, never()).generate(any());
+        assertThat(meterRegistry.get("audisay.chat.answer.rag").tag("result", "earlier").counter().count()).isEqualTo(1);
+    }
+
+    @Test
+    void FALLBACK에서_다시_물어도_답하지_못하면_함께_돌린_뒤_확인으로_들을지_묻는다() {
+        ChatLog chat = chatLog(31L, ChatIntent.QUESTION, "감독 이름이 뭐야?");
+        when(answerRetriever.mode()).thenReturn(Mode.FALLBACK);
+        float[] vector = {0.1f, 0.2f};
+        when(answerRetriever.embed(DESC, "감독 이름이 뭐야?", 31L)).thenReturn(vector);
+        when(answerRetriever.before(DESC, vector, 180_000)).thenReturn(
+                List.of(new VectorLine("NARRATION", 3L, 20_000, "투수가 몸을 풉니다", 0.4)));
+        when(answerRetriever.after(DESC, vector, 200_000)).thenReturn(
+                List.of(new VectorLine("NARRATION", 9L, 310_000, "김태형 감독이 박수를 칩니다", 0.7)));
+        streamInTurn("그건 해설 자료에 없어요.", "그건 해설 자료에 없어요.");
+        when(llmClient.generate(any())).thenReturn(
+                new LlmResult("{\"evidence\": \"김태형 감독\"}", "gemini-3.1-flash-lite", 500, 12, 400, false, 2L));
+
+        service.subscribe(USER, 31L);
+
+        assertThat(emitter.data(Sentence.class)).extracting(Sentence::text).containsExactly(AnswerPrompt.FUTURE_PROMPT);
+        assertThat(emitter.data(Done.class).get(0).futureAvailable()).isTrue();
+        assertThat(chat.getAnswerSource()).isEqualTo(AnswerSource.UNANSWERABLE);
+        verify(llmClient, times(2)).stream(any(), any());
+        verify(llmClient, times(1)).generate(any());
+        verify(futureOffer).offer(31L);
+    }
+
+    @Test
+    void FALLBACK은_지금_자료로_답하면_앞_줄을_찾지_않는다() {
+        ChatLog chat = chatLog(31L, ChatIntent.QUESTION, "누가 던졌어?");
+        when(answerRetriever.mode()).thenReturn(Mode.FALLBACK);
+        stream("김광현이 던졌어요.");
+
+        service.subscribe(USER, 31L);
+
+        assertThat(chat.getAnswerSource()).isEqualTo(AnswerSource.STORED);
+        verify(answerRetriever, never()).before(anyLong(), any(), org.mockito.ArgumentMatchers.anyInt());
+        verify(llmClient, times(1)).stream(any(), any());
+        assertThat(meterRegistry.get("audisay.chat.answer.rag").tag("result", "answered").counter().count()).isEqualTo(1);
+    }
+
+    @Test
+    void FALLBACK에서_뒤_확인을_꺼도_다시_묻지_못하면_자료에_없다고_읽는다() {
+        ChatLog chat = chatLog(31L, ChatIntent.QUESTION, "감독 이름이 뭐야?");
+        when(answerRetriever.mode()).thenReturn(Mode.FALLBACK);
+        service = new ChatAnswerService(chatLogRepository, contextReader, new AnswerPrompt(JsonMapper.builder().build()),
+                llmClient, aiServerClient, rateLimiter, inProgress,
+                new ChatAnswerExecutors(Runnable::run, Runnable::run),
+                new ChatAnswerProperties(null, null, null, null, Duration.ofSeconds(1), null),
+                new TransactionTemplate(mock(PlatformTransactionManager.class)), meterRegistry,
+                new ChatTuningProperties(null, null, null, null, null, null, null, true, false), futureOffer, recapReader, videoAccessValidator, answerRetriever) {
+            @Override
+            SseEmitter newEmitter() {
+                return emitter;
+            }
+        };
+        stream("그건 해설 자료에 없어요.");
+
+        service.subscribe(USER, 31L);
+
+        assertThat(emitter.data(Sentence.class)).extracting(Sentence::text).containsExactly(AnswerPrompt.UNANSWERABLE);
+        assertThat(chat.getAnswerSource()).isEqualTo(AnswerSource.UNANSWERABLE);
+    }
+
+    @Test
+    void 질문_벡터가_있으면_뒤_확인은_비슷한_뒤_줄로_한다() {
+        chatLog(31L, ChatIntent.QUESTION, "감독 이름이 뭐야?");
+        when(answerRetriever.mode()).thenReturn(Mode.FALLBACK);
+        float[] vector = {0.1f, 0.2f};
+        when(answerRetriever.embed(DESC, "감독 이름이 뭐야?", 31L)).thenReturn(vector);
+        when(answerRetriever.after(DESC, vector, 200_000)).thenReturn(
+                List.of(new VectorLine("NARRATION", 9L, 310_000, "김태형 감독이 박수를 칩니다", 0.7)));
+        when(answerRetriever.summary(DESC)).thenReturn("두산이 이겼어요.");
+        stream("그건 해설 자료에 없어요.");
+        when(llmClient.generate(any())).thenReturn(
+                new LlmResult("{\"evidence\": \"김태형 감독\"}", "gemini-3.1-flash-lite", 500, 12, 400, false, 2L));
+
+        service.subscribe(USER, 31L);
+
+        assertThat(emitter.data(Done.class).get(0).futureAvailable()).isTrue();
+        verify(contextReader, never()).readFuture(anyLong(), org.mockito.ArgumentMatchers.anyInt());
+        ArgumentCaptor<LlmRequest> stream = ArgumentCaptor.forClass(LlmRequest.class);
+        verify(llmClient).stream(stream.capture(), any());
+        assertThat(stream.getValue().system()).isEqualTo(AnswerPrompt.QUESTION_SYSTEM);
+        ArgumentCaptor<LlmRequest> check = ArgumentCaptor.forClass(LlmRequest.class);
+        verify(llmClient).generate(check.capture());
+        assertThat(check.getValue().system()).isEqualTo(AnswerPrompt.FUTURE_CHECK_LINES_SYSTEM);
+        assertThat(check.getValue().user()).contains("김태형 감독이 박수를 칩니다", "두산이 이겼어요.")
+                .endsWith("질문: 감독 이름이 뭐야?");
+        assertThat(meterRegistry.get("audisay.chat.answer.rag").tag("result", "none").counter().count()).isEqualTo(1);
+    }
+
+    @Test
+    void 뒤에_비슷한_줄이_없으면_확인_없이_자료에_없다고_읽는다() {
+        chatLog(31L, ChatIntent.QUESTION, "감독 이름이 뭐야?");
+        when(answerRetriever.mode()).thenReturn(Mode.FALLBACK);
+        when(answerRetriever.embed(DESC, "감독 이름이 뭐야?", 31L)).thenReturn(new float[]{0.1f});
+        stream("그건 해설 자료에 없어요.");
+
+        service.subscribe(USER, 31L);
+
+        assertThat(emitter.data(Sentence.class)).extracting(Sentence::text).containsExactly(AnswerPrompt.UNANSWERABLE);
+        verify(llmClient, never()).generate(any());
+        verify(rateLimiter, times(1)).acquireLlm(2L);
+    }
+
+    @Test
     void 뒤에도_답이_없으면_자료에_없다고_읽는다() {
         chatLog(31L, ChatIntent.QUESTION, "감독 이름이 뭐야?");
         stream("그건 해설 자료에 없어요.");
@@ -486,7 +642,7 @@ class ChatAnswerServiceTest {
                 new ChatAnswerProperties(null, null, null, null, Duration.ofSeconds(1), null),
                 new TransactionTemplate(mock(PlatformTransactionManager.class)), meterRegistry,
                 new ChatTuningProperties(true, true, true, true, true, true, true, false, false), futureOffer,
-                recapReader, videoAccessValidator) {
+                recapReader, videoAccessValidator, answerRetriever) {
             @Override
             SseEmitter newEmitter() {
                 return emitter;
@@ -563,7 +719,8 @@ class ChatAnswerServiceTest {
         ArgumentCaptor<LlmRequest> captor = ArgumentCaptor.forClass(LlmRequest.class);
         verify(llmClient).stream(captor.capture(), any());
         assertThat(captor.getValue().system()).isEqualTo(AnswerPrompt.RECAP_SYSTEM);
-        assertThat(captor.getValue().user()).contains("두산이 선취점을 냅니다.").endsWith("요청: 지금까지 줄거리를 정리해 주세요.");
+        assertThat(captor.getValue().user()).contains("두산이 선취점을 냅니다.").endsWith("요청: 지금까지 줄거리를 2문장 이내로 정리해 주세요.");
+        assertThat(captor.getValue().maxOutputTokens()).isEqualTo(AnswerPrompt.RECAP_MAX_OUTPUT_TOKENS);
         verify(contextReader, never()).read(anyLong(), org.mockito.ArgumentMatchers.anyInt(),
                 org.mockito.ArgumentMatchers.anyBoolean(), org.mockito.ArgumentMatchers.anyBoolean());
     }
@@ -673,6 +830,17 @@ class ChatAnswerServiceTest {
                 handler.onDelta(delta);
             }
             return new LlmResult(String.join("", deltas), "gemini-3.1-flash-lite", 100, 20, 800, false, 1L);
+        });
+    }
+
+    /** 부를 때마다 다음 답(마지막 답은 반복) */
+    private void streamInTurn(String... answers) {
+        AtomicInteger call = new AtomicInteger();
+        when(llmClient.stream(any(), any())).thenAnswer(invocation -> {
+            String answer = answers[Math.min(call.getAndIncrement(), answers.length - 1)];
+            DeltaHandler handler = invocation.getArgument(1);
+            handler.onDelta(answer);
+            return new LlmResult(answer, "gemini-3.1-flash-lite", 100, 20, 800, false, 1L);
         });
     }
 

@@ -2,10 +2,14 @@ package com.audisay.domain.chat.seek;
 
 import com.audisay.domain.chat.entity.SeekSource;
 import com.audisay.domain.chat.ratelimit.ChatRateLimiter;
+import com.audisay.domain.chat.search.SceneSearchProperties;
+import com.audisay.domain.chat.search.SceneVectorSearch;
+import com.audisay.domain.chat.search.VectorLine;
 import com.audisay.domain.chat.tuning.ChatTuningProperties;
 import com.audisay.global.exception.BusinessException;
 import com.audisay.global.exception.ErrorCode;
 import com.audisay.global.external.llm.GmsProperties;
+import com.audisay.global.external.llm.LlmException;
 import com.audisay.global.external.llm.LlmPurpose;
 import com.audisay.domain.chat.seek.KeywordSceneScorer.Hit;
 import com.audisay.domain.description.service.SceneText;
@@ -21,7 +25,10 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -43,6 +50,7 @@ class SceneSeekerTest {
     private ChatRateLimiter rateLimiter;
     private SimpleMeterRegistry meterRegistry;
     private GmsProperties gmsProperties;
+    private SceneVectorSearch vectorSearch;
     private SceneSeeker seeker;
 
     @BeforeEach
@@ -54,6 +62,7 @@ class SceneSeekerTest {
         meterRegistry = new SimpleMeterRegistry();
         gmsProperties = mock(GmsProperties.class);
         when(gmsProperties.timeout(LlmPurpose.SEEK)).thenReturn(Duration.ofSeconds(10));
+        vectorSearch = mock(SceneVectorSearch.class);
         seeker = seeker(ChatTuningProperties.DEFAULT);
         when(reader.read(DESCRIPTION_ID)).thenReturn(scenes);
     }
@@ -226,9 +235,114 @@ class SceneSeekerTest {
         verify(verifier, never()).verify(anyString(), any(), any());
     }
 
+    @Test
+    void FALLBACK_키워드가_확실하면_벡터_검색을_하지_않는다() {
+        when(vectorSearch.ready(DESCRIPTION_ID)).thenReturn(true);
+
+        SceneSeeker.Outcome outcome = seeker.seek(2L, DESCRIPTION_ID, "안타", 31L, 0);
+
+        assertThat(outcome.source()).isEqualTo(SeekSource.KEYWORD);
+        verify(vectorSearch, never()).search(anyLong(), anyString(), any(), anyInt());
+    }
+
+    @Test
+    void FALLBACK_키워드로_못_찾으면_벡터_후보를_LLM이_확인해_RAG로_찾는다() {
+        when(vectorSearch.ready(DESCRIPTION_ID)).thenReturn(true);
+        when(vectorSearch.search(DESCRIPTION_ID, "도루", 31L, 20)).thenReturn(List.of(
+                new VectorLine("NARRATION", 9L, 905_000, "1루 주자가 2루로 달려 세이프", 0.6)));
+        when(verifier.check(eq("도루"), any(), eq(31L), any())).thenAnswer(invocation -> invocation.getArgument(1));
+
+        SceneSeeker.Outcome outcome = seeker.seek(2L, DESCRIPTION_ID, "도루", 31L, 0);
+
+        assertThat(outcome.source()).isEqualTo(SeekSource.RAG);
+        assertThat(outcome.hits()).extracting(Hit::targetMs).containsExactly(903_000);
+        assertThat(outcome.hits().get(0).moment()).isSameAs(scenes.get(1).moments().get(0));
+        verify(selector, never()).select(anyString(), any(), any(), any());
+        verify(rateLimiter).acquireLlm(2L);
+    }
+
+    @Test
+    void RAG에서_LLM이_모두_빼면_못_찾음() {
+        when(vectorSearch.ready(DESCRIPTION_ID)).thenReturn(true);
+        when(vectorSearch.search(DESCRIPTION_ID, "홈런", 31L, 20)).thenReturn(List.of(
+                new VectorLine("DIALOGUE", 3L, 95_000, "중견수 앞 안타!", 0.5)));
+        when(verifier.check(eq("홈런"), any(), eq(31L), any())).thenReturn(List.of());
+
+        SceneSeeker.Outcome outcome = seeker.seek(2L, DESCRIPTION_ID, "홈런", 31L, 0);
+
+        assertThat(outcome.source()).isNull();
+        assertThat(outcome.hits()).isEmpty();
+        verify(selector, never()).select(anyString(), any(), any(), any());
+    }
+
+    @Test
+    void RAG_확인이_실패하면_1등_후보_하나만_준다() {
+        when(vectorSearch.ready(DESCRIPTION_ID)).thenReturn(true);
+        when(vectorSearch.search(DESCRIPTION_ID, "도루", 31L, 20)).thenReturn(List.of(
+                new VectorLine("NARRATION", 9L, 905_000, "1루 주자가 2루로 달려 세이프", 0.6),
+                new VectorLine("DIALOGUE", 3L, 95_000, "중견수 앞 안타!", 0.4)));
+        when(verifier.check(eq("도루"), any(), eq(31L), any())).thenReturn(null);
+
+        SceneSeeker.Outcome outcome = seeker.seek(2L, DESCRIPTION_ID, "도루", 31L, 0);
+
+        assertThat(outcome.source()).isEqualTo(SeekSource.RAG);
+        assertThat(outcome.hits()).extracting(Hit::targetMs).containsExactly(903_000);
+    }
+
+    @Test
+    void 임베딩이_실패하면_지금_방식으로_LLM이_고른다() {
+        when(vectorSearch.ready(DESCRIPTION_ID)).thenReturn(true);
+        when(vectorSearch.search(anyLong(), anyString(), any(), anyInt()))
+                .thenThrow(new LlmException(LlmException.Kind.UNAVAILABLE, 0, "down", null));
+        Hit llmHit = new Hit(scenes.get(1), 903_000, 0, 1, null, "1루 주자가 2루로 달려 세이프", 1);
+        when(selector.select("도루", scenes, 31L, 0)).thenReturn(List.of(llmHit));
+
+        SceneSeeker.Outcome outcome = seeker.seek(2L, DESCRIPTION_ID, "도루", 31L, 0);
+
+        assertThat(outcome.source()).isEqualTo(SeekSource.LLM);
+        assertThat(outcome.hits()).containsExactly(llmHit);
+    }
+
+    @Test
+    void 색인이_없으면_임베딩을_부르지_않는다() {
+        when(selector.select(anyString(), any(), any(), any())).thenReturn(List.of());
+
+        seeker.seek(2L, DESCRIPTION_ID, "도루", 31L, 0);
+
+        verify(vectorSearch, never()).search(anyLong(), anyString(), any(), anyInt());
+    }
+
+    @Test
+    void ALWAYS면_키워드가_확실해도_키워드_후보를_LLM이_확인한다() {
+        when(vectorSearch.ready(DESCRIPTION_ID)).thenReturn(true);
+        when(vectorSearch.search(DESCRIPTION_ID, "안타", 31L, 20)).thenReturn(List.of());
+        when(verifier.check(eq("안타"), any(), eq(31L), any())).thenAnswer(invocation -> invocation.getArgument(1));
+
+        SceneSeeker.Outcome outcome = seeker(ChatTuningProperties.DEFAULT, SceneSearchProperties.Mode.ALWAYS)
+                .seek(2L, DESCRIPTION_ID, "안타", 31L, 0);
+
+        assertThat(outcome.source()).isEqualTo(SeekSource.RAG);
+        assertThat(outcome.hits()).extracting(Hit::targetMs).containsExactly(93_000);
+    }
+
+    @Test
+    void OFF면_키워드로_못_찾아도_벡터_검색을_하지_않는다() {
+        when(vectorSearch.ready(DESCRIPTION_ID)).thenReturn(true);
+        when(selector.select(anyString(), any(), any(), any())).thenReturn(List.of());
+
+        seeker(ChatTuningProperties.DEFAULT, SceneSearchProperties.Mode.OFF).seek(2L, DESCRIPTION_ID, "도루", 31L, 0);
+
+        verify(vectorSearch, never()).search(anyLong(), anyString(), any(), anyInt());
+    }
+
     private SceneSeeker seeker(ChatTuningProperties tuning) {
+        return seeker(tuning, SceneSearchProperties.Mode.FALLBACK);
+    }
+
+    private SceneSeeker seeker(ChatTuningProperties tuning, SceneSearchProperties.Mode mode) {
         return new SceneSeeker(reader, new KeywordSceneScorer(tuning), selector, verifier, rateLimiter, tuning,
-                meterRegistry, gmsProperties);
+                meterRegistry, gmsProperties, vectorSearch,
+                new SceneSearchProperties(null, new SceneSearchProperties.Search(mode, null, null), null));
     }
 
     private static List<SceneText> talky(String first, String second) {

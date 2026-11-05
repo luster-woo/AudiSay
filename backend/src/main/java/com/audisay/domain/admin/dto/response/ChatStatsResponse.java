@@ -32,8 +32,8 @@ public record ChatStatsResponse(LocalDate from, LocalDate to, long inputs, List<
                                    Long firstAudioP50Ms, Long firstAudioP95Ms) {
     }
 
-    /** @param notFound 못 찾음(seek_source 없음) */
-    public record SeekStat(long total, long keyword, long llm, long notFound, double keywordRate) {
+    /** @param rag 키워드 + 벡터 검색 후보를 LLM이 확인해 찾음(342) @param notFound 못 찾음(seek_source 없음) */
+    public record SeekStat(long total, long keyword, long llm, long rag, long notFound, double keywordRate) {
     }
 
     /** 어디에도 답이 없던 질문(해설 보완 후보) */

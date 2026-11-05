@@ -70,6 +70,12 @@ public class LlmHitVerifier {
 
     /** @param deadlineNanos 응답 시간 예산. 주 모델이 실패했을 때 대체 모델을 기다릴 시간이 없으면 부르지 않는다 */
     public List<Hit> verify(String query, List<Hit> hits, Long chatLogId, Long deadlineNanos) {
+        List<Hit> checked = check(query, hits, chatLogId, deadlineNanos);
+        return checked == null ? hits : checked;
+    }
+
+    /** verify와 같지만 LLM이 실패하거나 응답을 읽을 수 없으면 null(호출한 쪽이 정한다. RAG는 1등 후보 하나만) */
+    public List<Hit> check(String query, List<Hit> hits, Long chatLogId, Long deadlineNanos) {
         StringBuilder user = new StringBuilder("요청: ").append(query).append("\n\n[후보]\n");
         for (int i = 0; i < hits.size(); i++) {
             user.append(i + 1).append(". ").append(line(hits.get(i))).append('\n');
@@ -81,11 +87,11 @@ public class LlmHitVerifier {
             result = llmClient.generate(request.withFallbackDeadline(deadlineNanos));
         } catch (LlmException e) {
             log.warn("장면 후보 확인을 건너뜁니다({}): {}", e.getKind(), e.getMessage());
-            return hits;
+            return null;
         }
         List<Integer> ok = LlmNumbers.parse(objectMapper, result.text(), "ok", hits.size());
         if (ok == null) {
-            return hits;
+            return null;
         }
         return hits.stream().filter(h -> ok.contains(hits.indexOf(h) + 1)).toList();
     }

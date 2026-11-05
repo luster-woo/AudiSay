@@ -5,9 +5,9 @@ import { toUserMessage } from '@/api/errors'
 import { queryKeys } from '@/api/queryKeys'
 import type { AdminReport, ReportStatus } from '@/api/types'
 import { Button } from '@/components/ui/Button'
+import { cn } from '@/components/ui/cn'
 import { Tabs } from '@/components/ui/Tabs'
 import { useAnnouncer } from '@/features/announcer/context'
-import { formatClock } from '@/utils/time'
 import { RegenerateButton } from './RegenerateButton'
 import { ReportTab } from './ReportTab'
 import type { ReportGroup } from './reports'
@@ -55,9 +55,6 @@ export function ReportDetail({
       adminApi.reviewDescription(first.videoId, { descriptionId: first.descriptionId }),
   })
   const line = review.data?.lines.find((l) => l.lineId === first.lineId)
-  const scene = review.data?.scenes.find(
-    (s) => line && s.startMs <= line.startMs && line.startMs < s.endMs,
-  )
   const text = draft ?? line?.text ?? first.currentText
   const level = importance ?? line?.importance ?? 2
   const dirty = !!line && (text.trim() !== line.text || level !== line.importance)
@@ -141,7 +138,7 @@ export function ReportDetail({
     // 위는 스크롤, 아래 버튼 줄은 화면 맨 아래에 고정 (Figma)
     <section aria-labelledby="report-detail-title" className="flex h-full min-w-0 flex-col">
       {/* relative: 안쪽 sr-only(절대 위치) 요소가 스크롤 상자 밖 기준으로 잡혀 페이지 전체를 늘리지 않게 */}
-      <div className="relative min-h-0 flex-1 overflow-y-auto px-[2.1333rem] pt-[1.4rem] pb-6">
+      <div className="relative min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable] px-[2.1333rem] pt-[1.4rem] pb-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <h2
@@ -152,12 +149,11 @@ export function ReportDetail({
             >
               {first.videoTitle}
             </h2>
-            <p className="mt-0.5 text-[0.8667rem] text-ink-muted">
-              영상 ID {first.videoId} · {formatClock(first.lineStartMs)}
-              {scene && ` · ${scene.sceneIndex}. ${scene.title}`}
-            </p>
           </div>
-          <RegenerateButton videoId={first.videoId} videoTitle={first.videoTitle} />
+          {/* 장면 탭에서만 쓴다. 신고 탭에서는 자리만 남겨 제목 줄 높이가 바뀌지 않게 */}
+          <div className={cn(tab !== 'scene' && 'invisible')}>
+            <RegenerateButton videoId={first.videoId} videoTitle={first.videoTitle} />
+          </div>
         </div>
 
         <Tabs
@@ -178,8 +174,6 @@ export function ReportDetail({
                   editable={editable}
                   selectedIds={selectedIds}
                   onSelectedChange={setSelectedIds}
-                  onRejectOne={(r) => handle.mutate({ status: 'REJECTED', ids: [r.reportId] })}
-                  busy={handle.isPending}
                 />
               ),
             },
@@ -188,10 +182,11 @@ export function ReportDetail({
       </div>
 
       <div className="mx-[2.1333rem] flex h-[5.3333rem] shrink-0 items-center justify-between gap-3 border-t border-line">
-        <div className="flex gap-[0.6rem]">
+        {/* 문장 저장·음성만 다시는 장면 탭에서 고치는 문장 것이라 그 탭에서만 보인다 (자리는 남겨 오른쪽 버튼이 움직이지 않게) */}
+        <div className={cn('flex gap-[0.6rem]', tab !== 'scene' && 'invisible')}>
           <Button
             variant="secondary"
-            size="sm"
+            size="md"
             disabled={!dirty}
             loading={saveLine.isPending}
             onClick={save}
@@ -200,7 +195,7 @@ export function ReportDetail({
           </Button>
           <Button
             variant="secondary"
-            size="sm"
+            size="md"
             disabled={!line}
             loading={remakeAudio.isPending}
             onClick={() => remakeAudio.mutate()}
@@ -209,25 +204,20 @@ export function ReportDetail({
           </Button>
         </div>
         {editable && (
-          <div className="flex items-center gap-[1.3333rem]">
-            {/* Figma: 테두리 없는 빨간 글자 버튼. Button 의 variant 색과 겹치지 않게 직접 그린다 */}
-            <button
-              type="button"
-              aria-label={`고른 신고 ${selected.length}건 반려`}
-              aria-disabled={selected.length === 0 || handle.isPending || undefined}
-              onClick={() =>
-                selected.length > 0 &&
-                !handle.isPending &&
-                handle.mutate({ status: 'REJECTED', ids: selected })
-              }
-              className="min-h-[2.6rem] text-[0.9333rem] font-bold text-danger aria-disabled:cursor-not-allowed aria-disabled:opacity-60"
+          <div className="flex items-center gap-3">
+            <Button
+              variant="danger"
+              size="md"
+              className="min-w-[9rem]"
+              disabled={selected.length === 0 || handle.isPending}
+              onClick={() => handle.mutate({ status: 'REJECTED', ids: selected })}
             >
-              반려
-            </button>
+              {selected.length}건 반려
+            </Button>
             <Button
               variant="accent"
-              size="sm"
-              className="w-[9.3333rem] border-yellow"
+              size="md"
+              className="min-w-[11rem] border-yellow"
               disabled={selected.length === 0}
               loading={handle.isPending}
               onClick={() => handle.mutate({ status: 'RESOLVED', ids: selected })}

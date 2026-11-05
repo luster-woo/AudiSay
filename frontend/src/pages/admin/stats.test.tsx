@@ -163,7 +163,7 @@ describe('통계', () => {
 
     // 재사용
     const reuse = screen.getByRole('region', { name: '해설 재사용 효과' })
-    expect(reuse).toHaveTextContent('유튜브 영상 215건 중 65건은 새로 만들지 않았어요.')
+    expect(reuse).toHaveTextContent('이미 있는 해설 재사용60건')
     expect(reuse).toHaveTextContent('절감률30.0%')
 
     expect(await axe(container)).toHaveNoViolations()

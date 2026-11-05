@@ -30,13 +30,7 @@ export function RegenerateButton({ videoId, videoTitle }: RegenerateButtonProps)
 
   return (
     <>
-      <Button
-        variant="danger"
-        size="sm"
-        className="text-[0.8667rem]"
-        loading={mutation.isPending}
-        onClick={() => setOpen(true)}
-      >
+      <Button variant="danger" size="md" loading={mutation.isPending} onClick={() => setOpen(true)}>
         전체 해설 다시 만들기
       </Button>
       <ConfirmDialog

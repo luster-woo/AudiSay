@@ -366,8 +366,8 @@ export interface ReviewLine {
   lineIndex: number
   detailLevel: 1 | 2 | 3
   startMs: number
-  /** 이 문장을 읽을 수 있는 빈 구간의 끝 */
-  gapEndMs: number
+  /** 이 문장을 읽을 수 있는 빈 구간의 끝. 빈 구간이 없으면 null (영상을 잠깐 멈추고 읽는다) */
+  gapEndMs: number | null
   importance: 1 | 2 | 3
   text: string
   /** 음성을 다시 만드는 중이거나 실패하면 null */

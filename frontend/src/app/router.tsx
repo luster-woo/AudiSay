@@ -97,8 +97,8 @@ const adminRoutes: RouteObject[] = [
         },
         children: [
           { index: true, element: <Navigate to="reports" replace /> },
-          adminPage('reports', { title: '신고 처리', crumb: '신고 처리' }, reportsPage),
-          adminPage('reports/:reportId', { title: '신고 처리', crumb: '신고 처리' }, reportsPage),
+          adminPage('reports', { title: '신고 처리' }, reportsPage),
+          adminPage('reports/:reportId', { title: '신고 처리' }, reportsPage),
           adminPage('stats', { title: '통계' }, statsPage),
           adminPage('chat-stats', { title: '챗봇 품질 통계' }, chatStatsPage),
           adminPage('users', { title: '회원' }, usersPage),

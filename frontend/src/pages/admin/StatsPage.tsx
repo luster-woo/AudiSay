@@ -102,9 +102,6 @@ export default function StatsPage() {
           >
             통계
           </h1>
-          <p className="mt-[0.1333rem] text-[0.9333rem] text-ink-muted">
-            AI 호출이 얼마나, 어디에 쓰였는지 봐요. 크레딧은 추정값이에요.
-          </p>
         </div>
       </div>
 
@@ -196,13 +193,11 @@ function SummaryTiles({ data }: { data: AiUsageStats }) {
     {
       label: '오류율',
       value: formatRate(s.errorRate),
-      note: '오류 코드가 남은 호출',
       warn: s.errorRate >= 0.05,
     },
     {
       label: '대체 응답 비율',
       value: formatRate(s.fallbackRate),
-      note: '모델 대신 미리 둔 답을 준 비율',
       warn: s.fallbackRate >= 0.1,
     },
   ]
@@ -224,15 +219,9 @@ function SummaryTiles({ data }: { data: AiUsageStats }) {
                 <span className="ml-[0.2rem] text-[0.9333rem] font-normal text-ink-muted">건</span>
               )}
             </dd>
-            {t.note && t.note !== '건' && (
-              <dd
-                className={cn(
-                  'mt-[0.2667rem] text-[0.8rem] text-ink-muted',
-                  t.warn && 'font-bold text-danger',
-                )}
-              >
-                {t.warn ? '살펴볼 만큼 높아요 · ' : ''}
-                {t.note}
+            {t.warn && (
+              <dd className="mt-[0.2667rem] text-[0.8rem] font-bold text-danger">
+                살펴볼 만큼 높아요
               </dd>
             )}
           </div>
@@ -297,14 +286,14 @@ function PurposeTable({ data }: { data: AiUsageStats }) {
       aria-labelledby="purpose-title"
       className="overflow-hidden rounded-sm border border-line bg-paper"
     >
-      <h2 id="purpose-title" className="px-[1.2rem] pt-[1.2rem] text-[1.0667rem] font-bold">
+      <h2
+        id="purpose-title"
+        className="px-[1.2rem] pt-[1.2rem] pb-[0.8rem] text-[1.0667rem] font-bold"
+      >
         용도별
       </h2>
-      <p className="px-[1.2rem] pt-[0.2rem] pb-[0.8rem] text-[0.8667rem] text-ink-muted">
-        크레딧 많이 쓴 순. 응답 시간은 절반(p50)·대부분(p95)이 그 안에 끝난 시간이에요.
-      </p>
       {data.byPurpose.length === 0 ? (
-        <p className="px-[1.2rem] pb-[1.2rem] text-[0.9333rem]">이 기간에는 호출이 없어요.</p>
+        <p className="px-[1.2rem] pb-[1.2rem] text-[0.9333rem] text-ink-muted">기록 없음</p>
       ) : (
         <table className="w-full text-[0.9333rem]">
           <thead className="bg-cream text-[0.8667rem] text-ink-muted">
@@ -343,11 +332,6 @@ function PurposeTable({ data }: { data: AiUsageStats }) {
               <tr key={p.purpose} className="border-t border-line">
                 <th scope="row" className={`${CELL} font-bold`}>
                   {purposeLabel(p.purpose)}
-                  {purposeLabel(p.purpose) !== p.purpose && (
-                    <span className="ml-[0.4rem] font-mono text-[0.8rem] font-normal text-ink-muted">
-                      {p.purpose}
-                    </span>
-                  )}
                 </th>
                 <td className={NUM}>{formatInt(p.calls)}</td>
                 <td className={`${NUM} font-bold`}>{formatCredits(p.estimatedCredits)}</td>
@@ -376,14 +360,14 @@ function ModelTable({ data }: { data: AiUsageStats }) {
       aria-labelledby="model-title"
       className="overflow-hidden rounded-sm border border-line bg-paper"
     >
-      <h2 id="model-title" className="px-[1.2rem] pt-[1.2rem] text-[1.0667rem] font-bold">
+      <h2
+        id="model-title"
+        className="px-[1.2rem] pt-[1.2rem] pb-[0.8rem] text-[1.0667rem] font-bold"
+      >
         모델별
       </h2>
-      <p className="px-[1.2rem] pt-[0.2rem] pb-[0.8rem] text-[0.8667rem] text-ink-muted">
-        자체 서버(H200) 모델은 크레딧이 들지 않아요.
-      </p>
       {data.byModel.length === 0 ? (
-        <p className="px-[1.2rem] pb-[1.2rem] text-[0.9333rem]">이 기간에는 호출이 없어요.</p>
+        <p className="px-[1.2rem] pb-[1.2rem] text-[0.9333rem] text-ink-muted">기록 없음</p>
       ) : (
         <table className="w-full text-[0.9333rem]">
           <thead className="bg-cream text-[0.8667rem] text-ink-muted">
@@ -431,34 +415,13 @@ function ModelTable({ data }: { data: AiUsageStats }) {
 
 function ReuseSection({ data }: { data: AiUsageStats }) {
   const r = data.reuse
-  const total = r.newJob + r.reused + r.joinedJob
-  const items: { label: string; value: string; note: string }[] = [
-    { label: '새로 만든 해설', value: `${formatInt(r.newJob)}건`, note: '처음 올라온 영상' },
-    {
-      label: '이미 있는 해설 재사용',
-      value: `${formatInt(r.reused)}건`,
-      note: '유튜브 같은 영상, 바로 재생',
-    },
-    {
-      label: '만드는 중인 해설에 합류',
-      value: `${formatInt(r.joinedJob)}건`,
-      note: '먼저 올린 사람 작업 기다림',
-    },
-    {
-      label: '영상당 평균 크레딧',
-      value: formatCredits(r.avgCreditsPerVideo),
-      note: '새로 만들 때 드는 비용',
-    },
-    {
-      label: '아낀 크레딧',
-      value: formatCredits(r.savedCredits),
-      note: `재사용·합류 ${formatInt(r.reused + r.joinedJob)}건 × 평균`,
-    },
-    {
-      label: '절감률',
-      value: formatRate(r.savedRate),
-      note: '아낀 크레딧 ÷ (아낀 + 실제 쓴 크레딧)',
-    },
+  const items: { label: string; value: string }[] = [
+    { label: '새로 만든 해설', value: `${formatInt(r.newJob)}건` },
+    { label: '이미 있는 해설 재사용', value: `${formatInt(r.reused)}건` },
+    { label: '만드는 중인 해설에 합류', value: `${formatInt(r.joinedJob)}건` },
+    { label: '영상당 평균 크레딧', value: formatCredits(r.avgCreditsPerVideo) },
+    { label: '아낀 크레딧', value: formatCredits(r.savedCredits) },
+    { label: '절감률', value: formatRate(r.savedRate) },
   ]
   return (
     <section
@@ -468,10 +431,6 @@ function ReuseSection({ data }: { data: AiUsageStats }) {
       <h2 id="reuse-title" className="text-[1.0667rem] font-bold">
         해설 재사용 효과
       </h2>
-      <p className="mt-[0.2rem] text-[0.8667rem] text-ink-muted">
-        유튜브 영상 {formatInt(total)}건 중 {formatInt(r.reused + r.joinedJob)}건은 새로 만들지
-        않았어요.
-      </p>
       <dl className="mt-[1rem] grid grid-cols-3 gap-[0.8667rem] xl:grid-cols-6">
         {items.map((it) => (
           <div key={it.label} className="border-l-2 border-line pl-[0.8rem]">
@@ -479,7 +438,6 @@ function ReuseSection({ data }: { data: AiUsageStats }) {
             <dd className="mt-[0.2rem] text-[1.2rem] leading-tight font-bold tabular-nums">
               {it.value}
             </dd>
-            <dd className="mt-[0.1333rem] text-[0.8rem] text-ink-muted">{it.note}</dd>
           </div>
         ))}
       </dl>

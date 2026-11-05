@@ -1,68 +1,92 @@
 import { Link } from 'react-router-dom'
+import type { ReportStatus } from '@/api/types'
 import { cn } from '@/components/ui/cn'
 import { formatClock } from '@/utils/time'
 import { formatReportedAt, REASON_BAR, REASON_LABELS, type ReportGroup } from './reports'
 
 export interface ReportListProps {
   groups: ReportGroup[]
-  selectedLineId: number | null
+  status: ReportStatus
 }
 
-/** 신고 목록 (왼쪽, Figma 한 줄 76px). 한 줄이 해설 문장 하나이고, 누르면 오른쪽에 그 문장을 연다 */
-export function ReportList({ groups, selectedLineId }: ReportListProps) {
+/**
+ * 신고 게시판 (표). 한 줄이 해설 문장 하나(같은 문장 신고 묶음)이고, 영상 제목 링크로 상세를 연다.
+ * 줄 어디를 눌러도 열리게 링크를 줄 전체로 넓히되, 낭독기에는 링크 하나로만 읽힌다.
+ */
+export function ReportList({ groups, status }: ReportListProps) {
+  const pending = status === 'PENDING'
+  const query = pending ? '' : `?status=${status}`
   return (
-    <ul>
-      {groups.map((g) => {
-        const r = g.first
-        const selected = g.lineId === selectedLineId
-        return (
-          <li key={g.lineId}>
-            <Link
-              to={`/admin/reports/${r.reportId}`}
-              aria-current={selected ? 'true' : undefined}
-              className={cn(
-                'relative flex h-[5.0667rem] items-start gap-3 px-[1.6rem] pt-[0.8rem]',
-                selected ? 'bg-navy text-cream focus-visible:bg-navy-deep' : 'text-ink',
-              )}
+    <table className="w-full table-fixed border-collapse text-left text-[0.9333rem]">
+      <caption className="sr-only">신고 목록. 같은 문장에 들어온 신고는 한 줄로 묶었어요.</caption>
+      <colgroup>
+        {/* 모든 칸을 비율로 나눠 화면이 넓어져도 칸 사이가 고르게 벌어진다. 넘치는 글은 … 로 줄인다 */}
+        <col className="w-[26%]" />
+        <col className="w-[40%]" />
+        <col className="w-[12%]" />
+        <col className="w-[8%]" />
+        <col className="w-[14%]" />
+      </colgroup>
+      <thead className="border-b-2 border-line text-[0.8667rem] text-ink-muted">
+        <tr>
+          <th scope="col" className="px-4 py-2.5 font-bold">
+            영상
+          </th>
+          <th scope="col" className="px-4 py-2.5 font-bold">
+            신고된 문장
+          </th>
+          <th scope="col" className="px-4 py-2.5 font-bold">
+            사유
+          </th>
+          <th scope="col" className="px-4 py-2.5 text-center font-bold">
+            신고 수
+          </th>
+          <th scope="col" className="px-4 py-2.5 font-bold">
+            {pending ? '첫 신고' : '처리일'}
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {groups.map((g) => {
+          const r = g.first
+          // 같은 문장이라도 사유가 여럿일 수 있다: "틀린 내용 외 1"
+          const reasons = [...new Set(g.reports.map((x) => x.reason))]
+          const reason =
+            reasons.length > 1
+              ? `${REASON_LABELS[r.reason]} 외 ${reasons.length - 1}`
+              : REASON_LABELS[r.reason]
+          return (
+            <tr
+              key={g.lineId}
+              className="relative border-b border-line hover:bg-cream has-[a:focus-visible]:bg-yellow-soft"
             >
-              <span
-                aria-hidden="true"
-                className={cn(
-                  'absolute top-[0.8rem] left-0 h-[3.4667rem] w-[0.2667rem]',
-                  REASON_BAR[r.reason],
-                )}
-              />
-              <span className="min-w-0 flex-1 leading-snug">
-                <span className="block truncate text-[0.9333rem] font-bold">{r.videoTitle}</span>
-                <span
-                  className={cn(
-                    'block truncate text-[0.8667rem]',
-                    selected ? 'opacity-85' : 'text-ink-muted',
-                  )}
-                >
-                  {formatClock(r.lineStartMs)} · {r.currentText}
-                </span>
-                <span
-                  className={cn('block text-[0.8rem]', selected ? 'opacity-75' : 'text-ink-muted')}
-                >
-                  {REASON_LABELS[r.reason]} · {formatReportedAt(r.createdAt)}
-                </span>
-              </span>
-              <span className="shrink-0 rounded-full bg-yellow px-[0.6rem] text-[0.8rem] leading-[1.3333rem] font-bold text-navy">
-                <span aria-hidden="true">신고 {g.count}</span>
-                <span className="sr-only">신고 {g.count}건</span>
-              </span>
-              {/* 줄 사이 구분선은 글자 폭만큼 (Figma) */}
-              {!selected && (
+              <td className="px-4 py-3.5">
                 <span
                   aria-hidden="true"
-                  className="absolute right-[1.6rem] bottom-0 left-[1.6rem] border-b border-line"
+                  className={cn('absolute inset-y-2 left-0 w-[0.2667rem]', REASON_BAR[r.reason])}
                 />
-              )}
-            </Link>
-          </li>
-        )
-      })}
-    </ul>
+                <Link
+                  to={`/admin/reports/${r.reportId}${query}`}
+                  title={r.videoTitle}
+                  className="block truncate font-bold text-ink outline-none before:absolute before:inset-0 before:content-['']"
+                >
+                  {r.videoTitle}
+                </Link>
+              </td>
+              <td className="truncate px-4 py-3.5 text-ink-muted" title={r.currentText}>
+                <span className="tabular-nums">{formatClock(r.lineStartMs)}</span> · {r.currentText}
+              </td>
+              <td className="truncate px-4 py-3.5" title={reason}>
+                {reason}
+              </td>
+              <td className="px-4 py-3.5 text-center font-bold tabular-nums">{g.count}건</td>
+              <td className="truncate px-4 py-3.5 text-ink-muted tabular-nums">
+                {formatReportedAt(g.shownAt)}
+              </td>
+            </tr>
+          )
+        })}
+      </tbody>
+    </table>
   )
 }

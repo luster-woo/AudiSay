@@ -246,11 +246,15 @@ test('요약 듣고 시작: 요약을 읽은 뒤 재생한다', async () => {
   mockAll({ summaryMode: 'ASK' })
   renderRoute('/watch/15')
   const dialog = await screen.findByRole('dialog', { name: '30초 요약을 먼저 들을까요?' })
+  await waitFor(() => expect(band()).toHaveTextContent('30초 요약을 들을까요?'))
   await user.click(within(dialog).getByRole('button', { name: '요약 듣고 시작' }))
+  // 요약을 듣는 동안 포커스는 재생 버튼 (창이 닫히며 본문으로 빠지지 않게)
+  await waitFor(() => expect(screen.getByRole('button', { name: '재생' })).toHaveFocus())
   await waitFor(() =>
     expect(say).toHaveBeenCalledWith(expect.objectContaining({ text: '그래프 수업 요약이에요.' })),
   )
   await waitFor(() => expect(controls.play).toHaveBeenCalled())
+  await waitFor(() => expect(band()).toHaveTextContent('요약이 끝났어요. 재생해요.'))
 })
 
 test('안 듣기: 재생 버튼에 포커스. 목차를 고르면 그 시각으로 옮기고 장면을 읽어 준다', async () => {
@@ -370,6 +374,9 @@ test('질문: 영상을 멈추고 답을 문장 단위로 읽은 뒤 끝났다�
     expect(subscribeSse).toHaveBeenCalledWith('/chat/messages/88/stream', expect.anything()),
   )
   expect(controls.pause).toHaveBeenCalled()
+  // 답을 받는 동안에도 포커스는 입력칸에 남는다 (disabled 면 본문으로 빠진다). 읽기 전용으로만 막는다
+  expect(input).toHaveFocus()
+  expect(input).toHaveAttribute('readonly')
   expect(screen.getByRole('tab', { name: '질문 기록' })).toHaveAttribute('aria-selected', 'true')
 
   act(() => sse().onMessage({ event: 'delta', data: JSON.stringify({ text: '네. 막대 위에 ' }) }))

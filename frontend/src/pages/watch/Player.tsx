@@ -225,14 +225,18 @@ export function Player({ video }: { video: VideoDetail }) {
     autoSummaryRef.current = true
     void playSummary('30초 요약을 먼저 들려 드려요. Esc를 누르면 건너뛰어요.').then(() => {
       setDecided('done')
+      announce('요약이 끝났어요. 재생해요.')
       start()
     })
-  }, [phase, decided, playSummary, start])
+  }, [phase, decided, playSummary, start, announce])
 
   const onListenSummary = () => {
     setDecided('playing')
+    // 요약을 듣는 동안에도 포커스가 갈 곳이 있어야 한다 (창이 닫히면 본문으로 빠졌다). 재생 버튼은 aria-disabled 라 포커스는 받는다
+    requestAnimationFrame(() => playRef.current?.focus({ preventScroll: true }))
     void playSummary('요약을 들려 드릴게요. Esc를 누르면 건너뛰어요.').then(() => {
       setDecided('done')
+      announce('요약이 끝났어요. 재생해요.')
       start()
     })
   }

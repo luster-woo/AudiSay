@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import {
   AnnouncerContext,
@@ -8,6 +8,10 @@ import {
   type AnnouncerValue,
   type Politeness,
 } from './context'
+
+/** 안내 영역 자리가 바뀌기 이만큼 전까지 보낸 안내는 다시 읽힌다 */
+const REPLAY_WINDOW_MS = 1000
+const REPLAY_DELAY_MS = 100
 
 export function AnnouncerProvider({ children }: { children: ReactNode }) {
   const [lastMessage, setLastMessage] = useState('')
@@ -20,6 +24,8 @@ export function AnnouncerProvider({ children }: { children: ReactNode }) {
     return () => setHosts((h) => h.filter((x) => x !== el))
   }, [])
   const mutedRef = useRef(false)
+  const lastAtRef = useRef(0)
+  const pendingRef = useRef(0)
   const lastRef = useRef<{ text: string; politeness: Politeness }>({
     text: '',
     politeness: 'polite',
@@ -29,13 +35,14 @@ export function AnnouncerProvider({ children }: { children: ReactNode }) {
     const set = politeness === 'assertive' ? setAssertive : setPolite
     // 같은 문자열은 낭독기가 다시 읽지 않으므로 비웠다가 다음 프레임에 넣는다
     set('')
-    requestAnimationFrame(() => set(text))
+    pendingRef.current = requestAnimationFrame(() => set(text))
   }, [])
 
   const announce = useCallback(
     (text: string, opts: AnnounceOptions = {}) => {
       const politeness = opts.politeness ?? 'polite'
       lastRef.current = { text, politeness }
+      lastAtRef.current = Date.now()
       setLastMessage(text)
       if (mutedRef.current) return
       push(text, politeness)
@@ -69,6 +76,26 @@ export function AnnouncerProvider({ children }: { children: ReactNode }) {
     </>
   )
   const host = hosts.at(-1)
+
+  /**
+   * 창이 열리거나 닫혀 안내 영역이 새 자리에 다시 그려지면, 그 직전에 넣은 문구는 '처음부터 있던 내용'이 되어
+   * 낭독기가 읽지 않는다 (예: 창을 열며 "영상을 멈췄어요", 닫으며 "이어서 재생해요"). 방금 보낸 안내를 다시 넣는다
+   */
+  const prevHostRef = useRef(host)
+  useEffect(() => {
+    if (prevHostRef.current === host) return
+    prevHostRef.current = host
+    if (mutedRef.current || Date.now() - lastAtRef.current > REPLAY_WINDOW_MS) return
+    const { text, politeness } = lastRef.current
+    if (!text) return
+    const set = politeness === 'assertive' ? setAssertive : setPolite
+    // 아직 넣지 않은 안내가 있으면 거두고, 새 영역에 한 번만 넣는다 (두 번 읽히지 않게)
+    cancelAnimationFrame(pendingRef.current)
+    set('')
+    // 새 영역이 접근성 트리에 올라간 뒤에 바꿔야 변화로 읽힌다
+    const id = setTimeout(() => set(text), REPLAY_DELAY_MS)
+    return () => clearTimeout(id)
+  }, [host])
 
   return (
     <AnnouncerContext.Provider value={value}>

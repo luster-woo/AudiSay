@@ -6,7 +6,7 @@ export interface HelpRow {
 }
 
 export type ShortcutCategory = 'everywhere' | 'playback' | 'questions'
-export type VoiceCategory = 'playback' | 'scenes' | 'questions'
+export type VoiceCategory = 'playback' | 'scenes' | 'questions' | 'home'
 
 // 사용자와 확정한 와이어프레임 문구. 플레이어 담당자가 키·음성 동작을 추가할 예정이므로
 // 현재 등록된 키 목록과 분리한다. 도움말 구현에서 플레이어의 동작을 변경하지 않는다.
@@ -179,6 +179,34 @@ export const voiceCategories: { value: VoiceCategory; label: string; rows: HelpR
         command: '‘여기 신고’',
         description: '현재 해설 문장 신고',
         spokenCommand: '여기 신고라고 말하세요.',
+      },
+    ],
+  },
+  {
+    // 홈 음성 검색: 받아쓴 말을 챗봇이 먼저 나눈다 (글자 검색은 그대로 검색)
+    value: 'home',
+    label: '홈 음성 검색',
+    rows: [
+      {
+        command: '‘고양이 영상 찾아 줘’',
+        description: '말한 영상 검색',
+        spokenCommand: '고양이 영상 찾아 줘라고 말하세요.',
+      },
+      {
+        command: '‘말 빠르게’ / ‘고대비 켜 줘’',
+        description: '설정 바꾸기',
+        spokenCommand: '말 빠르게 또는 고대비 켜 줘라고 말하세요.',
+        spokenDescription: '검색하지 않고 설정을 바꿔요.',
+      },
+      {
+        command: '‘도움말’',
+        description: '도움말 열기',
+        spokenCommand: '도움말이라고 말하세요.',
+      },
+      {
+        command: '‘사용법 다시’',
+        description: '사용법 처음부터',
+        spokenCommand: '사용법 다시라고 말하세요.',
       },
     ],
   },

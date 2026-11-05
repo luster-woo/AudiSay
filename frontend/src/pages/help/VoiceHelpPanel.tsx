@@ -62,12 +62,15 @@ export function VoiceHelpPanel() {
         appearance="buttons"
         className="help-category-tabs"
         value={category}
-        tabListClassName="grid-cols-1 sm:grid-cols-3"
+        tabListClassName="grid-cols-1 sm:grid-cols-4"
         panelClassName="help-category-panel"
         onChange={(next) => {
           setCategory(next)
           announce(
-            `${voiceCategories.find((item) => item.value === next)?.label} 음성 명령 예시 4개예요.`,
+            (() => {
+              const picked = voiceCategories.find((item) => item.value === next)
+              return `${picked?.label} 음성 명령 예시 ${picked?.rows.length ?? 0}개예요.`
+            })(),
           )
         }}
         items={voiceCategories.map((item) => ({

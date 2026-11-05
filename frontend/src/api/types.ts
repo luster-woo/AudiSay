@@ -632,7 +632,8 @@ export type ChatMessageResult = {
       }
     }
   | { intent: 'ACTION'; result: { actionCode: ChatActionCode } }
-  | { intent: 'SEARCH_VIDEO'; result: { query: string } }
+  /** 영상 밖(홈)에서만 query 가 온다. 영상 안에서는 query 없이 안내 message 만 */
+  | { intent: 'SEARCH_VIDEO'; result: { query: string | null; message?: string | null } }
   | { intent: 'UNKNOWN'; result: { message: string } }
 )
 

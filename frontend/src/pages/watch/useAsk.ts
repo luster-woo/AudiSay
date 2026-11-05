@@ -105,7 +105,7 @@ export function answerToOffer(utterance: string): 'yes' | 'no' | null {
 }
 
 /** 설정 변경 명령의 값(문자열)을 설정 필드 타입에 맞춘다 */
-function coerceSetting(key: keyof UserSettings, raw: string): Partial<UserSettings> | null {
+export function coerceSetting(key: keyof UserSettings, raw: string): Partial<UserSettings> | null {
   const num = Number(raw)
   switch (key) {
     case 'detailLevel':
@@ -339,7 +339,9 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
         }
         case 'SEARCH_VIDEO':
           command(null)
-          c.searchVideos(res.result.query)
+          // 영상 안에서는 서버가 검색어 대신 안내("다른 영상은 검색 화면에서 찾아 주세요.")만 준다
+          if (res.result.query) c.searchVideos(res.result.query)
+          else c.announce(res.result.message || '다른 영상은 검색 화면에서 찾아 주세요.')
           return
         default:
           command(null)

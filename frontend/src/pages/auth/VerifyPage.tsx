@@ -293,7 +293,8 @@ function BenefitTable({ title, rows }: (typeof BENEFITS)[number]) {
               <EmphasizeNumbers text={r.now} />
             </td>
             <td
-              className={`bg-navy/85 px-2.5 py-3 text-lg font-bold whitespace-nowrap text-paper ${i > 0 ? 'border-t border-paper/25' : ''}`}
+              // 고대비: 노랑(#ffd600)을 85%로 깔면 검정 위에 섞여 어두워지므로, 더 밝은 연노랑으로 검정 글자와 대비를 키운다
+              className={`bg-navy/85 px-2.5 py-3 text-lg font-bold whitespace-nowrap text-paper hc:bg-[#fff3a6] ${i > 0 ? 'border-t border-paper/25' : ''}`}
             >
               <EmphasizeNumbers text={r.after} />
             </td>

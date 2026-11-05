@@ -155,6 +155,8 @@ describe('챗봇 품질 통계', () => {
 
     const seek = screen.getByRole('region', { name: '장면 찾기' })
     expect(within(seek).getByText('못 찾음').closest('li')).toHaveTextContent('3건7.3%')
+    // BE가 rag 를 주지 않으면 RAG 칸은 없다
+    expect(within(seek).queryByText(/RAG/)).not.toBeInTheDocument()
 
     const intent = within(screen.getByRole('region', { name: '입력 종류별' }))
     const unknown = intent.getByRole('row', { name: /못 알아들음/ })
@@ -172,6 +174,27 @@ describe('챗봇 품질 통계', () => {
     expect(unanswered).toHaveTextContent('(영상 밖에서 물음)')
 
     expect(await axe(container)).toHaveNoViolations()
+  })
+
+  test('BE가 rag 를 주면 장면 찾기에 RAG 칸을 보여 주고 성공에 더한다', async () => {
+    vi.mocked(adminApi.chatStats).mockImplementation(async (from, to) => ({
+      ...stats(from, to),
+      seek: { total: 41, keyword: 25, rag: 6, llm: 7, notFound: 3, keywordRate: 25 / 41 },
+    }))
+    renderRoute('/admin/chat-stats')
+    const seek = await screen.findByRole('region', { name: '장면 찾기' })
+    const items = within(seek)
+      .getAllByRole('listitem')
+      .map((li) => li.textContent)
+    expect(items).toEqual([
+      '키워드로 찾음25건61.0%',
+      '의미 검색(RAG)으로 찾음6건14.6%',
+      'AI가 골라 찾음7건17.1%',
+      '못 찾음3건7.3%',
+    ])
+    expect(screen.getByRole('region', { name: '기간 요약' })).toHaveTextContent(
+      '장면 찾기 성공92.7%41건 중 38건 찾음',
+    )
   })
 
   test('기간을 고르면 다시 불러오고 요약을 읽어 준다', async () => {

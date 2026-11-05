@@ -69,7 +69,7 @@ services:
       timeout: 5s
       retries: 12
       start_period: 60s
-    mem_limit: 1g
+    mem_limit: 1536m                  # 인증 서류 OCR(ONNX Runtime, 힙 밖 메모리 약 200MB 이상) 때문에 1g에서 올림(286)
     restart: unless-stopped
 
   ai:

@@ -66,6 +66,20 @@ public class AiCallLog {
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 
+    /**
+     * 인증 서류 OCR 한 번(서버 안에서 돌아 크레딧 0). errorCode는 통과면 null, 거절이면 판정 이유(NOT_VISUAL 등),
+     * OCR이 우리 쪽 문제로 실패해 확인 없이 승인했으면 OCR_ENGINE. 서류·읽은 글자는 남기지 않는다
+     */
+    public static AiCallLog verify(String model, int latencyMs, String errorCode) {
+        AiCallLog log = new AiCallLog();
+        log.purpose = AiCallPurpose.VERIFY;
+        log.model = model;
+        log.imageCount = 1;
+        log.latencyMs = latencyMs;
+        log.errorCode = errorCode;
+        return log;
+    }
+
     /** 챗봇 LLM 호출 한 번. 실패면 errorCode, 토큰은 0. fallback = 대체 모델 호출 */
     public static AiCallLog chat(AiCallPurpose purpose, String model, Long chatLogId, int inputTokens, int outputTokens,
                                  BigDecimal estimatedCredits, int latencyMs, boolean fallback, String errorCode) {

@@ -95,4 +95,19 @@ public class AiCallLog {
         log.errorCode = errorCode;
         return log;
     }
+
+    /** 임베딩 호출 한 번. 색인은 jobId, 장면 찾기 질문은 chatLogId. 실패면 errorCode, 토큰 0 */
+    public static AiCallLog embed(String model, Long jobId, Long chatLogId, int inputTokens,
+                                  BigDecimal estimatedCredits, int latencyMs, String errorCode) {
+        AiCallLog log = new AiCallLog();
+        log.purpose = AiCallPurpose.EMBED;
+        log.model = model;
+        log.jobId = jobId;
+        log.chatLogId = chatLogId;
+        log.inputTokens = inputTokens;
+        log.estimatedCredits = estimatedCredits;
+        log.latencyMs = latencyMs;
+        log.errorCode = errorCode;
+        return log;
+    }
 }

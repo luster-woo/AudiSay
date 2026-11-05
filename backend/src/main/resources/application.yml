@@ -107,7 +107,7 @@ audisay:
     min-score: 0.6                    # 이 점수 미만인 줄은 버림(H200 /ocr와 같음)
     threads: 2                        # OCR 한 번에 쓰는 CPU 스레드
     max-concurrent: 1                 # 동시에 돌리는 OCR 수(한 장 1초 안팎, 인증은 드물어 1개로 최대 메모리를 줄임). 넘으면 wait-timeout까지 기다림
-    wait-timeout: 10s
+    wait-timeout: 5s                  # 넘으면 승인하지 않고 USER_008(잠시 뒤 다시). FE 요청 시간 제한(15초) 안에 업로드·OCR까지 끝나게
     optimization-level: ALL           # ALL → BASIC → NONE. 모델 로드·첫 추론이 실패하면 자동으로 낮춤
 
   verification:
@@ -185,6 +185,7 @@ audisay:
       "[gemini-3.8-flash-tts]": { input: 0.01, output: 0.18 }
       "[gemini-3.8-flash-lite-tts]": { input: 0.01, output: 0.12 }
       "[claude-haiku-5-5]": { input: 0.001, output: 0.005 }
+      "[text-embedding-3-large]": { input: 0.0013, output: 0 }
     circuit-breaker:
       failure-rate-threshold: 50
       sliding-window-size: 20
@@ -194,6 +195,31 @@ audisay:
     mock:
       latency: 300ms
       # failure: rate-limit   # 주 모델에 일부러 낼 실패(rate-limit / unavailable / timeout). 대체 모델 동작 확인용
+
+  # 장면 검색 임베딩(342). GMS OpenAI 형식, 키·서킷·단가는 audisay.gms. dimensions는 V7 vector(1536)과 같아야 함
+  embedding:
+    base-url: https://gms.ssafy.io/gmsapi/api.openai.com
+    model: text-embedding-3-large
+    dimensions: 1536
+    batch-size: 100
+    query-timeout: 3s
+    document-timeout: 30s
+
+  scene-search:                       # 장면 검색 RAG(342)
+    index:                            # 공개 직후 바로 색인 + 5분마다 놓친 것·실패·관리자 수정·보관 정리
+      enabled: true
+      batch-size: 5                   # 스케줄러 한 번에 색인하는 해설 수(배포 전 공개분도 이 속도로 채움)
+      retry-after: 30m                # FAILED 다시 시도
+      stuck-after: 10m                # PENDING이 이보다 오래면 멈춘 것으로 보고 다시 맡음
+      archived-retention: 7d          # 재생성으로 보관된 해설의 색인을 새 해설이 생긴 뒤 이만큼 지나면 삭제
+    search:
+      mode: FALLBACK                  # OFF(지금 방식) / FALLBACK(키워드가 확실하면 그대로, 애매하거나 못 찾으면 RAG) / ALWAYS(늘 RAG)
+      candidates: 5                   # 키워드·벡터 후보를 RRF로 합친 뒤 LLM이 확인할 개수
+      vector-top-k: 20                # 벡터 검색으로 가져올 줄 수
+    answer:                           # 질문 답변 RAG: 지금 자료(앞·지금 장면)보다 앞의 비슷한 줄, 뒤 확인은 비슷한 뒤 줄 + 요약
+      mode: ${AUDISAY_SCENE_SEARCH_ANSWER_MODE:FALLBACK}  # OFF / FALLBACK(지금 자료로 먼저, "자료에 없어요"면 앞 줄 더해 다시) / ALWAYS
+      earlier-top-k: 8                # 앞에서 가져올 줄 수
+      later-top-k: 12                 # 뒤 확인에 쓸 줄 수
 
   # S3. 버킷이 비어 있으면 음성 주소(audioUrl)를 만들지 않는다 → FE가 브라우저 음성으로 읽음
   s3:

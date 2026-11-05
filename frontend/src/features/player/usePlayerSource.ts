@@ -148,6 +148,8 @@ export function usePlayerSource(
         events: {
           onReady: () => {
             if (cancelled) return
+            // 유튜브 iframe 에 Tab 으로 들어가지 않게 (영상 상자는 aria-hidden, 조작은 바깥 컨트롤)
+            player.getIframe()?.setAttribute('tabindex', '-1')
             unloadCaptions(player)
             patch({
               ready: true,

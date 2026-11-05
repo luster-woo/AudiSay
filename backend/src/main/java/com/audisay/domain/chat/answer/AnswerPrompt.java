@@ -1,5 +1,6 @@
 package com.audisay.domain.chat.answer;
 
+import com.audisay.domain.chat.search.VectorLine;
 import com.audisay.domain.description.service.AnswerContext;
 import com.audisay.domain.description.service.AnswerContext.Dialogue;
 import com.audisay.domain.description.service.AnswerContext.SceneInfo;
@@ -30,6 +31,12 @@ public class AnswerPrompt {
             + "아래 '해설 자료'(현재 시각 근처의 장면·대사)만 근거로 한국어로 1~2문장, 짧게 말하듯 답하세요. "
             + "자료에 답이 없으면 지어내거나 설명을 붙이지 말고 '그건 해설 자료에 없어요.' 한 문장만 답하세요. "
             + "사람이나 캐릭터 이름은 자료에 이름이 있을 때만 말하세요. 시각 숫자나 MM:SS는 읽지 마세요.";
+    static final String QUESTION_EARLIER_SYSTEM = "당신은 시각장애인이 영상을 보다가 한 질문에 답하는 도우미입니다. "
+            + "아래 '해설 자료'(현재 시각 근처의 장면·대사)와 '앞에서 나온 관련 내용'(질문한 시각 전에 나온 줄 중 질문과 비슷한 줄)만 "
+            + "근거로 한국어로 1~2문장, 짧게 말하듯 답하세요. "
+            + "자료에 답이 없으면 지어내거나 설명을 붙이지 말고 '그건 해설 자료에 없어요.' 한 문장만 답하세요. "
+            + "어떤 일이 일어나는지 묻는데 자료에 그 일이 없으면 '아니요'로 짐작하지 말고 '그건 해설 자료에 없어요.'라고 답하세요. "
+            + "사람이나 캐릭터 이름은 자료에 이름이 있을 때만 말하세요. 시각 숫자나 MM:SS는 읽지 마세요.";
     static final String SCENE_NOW_SYSTEM = "당신은 시각장애인에게 지금 영상 화면을 설명하는 도우미입니다. "
             + "아래 '해설 자료'만 근거로 지금 화면에 무엇이 보이고 무슨 일이 일어나는지 한국어로 1~2문장, 짧게 말하듯 설명하세요. "
             + "장면 제목은 이미 읽어 주었으니 다시 말하지 마세요. 지금 장면의 해설 문장 중 시각이 '현재 시각'에 가까운 것과 화면 글자를 먼저 쓰세요. "
@@ -45,12 +52,21 @@ public class AnswerPrompt {
     public static final String FUTURE_PROMPT = "그건 지금 시점 이후에 나와요. 그래도 들으시겠어요?";
     public static final String NO_RECAP = "아직 지난 내용이 없어요.";
     static final String RECAP_SYSTEM = "당신은 시각장애인에게 영상의 지금까지 줄거리를 알려 주는 도우미입니다. "
-            + "아래 '지금까지 내용'만 근거로 일어난 순서대로 한국어 2~4문장, 짧게 말하듯 정리하세요. "
+            + "아래 '지금까지 내용'만 근거로 일어난 순서대로, 요청한 문장 수 안에서 한국어로 짧게 말하듯 정리하세요. "
+            + "장면이 많아도 중간 단계를 건너뛰지 말고 장면마다 한 구절씩 이어 말하세요. "
             + "지금 시각 뒤에 일어날 일은 자료에 없으니 짐작하지 마세요. 자료에 없는 이유·관계·누가 했는지도 덧붙이지 마세요. "
             + "사람이나 캐릭터 이름은 자료에 이름이 있을 때만 말하세요. 시각 숫자나 MM:SS는 읽지 마세요.";
-    static final String RECAP_REQUEST = "지금까지 줄거리를 정리해 주세요.";
+    /** 지난 장면 3개마다 1문장씩 늘린다(2~5문장). 고정 2~4문장이면 긴 영상 뒤쪽에서 중간 단계가 빠졌다(RECAP 평가) */
+    static final int RECAP_MIN_SENTENCES = 2;
+    static final int RECAP_MAX_SENTENCES = 5;
+    static final int RECAP_MAX_OUTPUT_TOKENS = 500;
     static final String FUTURE_CHECK_SYSTEM = "시각장애인이 영상을 보다가 한 질문입니다. 아래 '뒤 내용'(질문한 시각 이후의 장면·해설 문장·대사·화면 글자와 "
             + "영상 전체 요약)에서 질문에 대한 답이 되는 부분을 찾아 40자 이내 한 구절로 옮기세요. 영상 요약에 답이 있어도 됩니다. "
+            + "답이 없거나 비슷한 내용뿐이면 빈 문자열로 두세요. "
+            + "설명 없이 JSON 한 줄만 답하세요: {\"evidence\": \"답이 되는 문장\"} 또는 {\"evidence\": \"\"}";
+    static final String FUTURE_CHECK_LINES_SYSTEM = "시각장애인이 영상을 보다가 한 질문입니다. 아래 '뒤 내용'(질문한 시각 이후에 나온 "
+            + "장면 설명·해설 문장·대사·화면 글자 중 질문과 비슷한 줄)에서 질문에 대한 답이 되는 줄을 찾아 40자 이내 한 구절로 옮기세요. "
+            + "영상 요약에 답이 있어도 됩니다. "
             + "답이 없거나 비슷한 내용뿐이면 빈 문자열로 두세요. "
             + "설명 없이 JSON 한 줄만 답하세요: {\"evidence\": \"답이 되는 문장\"} 또는 {\"evidence\": \"\"}";
     static final String FUTURE_SYSTEM = "당신은 시각장애인이 영상을 보다가 한 질문에 답하는 도우미입니다. "
@@ -69,6 +85,40 @@ public class AnswerPrompt {
 
     public String questionUser(AnswerContext context, String question) {
         return "해설 자료:\n" + json(context) + "\n\n질문: " + question;
+    }
+
+    /** 바로 하는 답 + 앞에서 나온 관련 내용(질문 답변 RAG). 앞 줄이 없으면 questionUser와 같다 */
+    public String questionUser(AnswerContext context, List<VectorLine> earlier, String question) {
+        if (earlier.isEmpty()) {
+            return questionUser(context, question);
+        }
+        return "해설 자료:\n" + json(context) + "\n\n앞에서 나온 관련 내용:\n" + objectMapper.writeValueAsString(lineMaps(earlier))
+                + "\n\n질문: " + question;
+    }
+
+    /** 뒤 확인(질문 답변 RAG): 뒤 내용 전체 대신 질문과 비슷한 뒤 줄 + 영상 요약 */
+    public String futureCheckLinesUser(String summary, List<VectorLine> later, String question) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        if (summary != null && !summary.isBlank()) {
+            map.put("영상 요약", summary);
+        }
+        map.put("뒤 줄", lineMaps(later));
+        return "뒤 내용:\n" + objectMapper.writeValueAsString(map) + "\n\n질문: " + question;
+    }
+
+    private static List<Map<String, Object>> lineMaps(List<VectorLine> lines) {
+        return lines.stream().map(line -> {
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("시각", clock(line.startMs()));
+            map.put("종류", switch (line.sourceType()) {
+                case "SCENE" -> "장면 설명";
+                case "NARRATION" -> "해설";
+                case "DIALOGUE" -> "대사";
+                default -> "화면 글자";
+            });
+            map.put("글", line.text());
+            return map;
+        }).toList();
     }
 
     public String futureCheckUser(FutureContext future, String question) {
@@ -116,7 +166,12 @@ public class AnswerPrompt {
             }
             return part;
         }).toList());
-        return "지금까지 내용:\n" + objectMapper.writeValueAsString(map) + "\n\n요청: " + RECAP_REQUEST;
+        return "지금까지 내용:\n" + objectMapper.writeValueAsString(map) + "\n\n요청: 지금까지 줄거리를 "
+                + recapSentences(recap.parts().size()) + "문장 이내로 정리해 주세요.";
+    }
+
+    static int recapSentences(int parts) {
+        return Math.min(RECAP_MAX_SENTENCES, Math.max(RECAP_MIN_SENTENCES, RECAP_MIN_SENTENCES + parts / 3));
     }
 
     public String sceneNowUser(AnswerContext context) {

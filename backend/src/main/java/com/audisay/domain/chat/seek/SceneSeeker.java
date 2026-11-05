@@ -2,6 +2,9 @@ package com.audisay.domain.chat.seek;
 
 import com.audisay.domain.chat.entity.SeekSource;
 import com.audisay.domain.chat.ratelimit.ChatRateLimiter;
+import com.audisay.domain.chat.search.SceneSearchProperties;
+import com.audisay.domain.chat.search.SceneVectorSearch;
+import com.audisay.domain.chat.search.VectorLine;
 import com.audisay.domain.chat.seek.KeywordSceneScorer.Decision;
 import com.audisay.domain.chat.seek.KeywordSceneScorer.Hit;
 import com.audisay.domain.chat.tuning.ChatTuningProperties;
@@ -10,6 +13,7 @@ import com.audisay.domain.description.service.SceneTextReader;
 import com.audisay.global.exception.BusinessException;
 import com.audisay.global.exception.ErrorCode;
 import com.audisay.global.external.llm.GmsProperties;
+import com.audisay.global.external.llm.LlmException;
 import com.audisay.global.external.llm.LlmPurpose;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +28,8 @@ import java.util.List;
  * 검색어 낱말을 다 못 맞힌 후보가 있거나 한 글자 낱말("우", "타")로 찾았으면(seek-partial-verify, 애매함) LLM이 한 번 거른다.
  * 애매한 후보가 모두 걸러지면 LLM이 목차에서 다시 고른다.
  * 키워드로 못 찾으면 LLM이 고른다.
+ * RAG(342, audisay.scene-search.search.mode): FALLBACK이면 키워드가 확실하지 않을 때(애매·못 찾음), ALWAYS면 늘 키워드 후보와
+ * 벡터 검색 후보를 RRF로 합친 상위 몇 개를 LLM이 확인한다. 색인이 없거나 임베딩이 실패하거나 시간이 모자라면 위 방식으로.
  * 지표 audisay.chat.seek{source=KEYWORD/LLM/NONE, result=single/multiple/none, verified} — 키워드로 처리한 비율, 거르기 횟수
  */
 @Slf4j
@@ -44,6 +50,8 @@ public class SceneSeeker {
     private final ChatTuningProperties tuning;
     private final MeterRegistry meterRegistry;
     private final GmsProperties gmsProperties;
+    private final SceneVectorSearch vectorSearch;
+    private final SceneSearchProperties searchProperties;
 
     /**
      * @param source   찾은 방법(못 찾았으면 null)
@@ -68,15 +76,23 @@ public class SceneSeeker {
             outcome = new Outcome(List.of(), null);
         } else {
             KeywordSceneScorer.Result keyword = tuning.seekKeyword() ? scorer.score(query, scenes, nowMs) : null;
-            if (keyword != null && keyword.decision() != Decision.NONE) {
+            boolean found = keyword != null && keyword.decision() != Decision.NONE;
+            // 후보가 너무 많으면 프롬프트·출력 한도를 넘으므로 점수가 높은 MAX_CANDIDATES개만 LLM이 거른다
+            List<Hit> candidates = found ? topByScore(keyword.chosen(), nowMs) : List.of();
+            boolean partial = found && tuning.seekPartialVerify()
+                    && (candidates.stream().anyMatch(h -> h.matchedTerms() < keyword.terms().size())
+                    || keyword.terms().stream().anyMatch(t -> t.length() == 1));
+            boolean dialogueOnly = found && keyword.decision() == Decision.MULTIPLE && tuning.seekLlmVerify()
+                    && LlmHitVerifier.worthVerifying(candidates);
+            SceneSearchProperties.Mode mode = searchProperties.search().mode();
+            boolean clear = found && !partial && !dialogueOnly;
+            Outcome rag = mode == SceneSearchProperties.Mode.ALWAYS || (mode == SceneSearchProperties.Mode.FALLBACK && !clear)
+                    ? rag(userId, descriptionId, query, chatLogId, nowMs, deadlineNanos, scenes, keyword) : null;
+            if (rag != null) {
+                outcome = rag;
+                verified = true;
+            } else if (found) {
                 List<Hit> hits = keyword.chosen();
-                int termCount = keyword.terms().size();
-                // 후보가 너무 많으면 프롬프트·출력 한도를 넘으므로 점수가 높은 MAX_CANDIDATES개만 LLM이 거른다
-                List<Hit> candidates = topByScore(hits, nowMs);
-                boolean partial = tuning.seekPartialVerify() && (candidates.stream().anyMatch(h -> h.matchedTerms() < termCount)
-                        || keyword.terms().stream().anyMatch(t -> t.length() == 1));
-                boolean dialogueOnly = keyword.decision() == Decision.MULTIPLE && tuning.seekLlmVerify()
-                        && LlmHitVerifier.worthVerifying(candidates);
                 if ((partial || dialogueOnly) && hasTimeForLlm(deadlineNanos, "거르기") && tryAcquireLlm(userId)) {
                     hits = deadlineNanos == null ? verifier.verify(query, candidates, chatLogId)
                             : verifier.verify(query, candidates, chatLogId, deadlineNanos);
@@ -107,6 +123,38 @@ public class SceneSeeker {
                 "verified", String.valueOf(verified))
                 .increment();
         return outcome;
+    }
+
+    /**
+     * 키워드 후보와 벡터 검색 후보를 RRF로 합친 상위 candidates개를 LLM이 확인한다(실제로 그 일이 일어난 후보만).
+     * 색인이 없거나, 임베딩이 실패하거나(서킷 열림 포함), 응답 시간 예산이 모자라면 null → 지금 방식으로
+     */
+    private Outcome rag(Long userId, Long descriptionId, String query, Long chatLogId, Integer nowMs, Long deadlineNanos,
+                        List<SceneText> scenes, KeywordSceneScorer.Result keyword) {
+        SceneSearchProperties.Search search = searchProperties.search();
+        if (!hasTimeForLlm(deadlineNanos, "RAG") || !vectorSearch.ready(descriptionId)) {
+            return null;
+        }
+        List<VectorLine> lines;
+        try {
+            lines = vectorSearch.search(descriptionId, query, chatLogId, search.vectorTopK());
+        } catch (LlmException e) {
+            log.warn("[CHAT] 장면 벡터 검색 실패({}), 키워드·LLM 방식으로: {}", e.getKind(), e.getMessage());
+            return null;
+        }
+        List<Hit> fused = HybridSceneRanker.fuse(keyword == null ? List.<Hit>of() : keyword.hits(), lines, scenes,
+                search.candidates());
+        if (fused.isEmpty()) {
+            return new Outcome(List.of(), null);
+        }
+        if (!hasTimeForLlm(deadlineNanos, "RAG 확인")) {
+            return null;
+        }
+        rateLimiter.acquireLlm(userId);
+        List<Hit> checked = verifier.check(query, fused, chatLogId, deadlineNanos);
+        // 확인이 실패하면(LLM 장애·읽을 수 없는 응답) 후보를 다 주지 않고 RRF 1등 하나만
+        List<Hit> hits = checked == null ? List.of(fused.get(0)) : KeywordSceneScorer.sortByTime(checked, nowMs);
+        return new Outcome(hits, hits.isEmpty() ? null : SeekSource.RAG);
     }
 
     private static List<Hit> topByScore(List<Hit> hits, Integer nowMs) {

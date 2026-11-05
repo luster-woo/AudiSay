@@ -110,15 +110,17 @@ export function useNarration({
 
   /**
    * 사용자가 직접 재생·멈춤·이동했을 때: 우리가 걸어 둔 멈춤과 읽던 소리를 모두 거둔다.
-   * 해설 때문에 멈춰 둔 상태였으면(resume) 영상을 이어서 재생한다 — 사용자는 재생 중이라고 알고 있다
+   * 해설 때문에 멈춰 둔 상태였으면(resume) 영상을 이어서 재생한다 — 사용자는 재생 중이라고 알고 있다.
+   * 돌려주는 값: 해설 때문에 멈춰 둔 상태였는지 (= 사용자 입장에선 재생 중이었는지)
    */
   const interrupt = useCallback(
-    (resume = true) => {
+    (resume = true): boolean => {
       const wasHolding = holdRef.current
       holdRef.current = false
       narrator.stop()
       speakingImportance.current = null
       if (wasHolding && resume) controls.play()
+      return wasHolding
     },
     [narrator, controls],
   )

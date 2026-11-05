@@ -137,41 +137,47 @@ describe('챗봇 품질 통계', () => {
 
     const summary = screen.getByRole('region', { name: '기간 요약' })
     expect(summary).toHaveTextContent('챗봇 입력354건')
-    expect(summary).toHaveTextContent('바로 답한 질문69.5%')
-    expect(summary).toHaveTextContent('질문 답변 118건 중 82건')
-    expect(summary).toHaveTextContent('답변 첫 소리까지 (p95)2.87초')
-    expect(summary).toHaveTextContent('1.75초목표 1.5초 넘음 · 못 알아들음')
-    expect(summary).toHaveTextContent('못 알아들은 입력3.4%')
-    expect(summary).toHaveTextContent('장면 찾기 성공92.7%')
+    expect(summary).toHaveTextContent('바로 답한 질문69.5%82 / 118건')
+    expect(summary).toHaveTextContent('첫 응답 음성 p952.87초p50 1.24초')
+    expect(summary).toHaveTextContent('분류 시간 p95 (최대)1.75초목표 1.5초 초과 · 못 알아들음')
+    expect(summary).toHaveTextContent('못 알아들은 입력3.4%12건')
+    expect(summary).toHaveTextContent('장면 찾기 성공92.7%38 / 41건')
 
+    const items = (name: string) =>
+      within(screen.getByRole('region', { name }))
+        .getAllByRole('listitem')
+        .map((li) => li.textContent)
     const answer = screen.getByRole('region', { name: '질문 답변 결과' })
-    expect(answer).toHaveTextContent('답변 중 끊긴 질문 6건')
-    expect(within(answer).getByText('바로 답함').closest('li')).toHaveTextContent('82건69.5%')
-    expect(
-      within(answer).getByText('뒤에 답이 있어 물음 → 안 들음').closest('li'),
-    ).toHaveTextContent('8건')
-    expect(within(answer).getByText('어디에도 답이 없음').closest('li')).toHaveTextContent('22건')
-    expect(answer).toHaveTextContent('물었을 때 들은 비율42.9%')
-
-    const seek = screen.getByRole('region', { name: '장면 찾기' })
-    expect(within(seek).getByText('못 찾음').closest('li')).toHaveTextContent('3건7.3%')
-    // BE가 rag 를 주지 않으면 RAG 칸은 없다
-    expect(within(seek).queryByText(/RAG/)).not.toBeInTheDocument()
+    expect(answer).toHaveTextContent('질문 118건')
+    expect(items('질문 답변 결과')).toEqual([
+      '바로 답함82건69.5%',
+      '뒤에 답 있음 · 들음6건5.1%',
+      '뒤에 답 있음 · 안 들음8건6.8%',
+      '답 없음22건18.6%',
+    ])
+    // BE가 rag 를 주지 않아도 RAG 칸은 '준비 중'으로 보인다
+    expect(items('장면 찾기')).toEqual([
+      '키워드29건70.7%',
+      'RAG준비 중',
+      'AI 선택9건22.0%',
+      '못 찾음3건7.3%',
+    ])
 
     const intent = within(screen.getByRole('region', { name: '입력 종류별' }))
     const unknown = intent.getByRole('row', { name: /못 알아들음/ })
     expect(within(unknown).getByRole('cell', { name: '1.75초' })).toHaveClass('text-danger')
     expect(intent.getByRole('row', { name: /영상 조작/ })).toHaveTextContent('1ms3ms')
+    expect(intent.queryByText('QUESTION')).not.toBeInTheDocument()
 
     const byAnswer = within(screen.getByRole('region', { name: '답변 종류별' }))
     expect(byAnswer.getByRole('row', { name: /지금 장면 설명/ })).toHaveTextContent('980ms1.52초')
 
     const unanswered = screen.getByRole('region', { name: '답이 없던 질문' })
-    expect(unanswered).toHaveTextContent('22건 중 최근 2건')
+    expect(unanswered).toHaveTextContent('최근 2건 / 전체 22건')
     expect(unanswered).toHaveTextContent(
-      '11-04 14:00하늘 나는 테슬라 로드스터4:10이 차 가격이 얼마야?',
+      '11-04 14:00이 차 가격이 얼마야?하늘 나는 테슬라 로드스터4:10',
     )
-    expect(unanswered).toHaveTextContent('(영상 밖에서 물음)')
+    expect(unanswered).toHaveTextContent('09:12요즘 인기 영상 뭐 있어?––')
 
     expect(await axe(container)).toHaveNoViolations()
   })
@@ -186,14 +192,9 @@ describe('챗봇 품질 통계', () => {
     const items = within(seek)
       .getAllByRole('listitem')
       .map((li) => li.textContent)
-    expect(items).toEqual([
-      '키워드로 찾음25건61.0%',
-      '의미 검색(RAG)으로 찾음6건14.6%',
-      'AI가 골라 찾음7건17.1%',
-      '못 찾음3건7.3%',
-    ])
+    expect(items).toEqual(['키워드25건61.0%', 'RAG6건14.6%', 'AI 선택7건17.1%', '못 찾음3건7.3%'])
     expect(screen.getByRole('region', { name: '기간 요약' })).toHaveTextContent(
-      '장면 찾기 성공92.7%41건 중 38건 찾음',
+      '장면 찾기 성공92.7%38 / 41건',
     )
   })
 
@@ -228,11 +229,15 @@ describe('챗봇 품질 통계', () => {
       recentUnanswered: [],
     })
     renderRoute('/admin/chat-stats')
-    expect(await screen.findByText('이 기간에는 질문 답변이 없어요.')).toBeInTheDocument()
-    expect(screen.getByText('이 기간에는 장면 찾기가 없어요.')).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: '기간 요약' })).toHaveTextContent(
-      '분류 시간 (p95, 가장 느린 종류)–기록 없음',
-    )
+    const summary = await screen.findByRole('region', { name: '기간 요약' })
+    expect(summary).toHaveTextContent('바로 답한 질문–0 / 0건')
+    expect(summary).toHaveTextContent('분류 시간 p95 (최대)–못 알아들은')
+    expect(summary).toHaveTextContent('장면 찾기 성공–')
+    // 표·목록은 '기록 없음', 막대 카드는 0건과 '–'
+    expect(screen.getAllByText('기록 없음')).toHaveLength(3)
+    const seek = screen.getByRole('region', { name: '장면 찾기' })
+    expect(within(seek).getByText('키워드').closest('li')).toHaveTextContent('0건–')
+    expect(within(seek).getByText('RAG').closest('li')).toHaveTextContent('준비 중')
   })
 
   test('서버가 거부하면 그 말을 보여 준다', async () => {

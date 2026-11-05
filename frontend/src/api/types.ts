@@ -366,8 +366,8 @@ export interface ReviewLine {
   lineIndex: number
   detailLevel: 1 | 2 | 3
   startMs: number
-  /** 이 문장을 읽을 수 있는 빈 구간의 끝 */
-  gapEndMs: number
+  /** 이 문장을 읽을 수 있는 빈 구간의 끝. 빈 구간이 없으면 null (영상을 잠깐 멈추고 읽는다) */
+  gapEndMs: number | null
   importance: 1 | 2 | 3
   text: string
   /** 음성을 다시 만드는 중이거나 실패하면 null */
@@ -620,7 +620,13 @@ export type ChatMessageResult = {
   | { intent: 'SEEK_TIME'; result: { targetMs: number } }
   | {
       intent: 'SEEK_SCENE'
-      result: { targetMs: number | null; chapterId: number | null; candidates: SceneCandidate[] }
+      result: {
+        targetMs: number | null
+        chapterId: number | null
+        candidates: SceneCandidate[]
+        /** 후보가 없을 때 읽어 줄 말 ("못 찾았어요" / "시간이 오래 걸려요" 등) */
+        message?: string | null
+      }
     }
   | {
       intent: 'SETTING'
@@ -666,6 +672,8 @@ export interface ChatHistoryItem {
   videoTimeMs: number | null
   targetMs: number | null
   answerText: string | null
+  /** 답변 intent 인데 null 이면 답을 끝까지 받지 못한 것 (실패·취소). answerText 는 받은 데까지 */
+  answerSource?: 'STORED' | 'UNANSWERABLE' | 'FUTURE' | null
   createdAt: string
 }
 

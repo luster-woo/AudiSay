@@ -7,6 +7,9 @@ import com.audisay.domain.chat.entity.ChatIntent;
 import com.audisay.domain.chat.entity.ChatLog;
 import com.audisay.domain.chat.ratelimit.ChatRateLimiter;
 import com.audisay.domain.chat.repository.ChatLogRepository;
+import com.audisay.domain.chat.search.AnswerRetriever;
+import com.audisay.domain.chat.search.SceneSearchProperties.Mode;
+import com.audisay.domain.chat.search.VectorLine;
 import com.audisay.domain.chat.tuning.ChatTuningProperties;
 import com.audisay.domain.description.service.AnswerContext;
 import com.audisay.domain.description.service.AnswerContextReader;
@@ -36,16 +39,18 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 
 /**
  * 질문 답변 SSE(GET /chat/messages/{chatLogId}/stream). 저장 자료만 근거로 LLM(gemini-3.1-flash-lite) 스트리밍 →
  * 글자 조각은 delta, 문장이 끝나면 AI /internal/tts(Supertonic) 음성과 함께 sentence, 끝나면 done(실패면 error).
  * SCENE_NOW는 장면 제목을 먼저 읽고 LLM이 지금 화면을 잇는다(LLM을 못 쓰면 장면 설명으로).
  * 연결이 끊기면 LLM 스트림·남은 음성을 멈추고, 어느 경우든 받은 데까지 chat_logs에 남긴다.
- * 바로 하는 답은 질문한 시각까지 자료만(answer-past-only). 답하지 못하면 뒤쪽 자료에 답이 있는지 LLM이 확인해(answer-future-check)
+ * 바로 하는 답은 질문한 시각까지 자료만(answer-past-only). 지금 자료로 답하지 못하면 질문과 비슷한 앞 줄을 더해 다시 답한다(질문 답변 RAG, FALLBACK). 답하지 못하면 뒤쪽 자료에 답이 있는지 LLM이 확인해(answer-future-check)
  * "지금 이후에 나와요, 들으시겠어요?"를 읽고 done.futureAvailable=true → includeFuture=true 재구독이면 뒤 자료까지 넣어 답한다(FUTURE)
  */
 @Slf4j
@@ -71,6 +76,7 @@ public class ChatAnswerService {
     private final FutureOffer futureOffer;
     private final RecapReader recapReader;
     private final VideoAccessValidator videoAccessValidator;
+    private final AnswerRetriever answerRetriever;
 
     /**
      * 권한·상태를 먼저 확인하고(실패는 JSON 에러), 답변은 답변 스레드에서 만든다. 이미 끝난 답변이면 done만 보내고 닫는다
@@ -202,7 +208,9 @@ public class ChatAnswerService {
     /** 끝까지 만들었으면 answer_source까지, 실패·취소면 받은 글자와 시간만 남긴다 */
     private void respond(ChatLog chatLog, AnswerSink sink, boolean llmAllowed, long startedAt, boolean includeFuture) {
         boolean checkFuture = !includeFuture && chatLog.getIntent() == ChatIntent.QUESTION && tuning.answerFutureCheck();
-        AnswerSession session = new AnswerSession(sink, this::speech, executors.tts(), startedAt, checkFuture);
+        Mode ragMode = includeFuture || chatLog.getIntent() != ChatIntent.QUESTION ? Mode.OFF : answerRetriever.mode();
+        AnswerSession session = new AnswerSession(sink, this::speech, executors.tts(), startedAt,
+                checkFuture || ragMode == Mode.FALLBACK);
         AnswerSource savedSource = null;
         boolean futureAvailable = false;
         String result;
@@ -226,9 +234,11 @@ public class ChatAnswerService {
             } else if (includeFuture) {
                 source = futureAnswer(session, context.get(), chatLog, nowMs);
             } else {
-                source = question(session, context.get(), chatLog.getUtterance(), chatLog.getId(), checkFuture);
+                Rag rag = new Rag(ragMode, chatLog);
+                source = questionWithRag(session, context.get(), chatLog, checkFuture, nowMs, rag);
                 if (checkFuture && source == AnswerSource.UNANSWERABLE && !session.cancelled()) {
-                    futureAvailable = hasTimeForFutureCheck(session, chatLog.getId()) && futureHasAnswer(chatLog, nowMs);
+                    futureAvailable = rag.futureCheck != null ? rag.futureAvailable()
+                            : hasTimeForFutureCheck(session, chatLog.getId()) && futureHasAnswer(chatLog, nowMs, rag.vector());
                     if (futureAvailable || session.text().isEmpty()) {
                         session.speak(List.of(futureAvailable ? AnswerPrompt.FUTURE_PROMPT : AnswerPrompt.UNANSWERABLE));
                     }
@@ -280,11 +290,115 @@ public class ChatAnswerService {
         }
     }
 
+    /**
+     * 질문 답변 RAG. ALWAYS는 앞 줄을 처음부터 더하고, FALLBACK은 지금 자료로 먼저 답해 "자료에 없어요"(보낸 글자 없음)일 때만
+     * 앞 줄을 더해 다시 묻는다. 임베딩은 첫 답과 동시에, 뒤 확인은 다시 묻기와 동시에 돌린다(다시 묻기로 답하면 버림).
+     * 지표 audisay.chat.answer.rag result: off / answered(FALLBACK 첫 답으로 끝) / none(앞 줄 없음) / earlier(앞 줄로 다시) / always
+     */
+    private AnswerSource questionWithRag(AnswerSession session, AnswerContext context, ChatLog chatLog,
+                                         boolean checkFuture, int nowMs, Rag rag) {
+        String result = "off";
+        AnswerSource source;
+        if (rag.mode == Mode.ALWAYS) {
+            List<VectorLine> earlier = answerRetriever.before(chatLog.getDescriptionId(), rag.vector(), windowStart(context));
+            result = earlier.isEmpty() ? "none" : "always";
+            source = question(session, context, earlier, chatLog.getUtterance(), chatLog.getId(), checkFuture);
+        } else if (rag.mode == Mode.FALLBACK) {
+            source = question(session, context, List.of(), chatLog.getUtterance(), chatLog.getId(), true);
+            result = "answered";
+            if (source == AnswerSource.UNANSWERABLE && session.text().isEmpty() && !session.cancelled()) {
+                List<VectorLine> earlier = answerRetriever.before(chatLog.getDescriptionId(), rag.vector(),
+                        windowStart(context));
+                result = earlier.isEmpty() ? "none" : "earlier";
+                if (!earlier.isEmpty() && retryAllowed(chatLog)) {
+                    if (checkFuture) {
+                        rag.startFutureCheck(() -> hasTimeForFutureCheck(session, chatLog.getId())
+                                && futureHasAnswer(chatLog, nowMs, rag.vector()));
+                    }
+                    session.retry();
+                    source = question(session, context, earlier, chatLog.getUtterance(), chatLog.getId(), true);
+                }
+            }
+            if (source == AnswerSource.UNANSWERABLE && !checkFuture && session.text().isEmpty() && !session.cancelled()) {
+                session.speak(List.of(AnswerPrompt.UNANSWERABLE));
+            }
+        } else {
+            source = question(session, context, List.of(), chatLog.getUtterance(), chatLog.getId(), checkFuture);
+        }
+        meterRegistry.counter("audisay.chat.answer.rag", "result", result).increment();
+        return source;
+    }
+
+    /** 다시 묻기도 LLM 한도에 센다. 한도면 다시 묻지 않고 "자료에 없어요"(뒤 확인)로 */
+    private boolean retryAllowed(ChatLog chatLog) {
+        try {
+            rateLimiter.acquireLlm(chatLog.getUserId());
+            return true;
+        } catch (BusinessException e) {
+            meterRegistry.counter("audisay.chat.answer.rag", "result", "limited").increment();
+            return false;
+        }
+    }
+
+    /** 질문 임베딩. OFF가 아니면 바로 시작하고 처음 쓸 때 기다린다(실패면 null → 예전 방식) */
+    private final class Rag {
+        private final Mode mode;
+        private final CompletableFuture<float[]> vector;
+        private CompletableFuture<Boolean> futureCheck;
+
+        private Rag(Mode mode, ChatLog chatLog) {
+            this.mode = mode;
+            this.vector = mode == Mode.OFF ? CompletableFuture.completedFuture(null) : start(chatLog);
+        }
+
+        private CompletableFuture<float[]> start(ChatLog chatLog) {
+            try {
+                return CompletableFuture.supplyAsync(() -> answerRetriever.embed(chatLog.getDescriptionId(),
+                        chatLog.getUtterance(), chatLog.getId()), executors.embed());
+            } catch (RejectedExecutionException e) {
+                return CompletableFuture.completedFuture(null);
+            }
+        }
+
+        void startFutureCheck(BooleanSupplier check) {
+            try {
+                futureCheck = CompletableFuture.supplyAsync(check::getAsBoolean, executors.embed());
+            } catch (RejectedExecutionException e) {
+                futureCheck = null;
+            }
+        }
+
+        boolean futureAvailable() {
+            try {
+                return futureCheck.join();
+            } catch (RuntimeException e) {
+                log.warn("[CHAT] 뒤 내용 확인을 쓰지 못함: {}", e.getMessage());
+                return false;
+            }
+        }
+
+        float[] vector() {
+            try {
+                return vector.join();
+            } catch (RuntimeException e) {
+                log.warn("[CHAT] 질문 임베딩을 쓰지 못함: {}", e.getMessage());
+                return null;
+            }
+        }
+    }
+
+    /** 해설 자료(앞 장면 + 지금 장면)가 시작하는 시각. 이보다 앞 줄은 RAG로 찾는다 */
+    private static int windowStart(AnswerContext context) {
+        return context.scenes().isEmpty() ? context.nowMs() : context.scenes().get(0).startMs();
+    }
+
     /** @param deferUnanswerable true면 "자료에 없어요"를 여기서 읽지 않는다(뒤 확인 뒤 서비스가 읽음) */
-    private AnswerSource question(AnswerSession session, AnswerContext context, String question, Long chatLogId,
-                                  boolean deferUnanswerable) {
-        LlmRequest request = LlmRequest.text(LlmPurpose.ANSWER, AnswerPrompt.QUESTION_SYSTEM,
-                answerPrompt.questionUser(context, question), AnswerPrompt.MAX_OUTPUT_TOKENS).withChatLogId(chatLogId);
+    private AnswerSource question(AnswerSession session, AnswerContext context, List<VectorLine> earlier,
+                                  String question, Long chatLogId, boolean deferUnanswerable) {
+        LlmRequest request = LlmRequest.text(LlmPurpose.ANSWER,
+                earlier.isEmpty() ? AnswerPrompt.QUESTION_SYSTEM : AnswerPrompt.QUESTION_EARLIER_SYSTEM,
+                answerPrompt.questionUser(context, earlier, question), AnswerPrompt.MAX_OUTPUT_TOKENS)
+                .withChatLogId(chatLogId);
         try {
             llmClient.stream(request, session::onDelta);
         } catch (LlmException e) {
@@ -326,20 +440,34 @@ public class ChatAnswerService {
 
     /**
      * 뒤쪽 자료에 답이 있는지 LLM 1회(LLM 한도에 셈). 자료가 없거나 확인이 실패하면 없다고 본다.
+     * 질문 벡터가 있으면 뒤 전체 대신 질문과 비슷한 뒤 줄 + 영상 요약으로 본다.
      * 지표 audisay.chat.answer.future result: available / none / skipped(한도·장애)
      */
-    private boolean futureHasAnswer(ChatLog chatLog, int nowMs) {
-        Optional<FutureContext> future = answerContextReader.readFuture(chatLog.getDescriptionId(), nowMs);
-        if (future.isEmpty() || (future.get().scenes().isEmpty() && future.get().dialogues().isEmpty())) {
-            return false;
+    private boolean futureHasAnswer(ChatLog chatLog, int nowMs, float[] vector) {
+        String system;
+        String user;
+        if (vector != null) {
+            List<VectorLine> later = answerRetriever.after(chatLog.getDescriptionId(), vector, nowMs);
+            if (later.isEmpty()) {
+                return false;
+            }
+            system = AnswerPrompt.FUTURE_CHECK_LINES_SYSTEM;
+            user = answerPrompt.futureCheckLinesUser(answerRetriever.summary(chatLog.getDescriptionId()), later,
+                    chatLog.getUtterance());
+        } else {
+            Optional<FutureContext> future = answerContextReader.readFuture(chatLog.getDescriptionId(), nowMs);
+            if (future.isEmpty() || (future.get().scenes().isEmpty() && future.get().dialogues().isEmpty())) {
+                return false;
+            }
+            system = AnswerPrompt.FUTURE_CHECK_SYSTEM;
+            user = answerPrompt.futureCheckUser(future.get(), chatLog.getUtterance());
         }
         String result = "skipped";
         try {
             rateLimiter.acquireLlm(chatLog.getUserId());
             // 덤 확인이라 대체 모델까지 부르면 SSE 시간 예산(hasTimeForFutureCheck)을 넘을 수 있어 주 모델만
-            LlmResult check = llmClient.generate(LlmRequest.json(LlmPurpose.ANSWER, AnswerPrompt.FUTURE_CHECK_SYSTEM,
-                    answerPrompt.futureCheckUser(future.get(), chatLog.getUtterance()), AnswerPrompt.CHECK_MAX_OUTPUT_TOKENS)
-                    .withChatLogId(chatLog.getId()).withoutFallback());
+            LlmResult check = llmClient.generate(LlmRequest.json(LlmPurpose.ANSWER, system, user,
+                    AnswerPrompt.CHECK_MAX_OUTPUT_TOKENS).withChatLogId(chatLog.getId()).withoutFallback());
             String evidence = check == null ? null : answerPrompt.evidence(check.text());
             boolean available = evidence != null;
             result = available ? "available" : "none";
@@ -353,7 +481,7 @@ public class ChatAnswerService {
         }
     }
 
-    /** 지금까지 줄거리: 질문한 시각 전 목차(끝난 장면 요약 + 지금 장면 해설 문장)만으로 2~4문장 */
+    /** 지금까지 줄거리: 질문한 시각 전 목차(끝난 장면 요약 + 지금 장면 해설 문장)만으로 장면 수에 따라 2~5문장 */
     private AnswerSource recap(AnswerSession session, ChatLog chatLog, int nowMs) {
         Optional<RecapContext> recap = recapReader.read(chatLog.getDescriptionId(), nowMs);
         if (recap.isEmpty()) {
@@ -365,7 +493,7 @@ public class ChatAnswerService {
             return AnswerSource.UNANSWERABLE;
         }
         LlmRequest request = LlmRequest.text(LlmPurpose.ANSWER, AnswerPrompt.RECAP_SYSTEM,
-                answerPrompt.recapUser(recap.get()), AnswerPrompt.MAX_OUTPUT_TOKENS).withChatLogId(chatLog.getId());
+                answerPrompt.recapUser(recap.get()), AnswerPrompt.RECAP_MAX_OUTPUT_TOKENS).withChatLogId(chatLog.getId());
         try {
             llmClient.stream(request, session::onDelta);
         } catch (LlmException e) {

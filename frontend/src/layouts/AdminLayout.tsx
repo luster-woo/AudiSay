@@ -1,13 +1,9 @@
-import { useState } from 'react'
-import { NavLink, Outlet, useMatches } from 'react-router-dom'
-import type { RouteHandle } from '@/app/routeHandle'
+import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '@/features/auth/context'
 import { usePendingReportCount } from '@/features/admin/usePendingReportCount'
 import { useShortcutScope } from '@/features/shortcuts/context'
 import { LogoMark } from './parts/LogoMark'
 import { SkipLink } from './parts/SkipLink'
-import { AdminBreadcrumb } from './parts/AdminBreadCrumb'
-import { AdminTopbarContext } from './parts/adminTopbar'
 
 interface AdminNavItem {
   to: string
@@ -31,9 +27,6 @@ export function AdminLayout() {
   const { user, logout } = useAuth()
   useShortcutScope('admin')
   const pendingCount = usePendingReportCount()
-  const [topbar, setTopbar] = useState<HTMLDivElement | null>(null)
-  // 위쪽 줄(현재 위치·처리 상태)은 crumb 가 있는 화면만. 회원 화면은 Figma 에 위쪽 줄이 없다
-  const hasTopbar = useMatches().some((m) => (m.handle as RouteHandle | undefined)?.crumb)
   const nav = ADMIN_NAV.map((item) =>
     item.to === '/admin/reports' && pendingCount
       ? { ...item, badge: { count: pendingCount, spoken: `처리 전 ${pendingCount}건` } }
@@ -55,7 +48,9 @@ export function AdminLayout() {
               <LogoMark />
               AudiSay
             </span>{' '}
-            <span className="mt-[0.6rem] block text-[0.8667rem] font-normal opacity-80">운영 관리</span>
+            <span className="mt-[0.6rem] block text-[0.8667rem] font-normal opacity-80">
+              운영 관리
+            </span>
           </p>
 
           <nav aria-label="운영 관리 메뉴" className="mt-[2.2rem]">
@@ -99,19 +94,8 @@ export function AdminLayout() {
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col bg-cream">
-          {hasTopbar && (
-            <div className="relative h-[3.2rem] shrink-0 border-b border-line bg-paper">
-              <AdminBreadcrumb />
-              <div
-                ref={setTopbar}
-                className="absolute inset-y-0 left-1/2 flex -translate-x-1/2 items-center"
-              />
-            </div>
-          )}
           <main id="main" tabIndex={-1} className="flex-1 px-8 py-8 outline-none">
-            <AdminTopbarContext.Provider value={topbar}>
-              <Outlet />
-            </AdminTopbarContext.Provider>
+            <Outlet />
           </main>
         </div>
       </div>

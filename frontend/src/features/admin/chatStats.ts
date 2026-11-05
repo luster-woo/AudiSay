@@ -44,7 +44,6 @@ const ratio = (part: number, whole: number) => (whole === 0 ? 0 : part / whole)
 /** API 값으로 화면에서 더 계산하는 값들 */
 export function deriveChatStats(d: ChatStats) {
   const a = d.answer
-  const questionInputs = d.byIntent.find((i) => i.intent === 'QUESTION')?.count ?? 0
   const unknown = d.byIntent.find((i) => i.intent === 'UNKNOWN')?.count ?? 0
   const slowest = d.byIntent.reduce<{ intent: string; ms: number } | null>(
     (acc, i) =>
@@ -58,8 +57,6 @@ export function deriveChatStats(d: ChatStats) {
   const nowhere = a.notAnsweredDirectly - a.futureOffered
   const seekFound = d.seek.keyword + (d.seek.rag ?? 0) + d.seek.llm
   return {
-    /** 질문 입력 중 답변 기록이 남지 않은 수 (답변 중 끊김 등, 추정) */
-    droppedQuestions: Math.max(0, questionInputs - a.questions),
     unknown,
     unknownRate: ratio(unknown, d.inputs),
     slowest,
@@ -71,6 +68,5 @@ export function deriveChatStats(d: ChatStats) {
     nowhere,
     seekFound,
     seekFoundRate: ratio(seekFound, d.seek.total),
-    share: (n: number, whole: number) => ratio(n, whole),
   }
 }

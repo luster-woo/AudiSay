@@ -10,6 +10,7 @@ import com.audisay.domain.description.dto.response.ScreenTextResponse;
 import com.audisay.domain.description.dto.response.SummaryResponse;
 import com.audisay.domain.description.entity.Description;
 import com.audisay.domain.description.entity.DescriptionStatus;
+import com.audisay.domain.description.event.DescriptionPublishedEvent;
 import com.audisay.domain.description.repository.ChapterRepository;
 import com.audisay.domain.description.repository.DescriptionLineRepository;
 import com.audisay.domain.description.repository.DescriptionRepository;
@@ -22,6 +23,7 @@ import com.audisay.global.exception.ErrorCode;
 import com.audisay.global.external.s3.AudioUrlResolver;
 import com.audisay.global.security.AuthUser;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -45,6 +47,7 @@ public class DescriptionService {
     private final ScreenTextRepository screenTextRepository;
     private final ChapterRepository chapterRepository;
     private final AudioUrlResolver audioUrlResolver;
+    private final ApplicationEventPublisher eventPublisher;
 
     public DescriptionResponse getDescription(AuthUser authUser, Long videoId) {
         videoAccessValidator.getAccessibleVideo(authUser, videoId);
@@ -141,5 +144,6 @@ public class DescriptionService {
                     descriptionRepository.flush();
                 });
         description.publish();
+        eventPublisher.publishEvent(new DescriptionPublishedEvent(descriptionId));
     }
 }

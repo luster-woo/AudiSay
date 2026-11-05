@@ -5,6 +5,10 @@ import com.audisay.domain.chat.intent.ClassifiedIntent;
 import com.audisay.domain.chat.intent.LlmIntentClassifier;
 import com.audisay.domain.chat.intent.RuleIntentClassifier;
 import com.audisay.domain.chat.ratelimit.ChatRateLimiter;
+import com.audisay.domain.chat.search.SceneSearchProperties;
+import com.audisay.domain.chat.search.SceneSourceLine;
+import com.audisay.domain.chat.search.SceneVectorSearch;
+import com.audisay.domain.chat.search.VectorLine;
 import com.audisay.domain.chat.seek.KeywordSceneScorer;
 import com.audisay.domain.chat.seek.KeywordSceneScorer.Hit;
 import com.audisay.domain.chat.seek.LlmHitVerifier;
@@ -13,7 +17,12 @@ import com.audisay.domain.chat.seek.SceneSeeker;
 import com.audisay.domain.chat.tuning.ChatTuningProperties;
 import com.audisay.domain.description.service.SceneText;
 import com.audisay.domain.description.service.SceneTextReader;
+import com.audisay.domain.description.service.ScreenTextTiming;
+import com.audisay.global.aicall.AiCallLog;
+import com.audisay.global.aicall.AiCallRecorder;
 import com.audisay.global.exception.BusinessException;
+import com.audisay.global.external.embedding.EmbeddingProperties;
+import com.audisay.global.external.embedding.GmsEmbeddingClient;
 import com.audisay.global.external.llm.DeltaHandler;
 import com.audisay.global.external.llm.GmsProperties;
 import com.audisay.global.external.llm.LlmClient;
@@ -61,6 +70,8 @@ import static org.mockito.Mockito.when;
  * CHAT_EVAL_LIMIT(세트마다 앞 N개), CHAT_EVAL_PART(intent,seek), CHAT_EVAL_SLEEP_MS(GMS 호출 사이 쉼, 기본 2000 — 팀 키 분당 한도 보호, h200은 0),
  * CHAT_EVAL_DIR(기본 build/eval), GMS_API_KEY(없으면 레포 루트 .env).
  * 모델 이름 h200 = H200 평가 서버(build/eval/h200/gen.py, CHAT_EVAL_H200_URL 기본 http://127.0.0.1:8101, 토큰 H200_TOKEN)
+ * 장면 찾기 RAG(342): CHAT_EVAL_SEEK_MODES(기본 OFF, 예 OFF,FALLBACK,ALWAYS) — OFF가 아니면 scenes.json 줄을 실제 임베딩
+ * (text-embedding-3-large)해 메모리에서 검색. 확인용 평가셋 CHAT_EVAL_HOLDOUT(기본 {CHAT_EVAL_DIR}/rag/holdout_v1.json, 있으면)도 같이 돈다.
  * 입력 eval_285.json·scenes.json, 결과 {CHAT_EVAL_DIR}/results/{시각}-junit/summary.md·intent.csv·seek.csv
  */
 @EnabledIfEnvironmentVariable(named = "CHAT_EVAL", matches = "1")
@@ -90,6 +101,15 @@ class ChatEvalTest {
         List<String> parts = List.of(env("CHAT_EVAL_PART", "intent,seek").split(","));
         long sleepMs = Long.parseLong(env("CHAT_EVAL_SLEEP_MS", "2000"));
         prodOnly = "1".equals(env("CHAT_EVAL_PROD_ONLY", "0"));
+        List<SceneSearchProperties.Mode> seekModes = Arrays.stream(env("CHAT_EVAL_SEEK_MODES", "OFF").split(","))
+                .map(String::strip).filter(m -> !m.isEmpty()).map(SceneSearchProperties.Mode::valueOf).toList();
+        Path holdoutPath = Path.of(env("CHAT_EVAL_HOLDOUT", dir.resolve("rag/holdout_v1.json").toString()));
+        List<SeekCase> holdout = Files.exists(holdoutPath)
+                ? om.readValue(Files.readString(holdoutPath), EvalSet.class).seek().stream()
+                .map(c -> c.tags() == null ? new SeekCase(c.id(), c.videoId(), c.nowMs(), c.query(), c.kind(), c.windows(),
+                        c.allowNone(), List.of("holdout")) : c)
+                .toList()
+                : List.of();
         String key = apiKey();
         String h200Token = models.contains("h200") ? envOrDotEnv("H200_TOKEN") : null;
 
@@ -101,7 +121,9 @@ class ChatEvalTest {
         Map<Long, List<SceneText>> scenesOf = new HashMap<>();
         for (VideoData v : videos) {
             descriptionOf.put(v.videoId(), v.descriptionId());
-            scenesOf.put(v.descriptionId(), v.scenes() == null ? List.of() : v.scenes());
+            // 운영 SceneTextReader와 같이 화면 글자를 해설·대사가 읽은 시각으로
+            scenesOf.put(v.descriptionId(), v.scenes() == null ? List.of()
+                    : v.scenes().stream().map(ScreenTextTiming::retime).toList());
         }
 
         Path out = dir.resolve("results").resolve(
@@ -111,7 +133,11 @@ class ChatEvalTest {
         report.line("# 285 평가 결과 (JUnit 러너)");
         report.line("");
         report.line("- 시각 " + LocalDateTime.now() + ", 평가셋 " + set.version() + ", 모델 " + models + ", 반복 " + runs
-                + (limit < 100000 ? ", 세트마다 앞 " + limit + "개" : "") + (prodOnly ? ", 운영 조합만" : ""));
+                + (limit < 100000 ? ", 세트마다 앞 " + limit + "개" : "") + (prodOnly ? ", 운영 조합만" : "")
+                + ", 장면 찾기 RAG 모드 " + seekModes + ", 확인용 " + holdout.size() + "문항");
+        InMemoryVectorSearch vectorSearch = parts.contains("seek")
+                && seekModes.stream().anyMatch(m -> m != SceneSearchProperties.Mode.OFF)
+                ? new InMemoryVectorSearch(key, scenesOf) : null;
 
         for (String model : models) {
             LlmProvider provider = model.equals("h200")
@@ -122,8 +148,14 @@ class ChatEvalTest {
                 runIntent(set.intent().subList(0, Math.min(limit, set.intent().size())), client, runs, report);
             }
             if (parts.contains("seek")) {
-                runSeek(set.seek().subList(0, Math.min(limit, set.seek().size())), client, runs, report,
-                        descriptionOf, scenesOf);
+                for (SceneSearchProperties.Mode mode : seekModes) {
+                    runSeek("개발", mode, vectorSearch, set.seek().subList(0, Math.min(limit, set.seek().size())), client,
+                            runs, report, descriptionOf, scenesOf);
+                    if (!holdout.isEmpty()) {
+                        runSeek("확인", mode, vectorSearch, holdout.subList(0, Math.min(limit, holdout.size())), client,
+                                runs, report, descriptionOf, scenesOf);
+                    }
+                }
             }
         }
         Files.writeString(out.resolve("summary.md"), report.summary(), StandardCharsets.UTF_8);
@@ -284,7 +316,8 @@ class ChatEvalTest {
         return new ChatTuningProperties(true, keyword, negation, evidence, verify, exact, partial, true, true);
     }
 
-    private void runSeek(List<SeekCase> cases, RecordingClient client, int runs, Report report,
+    private void runSeek(String setName, SceneSearchProperties.Mode mode, InMemoryVectorSearch vectorSearch,
+                         List<SeekCase> cases, RecordingClient client, int runs, Report report,
                          Map<Long, Long> descriptionOf, Map<Long, List<SceneText>> scenesOf) {
         SceneTextReader reader = mock(SceneTextReader.class);
         when(reader.read(anyLong())).thenAnswer(inv -> scenesOf.getOrDefault(inv.<Long>getArgument(0), List.of()));
@@ -293,7 +326,11 @@ class ChatEvalTest {
             KeywordSceneScorer scorer = new KeywordSceneScorer(combo.tuning());
             SceneSeeker seeker = new SceneSeeker(reader, scorer, new LlmSceneSelector(client, om, scorer, combo.tuning()),
                     new LlmHitVerifier(client, om, combo.tuning()), limiter, combo.tuning(), new SimpleMeterRegistry(),
-                    mock(GmsProperties.class));
+                    mock(GmsProperties.class), vectorSearch == null ? NO_VECTOR : vectorSearch,
+                    new SceneSearchProperties(null, new SceneSearchProperties.Search(mode, null, null), null));
+            String comboName = setName + " · " + mode + " · " + combo.name();
+            long embedTokensStart = vectorSearch == null ? 0 : vectorSearch.tokens;
+            int embedQueriesStart = vectorSearch == null ? 0 : vectorSearch.queryCalls;
             Stats single = new Stats();
             Stats none = new Stats();
             double recallSum = 0;
@@ -309,7 +346,7 @@ class ChatEvalTest {
             Snapshot start = client.snapshot();
             for (int run = 1; run <= runs; run++) {
                 for (SeekCase c : cases) {
-                    progress(client, "장면 " + combo.name(), cases.indexOf(c) + 1, cases.size());
+                    progress(client, "장면 " + comboName, cases.indexOf(c) + 1, cases.size());
                     Long descriptionId = descriptionOf.get(c.videoId());
                     Snapshot before = client.snapshot();
                     long t0 = System.nanoTime();
@@ -365,7 +402,7 @@ class ChatEvalTest {
                         failures.add(c.id() + " [" + c.kind() + "] \"" + c.query() + "\" 정답 " + windowsText(c.windows())
                                 + " → " + got + " (" + source + ")");
                     }
-                    report.seekRows.add(List.of(client.model(), combo.name(), String.valueOf(run), c.id(),
+                    report.seekRows.add(List.of(client.model(), comboName, String.valueOf(run), c.id(),
                             String.valueOf(c.videoId()), c.query(), c.kind(), windowsText(c.windows()), got, source,
                             ok ? "OK" : "FAIL", wrong ? "WRONG_MOVE" : "", String.valueOf(ms), String.valueOf(used.calls()),
                             fmt(used.credits()), String.join("|", c.tags())));
@@ -375,7 +412,7 @@ class ChatEvalTest {
             Stats lat = new Stats();
             latencies.forEach(ms -> lat.add(true, ms, false));
             report.line("");
-            report.line("## 장면 찾기 · " + client.model() + " · " + combo.name());
+            report.line("## 장면 찾기 · " + client.model() + " · " + comboName);
             report.line("");
             report.line(String.format(Locale.ROOT,
                     "- 전체 정답 **%d/%d**, SINGLE %d/%d, MULTIPLE Recall %.2f · 정밀도 %.2f (%d문항), NONE %d/%d",
@@ -385,6 +422,11 @@ class ChatEvalTest {
                     "- 틀리게 바로 이동 **%d**, 없는 장면인데 이동 **%d**, 키워드만으로 끝남 %d, 지연 p50 %dms · p95 %dms, LLM 호출 %d(실패 %d, 429 재시도 %d), 크레딧 %s",
                     wrongMove, noneButMoved, keywordSolved, lat.percentile(50), lat.percentile(95), total.calls(),
                     total.errors(), total.retries(), fmt(total.credits())));
+            if (vectorSearch != null && mode != SceneSearchProperties.Mode.OFF) {
+                long embedTokens = vectorSearch.tokens - embedTokensStart;
+                report.line(String.format(Locale.ROOT, "- 임베딩(줄 색인 포함, 처음 한 번) 질문 %d회 · %d토큰 · 크레딧 %s",
+                        vectorSearch.queryCalls - embedQueriesStart, embedTokens, fmt(embedTokens * 0.0013)));
+            }
             if (!failures.isEmpty()) {
                 report.line("");
                 report.line("<details><summary>틀린 문항 " + failures.size() + "개 (1회차)</summary>");
@@ -392,6 +434,96 @@ class ChatEvalTest {
                 failures.forEach(f -> report.line("- " + f));
                 report.line("</details>");
             }
+        }
+    }
+
+    private static final SceneVectorSearch NO_VECTOR = new SceneVectorSearch() {
+        @Override
+        public boolean ready(long descriptionId) {
+            return false;
+        }
+
+        @Override
+        public List<VectorLine> search(long descriptionId, String query, Long chatLogId, int topK) {
+            return List.of();
+        }
+    };
+
+    /**
+     * 평가용 벡터 검색: scenes.json의 줄(장면 설명·해설·대사·화면 글자)을 실제 임베딩해 메모리에서 코사인 순.
+     * 줄·질문 벡터는 모드·조합 사이에 재사용한다(운영은 PgSceneVectorSearch)
+     */
+    static final class InMemoryVectorSearch implements SceneVectorSearch {
+        private final GmsEmbeddingClient client;
+        private final Map<Long, List<SceneSourceLine>> linesOf = new HashMap<>();
+        private final Map<Long, List<float[]>> vectorsOf = new HashMap<>();
+        private final Map<String, float[]> queries = new HashMap<>();
+        long tokens;
+        int queryCalls;
+
+        InMemoryVectorSearch(String key, Map<Long, List<SceneText>> scenesOf) {
+            AiCallRecorder recorder = new AiCallRecorder(null) {
+                @Override
+                public Long record(AiCallLog callLog) {
+                    tokens += callLog.getInputTokens();
+                    return null;
+                }
+            };
+            GmsProperties gms = new GmsProperties(GmsProperties.Mode.REAL, key, null, null, Duration.ofSeconds(2), 0, null,
+                    null, null, null, Map.of(), null, null, null);
+            this.client = new GmsEmbeddingClient(new EmbeddingProperties(null, null, null, null, Duration.ofSeconds(10),
+                    Duration.ofSeconds(60)), gms, JsonMapper.builder().build(), recorder, new SimpleMeterRegistry());
+            scenesOf.forEach((descriptionId, scenes) -> linesOf.put(descriptionId, lines(scenes)));
+        }
+
+        private static List<SceneSourceLine> lines(List<SceneText> scenes) {
+            List<SceneSourceLine> lines = new ArrayList<>();
+            for (SceneText scene : scenes) {
+                if (scene.sceneDescription() != null && !scene.sceneDescription().isBlank()) {
+                    lines.add(new SceneSourceLine("SCENE", 0, scene.startMs(), scene.sceneDescription()));
+                }
+                for (SceneText.Moment moment : scene.moments()) {
+                    if (moment.text() != null && !moment.text().isBlank()) {
+                        lines.add(new SceneSourceLine(moment.type().name(), 0, moment.startMs(), moment.text()));
+                    }
+                }
+            }
+            return lines;
+        }
+
+        @Override
+        public boolean ready(long descriptionId) {
+            return !linesOf.getOrDefault(descriptionId, List.of()).isEmpty();
+        }
+
+        @Override
+        public List<VectorLine> search(long descriptionId, String query, Long chatLogId, int topK) {
+            List<SceneSourceLine> lines = linesOf.get(descriptionId);
+            List<float[]> vectors = vectorsOf.computeIfAbsent(descriptionId,
+                    id -> client.embedDocuments(lines.stream().map(SceneSourceLine::text).toList(), null));
+            float[] q = queries.computeIfAbsent(query, text -> {
+                queryCalls++;
+                return client.embedQuery(text, null);
+            });
+            List<VectorLine> found = new ArrayList<>();
+            for (int i = 0; i < lines.size(); i++) {
+                SceneSourceLine line = lines.get(i);
+                found.add(new VectorLine(line.sourceType(), i, line.startMs(), line.text(), cosine(q, vectors.get(i))));
+            }
+            found.sort((a, b) -> Double.compare(b.similarity(), a.similarity()));
+            return found.subList(0, Math.min(topK, found.size()));
+        }
+
+        private static double cosine(float[] a, float[] b) {
+            double dot = 0;
+            double na = 0;
+            double nb = 0;
+            for (int i = 0; i < a.length; i++) {
+                dot += a[i] * b[i];
+                na += a[i] * a[i];
+                nb += b[i] * b[i];
+            }
+            return dot / (Math.sqrt(na) * Math.sqrt(nb));
         }
     }
 

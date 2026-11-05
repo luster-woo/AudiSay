@@ -23,7 +23,7 @@ import java.util.stream.Collectors;
 
 /**
  * 해설 하나의 목차마다 그 구간 [startMs, endMs)의 장면 설명과, 해설 문장·대사·화면 글자를 시각과 함께 묶는다.
- * 새로 저장하지 않고 요청마다 조립한다(해설 하나당 쿼리 5번)
+ * 화면 글자는 해설·대사가 읽은 시각으로 옮긴다(ScreenTextTiming). 새로 저장하지 않고 요청마다 조립한다(해설 하나당 쿼리 5번)
  */
 @Service
 @RequiredArgsConstructor
@@ -69,6 +69,6 @@ public class SceneTextReader {
             return new SceneText(chapter.getId(), chapter.getChapterIndex(), start, end, chapter.getTitle(),
                     chapter.getSummary(), chapter.getKeywords() == null ? List.of() : chapter.getKeywords(),
                     sceneDescription, inChapter);
-        }).toList();
+        }).map(ScreenTextTiming::retime).toList();
     }
 }

@@ -50,7 +50,7 @@ class VerificationDocumentCheckerTest {
 
     @Test
     void 시각장애_서류면_통과하고_기록은_이유_없이() throws IOException {
-        when(ocrEngine.read(any())).thenReturn(lines("장애인등록증", "홍길동", "시각/장애의 정도가 심한 장애인"));
+        when(ocrEngine.read(any(), any())).thenReturn(lines("장애인등록증", "홍길동", "시각/장애의 정도가 심한 장애인"));
 
         assertThatCode(() -> checker.check(USER_ID, png())).doesNotThrowAnyException();
 
@@ -63,7 +63,7 @@ class VerificationDocumentCheckerTest {
 
     @Test
     void 시각이_없으면_USER_006과_이유별_문구() throws IOException {
-        when(ocrEngine.read(any())).thenReturn(lines("장애인등록증", "홍길동", "지체/장애의 정도가 심한 장애인"));
+        when(ocrEngine.read(any(), any())).thenReturn(lines("장애인등록증", "홍길동", "지체/장애의 정도가 심한 장애인"));
         MockMultipartFile file = png();
 
         assertThatThrownBy(() -> checker.check(USER_ID, file))
@@ -75,20 +75,35 @@ class VerificationDocumentCheckerTest {
 
     @Test
     void OCR이_우리_쪽_문제로_실패하면_확인_없이_승인() throws IOException {
-        when(ocrEngine.read(any())).thenThrow(new OcrException(OcrException.Kind.ENGINE, "모델 없음"));
+        when(ocrEngine.read(any(), any())).thenThrow(new OcrException(OcrException.Kind.ENGINE, "모델 없음"));
 
         assertThatCode(() -> checker.check(USER_ID, png())).doesNotThrowAnyException();
         assertThat(recorded().getErrorCode()).isEqualTo("OCR_ENGINE");
     }
 
     @Test
+    void OCR이_밀려_기다리다_시간이_지나면_승인하지_않고_USER_008과_횟수_되돌림() throws IOException {
+        when(ocrEngine.read(any(), any())).thenThrow(new OcrException(OcrException.Kind.BUSY, "대기 초과"));
+        MockMultipartFile file = png();
+
+        assertThatThrownBy(() -> checker.check(USER_ID, file))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.VERIFICATION_BUSY);
+        verify(limiter).release(USER_ID);
+        verify(recorder, never()).record(any());
+        assertThat(meterRegistry.counter("audisay.verification.verdict", "result", "BUSY").count()).isEqualTo(1);
+    }
+
+    @Test
     void 이미지로_못_읽는_파일은_다시_찍기_안내() {
+        when(ocrEngine.read(any(), any())).thenThrow(new OcrException(OcrException.Kind.UNREADABLE_INPUT, "깨진 파일"));
         MockMultipartFile broken = new MockMultipartFile("document", "a.png", "image/png", new byte[]{1, 2, 3});
 
         assertThatThrownBy(() -> checker.check(USER_ID, broken))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage(DocumentVerdict.UNREADABLE.message());
-        verify(ocrEngine, never()).read(any());
+        assertThat(recorded().getErrorCode()).isEqualTo("UNREADABLE");
+        verify(limiter, never()).release(any());
     }
 
     @Test
@@ -98,7 +113,7 @@ class VerificationDocumentCheckerTest {
 
         assertThatThrownBy(() -> checker.check(USER_ID, file))
                 .extracting("errorCode").isEqualTo(ErrorCode.VERIFICATION_ATTEMPT_LIMIT);
-        verify(ocrEngine, never()).read(any());
+        verify(ocrEngine, never()).read(any(), any());
         verify(recorder, never()).record(any());
     }
 

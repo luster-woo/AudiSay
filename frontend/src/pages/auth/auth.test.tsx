@@ -303,6 +303,72 @@ describe('시각장애인 인증', () => {
     expect(usersApi.verify).toHaveBeenCalledOnce()
   })
 
+  test('서류가 거절되면 서버가 준 이유를 읽고, 파일을 비워 다시 고르게 한다', async () => {
+    loggedIn()
+    vi.mocked(usersApi.verify).mockRejectedValue(
+      new ApiError(
+        'USER_006',
+        422,
+        '서류의 글자를 읽지 못했습니다. 글자가 잘 보이게 밝은 곳에서 다시 찍어 주세요.',
+      ),
+    )
+    renderRoute('/verify')
+    const input = await screen.findByLabelText('인증 서류 파일 고르기')
+    expect(screen.getByText(/글자를 읽어 종류만 확인/)).toBeInTheDocument()
+    await userEvent.upload(input, new File(['x'], '복지카드.jpg', { type: 'image/jpeg' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: /민감정보/ }))
+    await userEvent.click(screen.getByRole('button', { name: '인증 신청' }))
+
+    expect(await screen.findByText('서류를 확인하지 못했어요')).toBeInTheDocument()
+    expect(
+      screen.getAllByText(/글자를 읽지 못했습니다\. .*파일을 다시 골라 올려 주세요\./).length,
+    ).toBeGreaterThan(0)
+    expect(screen.queryByText(/복지카드\.jpg/)).not.toBeInTheDocument()
+    expect(input).toHaveFocus()
+    expect(screen.getByRole('button', { name: '인증 신청' })).not.toHaveAttribute('aria-disabled')
+  })
+
+  test('하루 시도를 다 쓰면 서버 안내를 보여 주고 신청 버튼을 막는다', async () => {
+    loggedIn()
+    vi.mocked(usersApi.verify).mockRejectedValue(
+      new ApiError(
+        'USER_007',
+        429,
+        '오늘은 인증 신청을 더 할 수 없습니다. 내일 다시 시도해 주세요.',
+      ),
+    )
+    renderRoute('/verify')
+    await userEvent.upload(
+      await screen.findByLabelText('인증 서류 파일 고르기'),
+      new File(['x'], '복지카드.jpg', { type: 'image/jpeg' }),
+    )
+    await userEvent.click(screen.getByRole('checkbox', { name: /민감정보/ }))
+    await userEvent.click(screen.getByRole('button', { name: '인증 신청' }))
+    expect(await screen.findByText('오늘은 더 신청할 수 없어요')).toBeInTheDocument()
+    expect(screen.getAllByText(/내일 다시 시도해 주세요/).length).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: '인증 신청' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    )
+  })
+
+  test('확인하는 동안은 버튼과 안내로 기다리라고 알린다', async () => {
+    loggedIn()
+    vi.mocked(usersApi.verify).mockReturnValue(new Promise(() => {}))
+    renderRoute('/verify')
+    await userEvent.upload(
+      await screen.findByLabelText('인증 서류 파일 고르기'),
+      new File(['x'], '복지카드.jpg', { type: 'image/jpeg' }),
+    )
+    await userEvent.click(screen.getByRole('checkbox', { name: /민감정보/ }))
+    await userEvent.click(screen.getByRole('button', { name: '인증 신청' }))
+    expect(await screen.findByRole('button', { name: /서류를 확인하는 중/ })).toHaveAttribute(
+      'aria-busy',
+      'true',
+    )
+    expect(screen.getByText('서류를 확인하고 있어요. 길면 1분쯤 걸려요.')).toBeInTheDocument()
+  })
+
   test('이미 인증된 회원이 주소로 들어오면 내 정보로 보낸다 (기록에 남기지 않음)', async () => {
     loggedIn('VISUALLY_IMPAIRED')
     const { router } = renderRoute('/verify')

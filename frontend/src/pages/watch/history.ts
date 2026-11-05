@@ -24,6 +24,9 @@ export type HistoryEntry =
       targetMs: number | null
     }
 
+/** 질문 기록에서 답이 중간에 끊긴 것 */
+export const ANSWER_CUT = '답을 다 받지 못했어요'
+
 export function commandText(intent: ChatIntent, utterance: string, targetMs: number | null) {
   const q = `"${utterance}"`
   if ((intent === 'SEEK_TIME' || intent === 'SEEK_SCENE') && targetMs != null) {
@@ -48,13 +51,17 @@ export function entriesFromServer(items: ChatHistoryItem[]): HistoryEntry[] {
         videoTimeMs: m.videoTimeMs,
         text: m.utterance,
       })
-      if (m.answerText) {
+      // answerSource 가 null 이면 답을 끝까지 받지 못한 것 (실패·취소). 받은 데까지 + 안내
+      const cut = m.answerSource === null
+      if (m.answerText || cut) {
         out.push({
           key: `ans-${m.chatLogId}`,
           kind: 'answer',
           chatLogId: m.chatLogId,
           videoTimeMs: m.videoTimeMs,
-          text: m.answerText,
+          text: cut
+            ? [m.answerText, `(${ANSWER_CUT})`].filter(Boolean).join(' ')
+            : (m.answerText ?? ''),
           sentences: [],
           done: true,
         })

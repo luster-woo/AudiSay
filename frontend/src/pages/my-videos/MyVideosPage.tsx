@@ -8,7 +8,7 @@ import { queryKeys } from '@/api/queryKeys'
 import { toUserMessage } from '@/api/errors'
 import { Button } from '@/components/ui/Button'
 import { ButtonLink } from '@/components/ui/ButtonLink'
-import { Pagination } from '@/components/ui/Pagination'
+import { PageNumbers } from '@/components/ui/PageNumbers'
 import { Tabs } from '@/components/ui/Tabs'
 import { useAnnouncer } from '@/features/announcer/context'
 import { usePageEntry } from '@/features/page/usePageEntry'
@@ -178,9 +178,14 @@ export default function MyVideosPage() {
                     </li>
                   ))}
             </ul>
-            <div className="mt-4 [&_nav]:flex-wrap [&_nav>div]:ml-auto [&_nav>div]:max-w-full [&_nav>div]:flex-wrap [&_nav>div>button]:min-w-[10rem] sm:[&_nav>div>button]:min-w-[14rem] [&_nav>div]:gap-4">
-              <Pagination page={data.page} onChange={changePage} size="xl" />
-            </div>
+            {/* 홈과 같은 목록 아래 가운데 '이전 1 2 3 4 5 다음' */}
+            <PageNumbers
+              page={data.page.number}
+              totalPages={data.page.totalPages}
+              onChange={changePage}
+              size="xl"
+              className="mt-6"
+            />
           </>
         )}
         {!active.isError && data && data.page.totalElements === 0 && (

@@ -56,10 +56,12 @@ export function Player({ video }: { video: VideoDetail }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { settings, update } = useSettings()
-  const { announce } = useAnnouncer()
+  const { announce, bindVoice } = useAnnouncer()
   const { setHelpOpen } = useShortcuts()
   const [narrator] = useState(() => new Narrator())
   useEffect(() => () => narrator.stop(), [narrator])
+  // 낭독기 안내와 우리 음성이 겹치지 않게 순서를 맞춘다
+  useEffect(() => bindVoice(narrator), [bindVoice, narrator])
 
   /* ── 데이터 ── */
   const playbackQ = useQuery({
@@ -603,8 +605,11 @@ export function Player({ video }: { video: VideoDetail }) {
   }
 
   const onPickLine = (l: NarrationLine) => {
-    seekTo(l.startMs, `${formatPositionSpoken(l.startMs)}. ${l.text}`)
-    if (settings.soundMix !== 'DIALOGUE_ONLY') {
+    const reads = settings.soundMix !== 'DIALOGUE_ONLY'
+    // 문장은 우리 음성이 읽으니 낭독기에는 시각만 알린다 (같은 문장을 두 번 읽지 않게)
+    const at = formatPositionSpoken(l.startMs)
+    seekTo(l.startMs, reads ? `${at}.` : `${at}. ${l.text}`)
+    if (reads) {
       void narrator.say({ text: l.text, audioUrl: l.audioUrl, rate: settings.speechRate })
     }
   }

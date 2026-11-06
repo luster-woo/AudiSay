@@ -194,6 +194,7 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
       let answerText = ''
       let failed: string | null = null
       let futureAvailable = false
+      let spokeSentence = false
       await c.holdWhile(async () => {
         let chain: Promise<unknown> = Promise.resolve()
         await new Promise<void>((resolve) => {
@@ -209,6 +210,7 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
                 patchAnswer(ansKey, (a) => ({ ...a, text: answerText }))
               } else if (msg.event === 'sentence') {
                 const s = msg.data
+                spokeSentence = true
                 patchAnswer(ansKey, (a) => ({ ...a, sentences: [...a.sentences, s] }))
                 chain = chain.then(() =>
                   c.narrator.say({ text: s.text, audioUrl: s.audioUrl, rate: c.speechRate }),
@@ -216,6 +218,11 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
               } else if (msg.event === 'done') {
                 answerText = msg.data.answerText || answerText
                 futureAvailable = msg.data.futureAvailable === true
+                // 이미 끝난 답을 다시 받으면 sentence 없이 done 만 온다 → 답 본문도 우리 음성으로 읽는다
+                if (!spokeSentence && answerText) {
+                  const text = answerText
+                  chain = chain.then(() => c.narrator.say({ text, rate: c.speechRate }))
+                }
                 resolve()
               } else {
                 failed = msg.data.message || '답을 만들지 못했어요.'
@@ -242,9 +249,9 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
       setOffer(offering ? { chatLogId, videoTimeMs } : null)
       if (aborted) c.announce('답변을 멈췄어요. 입력칸에 있어요.')
       else if (failed) c.announce(failed, { politeness: 'assertive' })
-      else if (offering)
-        c.announce(`${answerText} 들으려면 '네', 아니면 '아니요'라고 말하거나 적어 주세요.`)
-      else c.announce(`답변이 끝났어요. ${answerText}`)
+      // 답 본문은 우리 음성이 이미 읽었다. 낭독기는 다음에 할 일만 알린다 (같은 문장을 두 번 읽지 않게)
+      else if (offering) c.announce("들으려면 '네', 아니면 '아니요'라고 말하거나 적어 주세요.")
+      else c.announce('답변이 끝났어요. 입력칸에 있어요.')
       c.focusInput()
     },
     [push, patchAnswer],

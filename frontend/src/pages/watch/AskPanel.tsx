@@ -161,7 +161,8 @@ export function AskPanel({
 
       {(voice.state === 'listening' || voice.state === 'processing') && (
         <div className="mt-4">
-          <div role="status" className={cn(bar, 'border-navy bg-yellow-soft')}>
+          {/* 낭독은 Announcer 가 맡으므로 role 을 두지 않는다 (두 번 읽힘 방지) */}
+          <div className={cn(bar, 'border-navy bg-yellow-soft')}>
             <span aria-hidden="true" className="text-danger">
               ●
             </span>
@@ -196,7 +197,7 @@ export function AskPanel({
 
       {voice.state === 'error' && (
         <div className="mt-4">
-          <div role="alert" className={cn(bar, 'border-danger bg-danger-soft text-danger')}>
+          <div className={cn(bar, 'border-danger bg-danger-soft text-danger')}>
             <span aria-hidden="true">●</span>
             <span className="font-bold">알아듣지 못했어요</span>
           </div>

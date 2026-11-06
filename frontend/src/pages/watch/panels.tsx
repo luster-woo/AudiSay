@@ -189,6 +189,8 @@ export function HistoryPanel({
               i === entries.length - 1 &&
               e.chatLogId === offer.chatLogId &&
               (e.kind === 'command' || (e.kind === 'answer' && e.done))
+            // 답을 읽는 중인데 끝에 "들으시겠어요?"를 물을 답이면, 처음부터 네/아니요 자리로 두고 끝날 때까지 못 누르게 한다
+            const reading = e.kind === 'answer' && !e.done && !!e.offering
             const offerWhat = offer?.kind === 'summary' ? '요약' : '뒤 내용'
             return (
               <li
@@ -217,19 +219,21 @@ export function HistoryPanel({
                 </p>
                 {/* 버튼 자리는 답을 받는 동안에도 잡아 둔다 (끝난 뒤 생기면 카드 높이가 바뀌어 화면이 밀린다).
                   읽는 중에는 누를 수 없게(aria-disabled) 두었다가 답이 끝나면 누를 수 있다 */}
-                {asking ? (
+                {asking || reading ? (
                   // 예/아니요로 묻는 말에는 예/아니요로 답하게 한다. 누르면 '네'·'아니요'라고 적은 것과 같다
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Button
                       variant="secondary"
-                      onClick={() => onAnswerOffer!('yes')}
+                      disabled={!asking}
+                      onClick={() => onAnswerOffer?.('yes')}
                       aria-label={`네, ${offerWhat} 들을게요`}
                     >
                       네
                     </Button>
                     <Button
                       variant="secondary"
-                      onClick={() => onAnswerOffer!('no')}
+                      disabled={!asking}
+                      onClick={() => onAnswerOffer?.('no')}
                       aria-label={`아니요, ${offerWhat} 듣지 않을게요`}
                     >
                       아니요

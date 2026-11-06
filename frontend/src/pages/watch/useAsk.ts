@@ -305,6 +305,9 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
               } else if (msg.event === 'done') {
                 answerText = msg.data.answerText || answerText
                 futureAvailable = msg.data.futureAvailable === true
+                // 읽는 동안 버튼 자리를 네/아니요로 바꿔 둔다 (끝나야 누를 수 있다)
+                if (futureAvailable && !includeFuture)
+                  patchAnswer(ansKey, (a) => (a.kind === 'answer' ? { ...a, offering: true } : a))
                 // 이미 끝난 답을 다시 받으면 sentence 없이 done 만 온다 → 답 본문도 우리 음성으로 읽는다
                 if (!spokeSentence && answerText) {
                   const text = answerText

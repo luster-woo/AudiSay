@@ -863,7 +863,11 @@ test('"들으시겠어요?"를 물은 답에는 다시 듣기·그 장면 보기
   await waitFor(() => expect(subscribeSse).toHaveBeenCalledTimes(1))
   answer('뒤에 나오는데, 들으시겠어요?', true)
   const no = await screen.findByRole('button', { name: '아니요, 뒤 내용 듣지 않을게요' })
-  expect(screen.getByRole('button', { name: '네, 뒤 내용 들을게요' })).toBeInTheDocument()
+  // 읽는 동안에도 네/아니요 자리이고, 다 읽은 뒤에 누를 수 있다
+  await waitFor(() => expect(no).not.toHaveAttribute('aria-disabled'))
+  expect(screen.getByRole('button', { name: '네, 뒤 내용 들을게요' })).not.toHaveAttribute(
+    'aria-disabled',
+  )
   expect(screen.queryByRole('button', { name: /^다시 듣기/ })).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: /^그 장면 보기/ })).not.toBeInTheDocument()
 

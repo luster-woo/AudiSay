@@ -15,6 +15,8 @@ export type HistoryEntry =
       sentences: { text: string; audioUrl: string | null }[]
       /** 아직 답을 받는 중이면 false */
       done: boolean
+      /** 답 끝에 "들으시겠어요?"를 묻는 답. 읽는 동안에도 네/아니요 버튼 자리를 잡아 둔다 */
+      offering?: boolean
     }
   | {
       key: string

@@ -535,6 +535,8 @@ export function Player({ video }: { video: VideoDetail }) {
   }, [controls])
   const onAsk = useCallback(
     (text: string, mode: 'TEXT' | 'VOICE') => {
+      // 질문이든 명령(장면 이동·설정)이든 입력을 마치면 질문 기록 탭을 보여 준다. 포커스는 입력칸에 그대로 둔다
+      setTab('history')
       const resume = resumeAfterVoice.current
       resumeAfterVoice.current = null
       void ask.send(text, mode).finally(() => {

@@ -5,6 +5,7 @@ import com.audisay.domain.job.entity.JobStatus;
 import com.audisay.domain.job.entity.Pipeline;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -29,8 +30,9 @@ public interface JobRepository extends JpaRepository<Job, Long> {
             """)
     List<Job> findLatestByVideoIds(@Param("videoIds") Collection<Long> videoIds);
 
-    /** 예상 시간 계산용: 같은 경로로 최근 끝난 작업(JobTimeEstimator) */
-    List<Job> findTop10ByPipelineAndStatusOrderByIdDesc(Pipeline pipeline, JobStatus status);
+    /** 예상 시간 계산용: 같은 경로로 최근 끝난 작업(JobTimeEstimator). 영상 길이를 쓰므로 영상을 함께 읽음(N+1 없이) */
+    @EntityGraph(attributePaths = "video")
+    List<Job> findTop20ByPipelineAndStatusOrderByIdDesc(Pipeline pipeline, JobStatus status);
 
     /**
      * 멈춘 작업 후보(StaleJobCleaner). 마지막 활동은 서비스에서 잠근 뒤 다시 본다.

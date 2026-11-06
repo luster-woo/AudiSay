@@ -36,6 +36,47 @@ def sound_lines(events: list[dict], a_ms: int, b_ms: int) -> str:
     """소리 사건 가운데 [a, b) 구간과 겹치는 것을 "41~45초 기차 경적" 줄로. 같은 이름은 한 번만."""
     out, seen = [], set()
     for e in events:
+# 한자·가나가 없는 글(32B가 "미겔"을 "미格尔"로 썼다, 2026-11-05 모던 패밀리). 스키마 pattern으로 걸면 vLLM이 그 글자를 아예 못 고른다
+def no_cjk(n: int) -> str:
+    """한자·가나 없이 n자까지. pattern을 걸면 vLLM이 maxLength를 안 지켜(" Miguel 1 2 3 …"으로 출력 한도까지 썼다) 길이도 pattern에 넣는다.
+    큰따옴표·역빗금·제어 문자도 뺀다. 넣으면 글 안에 "를 그대로 써서 JSON이 끊겼다(두 번 다 깨져 옛 방식으로 대체, 2026-11-05).
+    널 문자는 vLLM 문법 변환기가 받지 않아(500) 제어 문자는 0x01부터."""
+    return '^[^"\\\\\u0001-\u001f\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]{0,%d}$' % n
+
+
+CJK = re.compile(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]")
+
+
+CJK_WORD = re.compile(r"([가-힣]*)[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]+")
+
+
+def korean_only(raw: dict) -> None:
+    """저장 전 마지막 거름: 해설 문장에 한자·가나가 남으면 그 문장을 빼고, 제목·요약·인물은 그 글자를 인물 이름으로 바꾸거나 지운다.
+    해설 문장 끝에 마침표가 없으면 붙인다(조각 끝 문장이 마침표 없이 나왔다)."""
+    names = {p["name"] for s in raw.get("scenes", []) for p in s.get("people", []) if p.get("name")}
+
+    def clean(text: str | None) -> str | None:
+        if not text or not CJK.search(text):
+            return text
+        def name_of(m):  # "미格尔" → 인물 "미겔"(한글 앞부분이 같은 이름이 하나뿐일 때), 아니면 한글 부분만
+            hit = [n for n in names if m.group(1) and n.startswith(m.group(1)) and n != m.group(1)]
+            return hit[0] if len(hit) == 1 else m.group(1)
+        return re.sub(r"\s{2,}", " ", CJK_WORD.sub(name_of, text)).strip()
+
+    raw["lines"] = [x for x in raw.get("lines", []) if not CJK.search(x["text"])]
+    for x in raw["lines"]:
+        x["text"] = x["text"].rstrip()
+        if not re.search(r"[.?!]$", x["text"]):
+            x["text"] += "."
+    for s in raw.get("scenes", []):
+        s["title"] = clean(s.get("title")) or s.get("title")
+        for p in s.get("people", []):
+            p["name"], p["appearance"] = clean(p.get("name")) or None, clean(p.get("appearance")) or ""
+    for c in raw.get("chapters", []):
+        c["title"] = clean(c.get("title"))
+    raw["summary_30s"] = clean(raw.get("summary_30s")) or ""
+
+
         name = e.get("ko") or e["label"]
         if e["label"] in SOUND_IGNORE:
             continue
@@ -604,13 +645,15 @@ def video_part(video, a_ms: int, b_ms: int):
     return out
 
 
-VERIFY_CLIP_MS = 5000  # 해설 시각 1.5초 앞부터 5초를 원래 화질로(4초면 해설이 조금 이르게 놓인 비닐랩 장면을 놓쳐 뺐다)
+# 해설 시각 1.5초 앞부터 8초를 원래 화질로(4초면 해설이 조금 이르게 놓인 비닐랩 장면을 놓쳐 뺐다. 5초면 0:40 해설의 발 장면(0:47)이
+# 구간 밖이라 맞는 해설을 뺐다, 데모 2026-11-05)
+VERIFY_CLIP_MS = 8000
 
 
 VERIFY_DIALOGUE_MS = 10000  # 앞뒤 이만큼의 대사를 함께 준다
 
 
-VERIFY_PROMPT = """화면해설 문장 하나를 검사합니다. 이 영상은 해설 시각 앞뒤 5초입니다.
+VERIFY_PROMPT = """화면해설 문장 하나를 검사합니다. 이 영상은 해설 시각 1.5초 앞부터 8초입니다.
 등장인물(호칭: 겉모습):
 {cast}
 앞뒤 대사(받아쓰기. [ ]는 목소리로 짐작한 말한 사람이라 틀릴 수 있음):
@@ -633,7 +676,7 @@ ok·drop이면 fixed는 빈 문자열.
 
 VERIFY_SCHEMA = {"type": "object", "properties": {"seen": {"type": "string", "maxLength": 120},
                                                   "verdict": {"enum": ["ok", "fix", "drop"]},
-                                                  "fixed": {"type": "string", "maxLength": 60}},
+                                                  "fixed": {"type": "string", "maxLength": 60, "pattern": no_cjk(60)}},
                  "required": ["seen", "verdict", "fixed"], "additionalProperties": False}
 
 
@@ -726,9 +769,11 @@ async def pick_chapters(inf, title: str, lines: list[dict], segs: list[dict], du
         lines="\n".join(f"{x['at']} {x['text']}" for x in lines if x["level"] == 1) or "(없음)",
         dialogue="\n".join(f"{mmss(x['startMs'])} {said(x)}" for x in segs) or "(없음)")
     item = {"type": "object", "properties": {"start": {"type": "string", "pattern": "^[0-9]{2}:[0-9]{2}$"},
-                                             "title": {"type": "string", "maxLength": 40}},
+                                             "title": {"type": "string", "maxLength": 40, "pattern": no_cjk(40)}},
             "required": ["start", "title"], "additionalProperties": False}
-    schema = {"type": "object", "properties": {"chapters": {"type": "array", "items": item, "minItems": lo, "maxItems": hi}},
+    first = {**item, "properties": {**item["properties"], "start": {"const": "00:00"}}}  # 첫 목차는 00:00
+    schema = {"type": "object", "properties": {"chapters": {"type": "array", "prefixItems": [first], "items": item,
+                                                            "minItems": lo, "maxItems": hi}},
               "required": ["chapters"], "additionalProperties": False}
     try:
         return (await inf.generate_json(prompt, schema, max_tokens=1000))["result"]["chapters"]
@@ -779,9 +824,12 @@ async def verify_lines(inf, whole, lines: list[dict], segs: list[dict], scenes: 
     for x, c in zip(todo, checks):
         fixed = c["fixed"].strip()
         # 고친 문장에 한자가 섞이거나 너무 길면 고침을 버리고 원래 문장을 둔다
-        usable = fixed and len(fixed) <= 45 and not re.search(r"[一-鿿぀-ヿ]", fixed)
+        # 글자 수 상한에 걸려 끝이 잘린 고침("음식을밟")도 쓰지 않는다
+        usable = fixed and len(fixed) <= 55 and not re.search(r"[一-鿿぀-ヿ]", fixed) and re.search(r"[다요]\.?$", fixed)
         if c["verdict"] == "fix" and usable and fixed.rstrip(".") != x["text"].rstrip("."):
-            x["text"] = finish_sentence(fixed)
+            x["text"] = fixed.rstrip(".") + "."
+        elif c["verdict"] == "fix" and not usable:  # 틀렸다는데 고칠 문장이 없으면 틀린 문장을 두지 않는다
+            x["drop"] = True
         elif c["verdict"] == "drop":
             x["drop"] = True
     lines[:] = [x for x in lines if not x.pop("drop", False)]
@@ -898,3 +946,4 @@ async def analyze_video(inf, title: str | None, files: dict, work, duration_ms: 
     except ValueError as e:
         raise inference.InferenceError("INFER_FAILED", f"영상 보기 해설 형식이 맞지 않아요: {str(e)[:120]}") from None
     return raw, f"local-video:{model}"
+    korean_only(raw)  # 한자·가나 거름(옛 방식에도)

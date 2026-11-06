@@ -78,7 +78,13 @@ export function AskPanel({
 
   useShortcutEntry('ask', () => void startVoice(), { scope: 'user' })
 
+  // 알아들은 뒤 입력칸이 다시 그려지면 바로 입력칸으로 (말 끝내기 버튼이 사라지며 포커스가 본문으로 빠지면
+  // 낭독기가 그 자리를 읽어 답 소리와 겹친다. 원칙 9장: 포커스는 입력칸에 남긴다)
+  const prevVoiceState = useRef(voice.state)
   useEffect(() => {
+    const prev = prevVoiceState.current
+    prevVoiceState.current = voice.state
+    if (voice.state === 'idle' && prev === 'processing') inputRef.current?.focus()
     // 기다림이 없으면 preparing 을 건너뛰고 바로 listening 으로 그려질 수 있다
     if (voice.state === 'preparing' || voice.state === 'listening') finishRef.current?.focus()
     if (voice.state === 'processing') announce('알아듣는 중이에요.')
@@ -86,7 +92,7 @@ export function AskPanel({
       retryRef.current?.focus()
       announce('말을 알아듣지 못했어요. 다시 말하기 버튼에 있어요.', { politeness: 'assertive' })
     }
-  }, [voice.state, announce])
+  }, [voice.state, announce, inputRef])
 
   const backToText = useCallback(
     (message: string) => {
@@ -147,9 +153,8 @@ export function AskPanel({
             aria-labelledby="ask-title"
             value={text}
             onChange={(e) => setText(e.target.value)}
-            // disabled 를 걸면 보내는 순간 포커스가 본문으로 빠지고, 답이 끝나도 돌아오지 못한다 (NVDA 점검 11-06).
-            // 읽기 전용으로만 막아 포커스를 입력칸에 남긴다 (원칙 9장)
-            readOnly={busy}
+            // 답을 듣는 동안에도 막지 않는다 (보내기는 submit 이 막는다).
+            // disabled 면 포커스가 본문으로 빠지고, readOnly 를 켜고 끄면 낭독기가 '읽기 전용' 상태 변화를 읽어 답 소리와 겹친다
             className="min-h-touch w-full rounded-md border-2 border-navy bg-paper px-5 text-lg"
           />
           {/* 아래 목차·대본·질문 기록 탭과 같은 3칸·같은 크기로 맞춘다 */}

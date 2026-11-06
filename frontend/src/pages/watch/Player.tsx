@@ -556,6 +556,9 @@ export function Player({ video }: { video: VideoDetail }) {
       speechRate: settings.speechRate,
       getCurrentMs: () => state.currentMs,
       holdWhile,
+      resumePlayback: () => {
+        if (!state.ended) controls.play()
+      },
       seekTo,
       updateSettings: update,
       runAction,
@@ -570,7 +573,7 @@ export function Player({ video }: { video: VideoDetail }) {
     initialEntries,
   )
 
-  // 말로 질문: 듣는 동안 영상을 멈추고, 취소하면 이어서 재생. 답이 끝나면 holdWhile 이 이어서 재생한다
+  // 말로 질문: 듣는 동안 영상을 멈추고, 취소하면 이어서 재생. 답이 끝나면 '답변이 끝났어요' 안내 뒤에 useAsk 가 이어서 재생한다
   const onListenStart = useCallback(() => {
     if (resumeAfterVoice.current == null) resumeAfterVoice.current = state.playing
     interrupt(false)
@@ -586,7 +589,7 @@ export function Player({ video }: { video: VideoDetail }) {
       setTab('history')
       const resume = resumeAfterVoice.current
       resumeAfterVoice.current = null
-      void ask.send(text, mode).finally(() => {
+      void ask.send(text, mode, resume === true).finally(() => {
         // 질문이 아닌 명령(이동·설정)이면 holdWhile 을 거치지 않으므로 여기서 이어서 재생한다
         if (resume && !state.ended) controls.play()
       })

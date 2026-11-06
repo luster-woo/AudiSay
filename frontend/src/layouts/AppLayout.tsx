@@ -19,12 +19,13 @@ export function AppLayout() {
     <>
       <SkipLink />
       <header data-layout="user" className="bg-paper hc:border-b-2 hc:border-yellow">
-        <div className="mx-auto flex min-h-18 max-w-[90rem] items-center justify-between gap-6 px-16">
+        {/* 736px(46rem) 미만 = 720px 이하·200% 확대: 줄을 바꾸고 주 메뉴는 '메뉴' 버튼으로 접는다 (원칙 10장). 양옆 여백도 줄인다 */}
+        <div className="mx-auto flex min-h-18 max-w-[90rem] flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-2 sm:px-8 lg:px-16">
           <BrandLogo subtitle="화면해설 플레이어" />
-          <div className="flex items-center gap-6">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 max-[46rem]:w-full">
             <MainNav />
             {/* 이름은 글자, 로그아웃은 헤더의 마지막 조작 요소 */}
-            <div className="flex items-center gap-4 border-l border-line pl-6">
+            <div className="flex items-center gap-4 border-l border-line pl-6 max-[46rem]:border-l-0 max-[46rem]:pl-0">
               <p className="text-ink-muted">{user?.name} 님</p>
               <LogoutButton />
             </div>
@@ -32,7 +33,11 @@ export function AppLayout() {
         </div>
       </header>
       <AnnounceBar />
-      <main id="main" tabIndex={-1} className="mx-auto max-w-[90rem] px-16 pt-8 pb-16 outline-none">
+      <main
+        id="main"
+        tabIndex={-1}
+        className="mx-auto max-w-[90rem] px-4 pt-8 pb-16 outline-none sm:px-8 lg:px-16"
+      >
         <Outlet />
       </main>
     </>

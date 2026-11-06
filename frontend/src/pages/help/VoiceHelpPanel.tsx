@@ -13,9 +13,9 @@ const steps = [
     spokenDescription: '음성 입력을 시작해요.',
   },
   {
-    title: '‘띵’ 소리 뒤에 말하기',
+    title: '‘띠’ 소리 뒤에 말하기',
     description: '원하는 요청을 말해 주세요.',
-    spokenTitle: '이 단계. 띵 소리가 나면 말하세요.',
+    spokenTitle: '이 단계. 띠 소리가 나면 말하세요.',
     spokenDescription: '원하는 요청을 말해 주세요.',
   },
   {

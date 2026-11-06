@@ -179,7 +179,8 @@ describe('회원가입', () => {
     })
     const all = within(group).getByRole('checkbox', { name: '모두 동의해요' })
     expect(terms).toHaveAccessibleDescription(/AI가 영상에 화면 해설을 붙여 주는 서비스예요/)
-    expect(privacy).toHaveAccessibleDescription(/이름, 이메일, 비밀번호를 받아요/)
+    expect(privacy).not.toHaveAccessibleDescription()
+    expect(within(group).queryByRole('button', { name: /개인정보/ })).not.toBeInTheDocument()
 
     await userEvent.click(all)
     expect(terms).toBeChecked()
@@ -194,7 +195,8 @@ describe('회원가입', () => {
     const dialog = await screen.findByRole('dialog', { name: 'AudiSay 이용약관' })
     expect(within(dialog).getByRole('heading', { level: 2 })).toHaveFocus()
     expect(within(dialog).getAllByRole('heading', { level: 3 })).toHaveLength(10)
-    expect(within(dialog).getByText('조항 10개 · 2026년 11월 4일 시행')).toBeInTheDocument()
+    expect(within(dialog).queryByText(/조항 10개/)).not.toBeInTheDocument()
+    expect(within(dialog).queryByText('요약')).not.toBeInTheDocument()
     expect(await axe(container)).toHaveNoViolations()
 
     await userEvent.click(within(dialog).getByRole('button', { name: '동의하고 닫기' }))
@@ -207,14 +209,14 @@ describe('회원가입', () => {
     )
 
     // 닫기만 하면 체크는 그대로 (Esc 는 브라우저가 cancel 로 같은 onClose 를 부른다. jsdom 은 cancel 을 내지 않음)
-    await userEvent.click(within(group).getByRole('button', { name: '개인정보 안내 전문 보기' }))
-    const privacyDialog = await screen.findByRole('dialog', {
-      name: 'AudiSay 개인정보 수집·이용 안내',
-    })
-    await userEvent.click(within(privacyDialog).getAllByRole('button', { name: '닫기' })[0])
-    await waitFor(() => expect(privacyDialog).not.toBeVisible())
+    await userEvent.click(terms)
+    await userEvent.click(view)
+    await waitFor(() => expect(dialog).toBeVisible())
+    await userEvent.click(within(dialog).getAllByRole('button', { name: '닫기' })[0])
+    await waitFor(() => expect(dialog).not.toBeVisible())
+    expect(terms).not.toBeChecked()
     expect(privacy).toBeChecked()
-    expect(within(group).getByRole('button', { name: '개인정보 안내 전문 보기' })).toHaveFocus()
+    expect(view).toHaveFocus()
   })
 
   test('이메일 칸을 벗어나면 사용 가능 여부를 알려 준다', async () => {

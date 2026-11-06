@@ -11,7 +11,7 @@ export interface VideoListRowProps {
   durationSec: number
   thumbnailUrl: string | null
   to: string
-  /** 줄 오른쪽 상태 한 마디 (검색 결과: '해설 있음', '해설 만들 수 없음, 5분 넘음'). 출처·길이 뒤에 설명으로 이어 읽힌다 */
+  /** 줄 오른쪽 상태 한 마디 (검색 결과: '해설 있음', '해설 만들 수 없음, 10분 넘음'). 출처·길이 뒤에 설명으로 이어 읽힌다 */
   status?: string
   /** 만들 수 없는 영상은 빨간 테두리·글자로도 구분한다 */
   tone?: 'normal' | 'danger'

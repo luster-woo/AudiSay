@@ -264,6 +264,37 @@ test('실패(다시 요청 불가): 이유를 보여 주고 홈으로 가기가 
   expect(within(dialog).queryByRole('button', { name: '다시 요청' })).not.toBeInTheDocument()
 })
 
+test('남은 시간은 1초마다 줄고, 조금 늘어난 값이 와도 되올라가지 않는다', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+  try {
+    vi.mocked(jobsApi.get).mockResolvedValue(job({ estimatedRemainingSec: 37 }))
+    renderRoute('/jobs/51')
+    expect(await screen.findByText('약 37초 남았어요')).toBeInTheDocument()
+    await waitFor(() => expect(subscribeSse).toHaveBeenCalled())
+
+    await act(() => vi.advanceTimersByTimeAsync(3_000))
+    expect(screen.getByText(/약 3[34]초 남았어요/)).toBeInTheDocument()
+
+    await act(() => vi.advanceTimersByTimeAsync(12_000))
+    act(() =>
+      sse().onMessage({
+        event: 'progress',
+        data: JSON.stringify({
+          status: 'RUNNING',
+          currentStage: 'DESCRIBE',
+          progress: 50,
+          estimatedRemainingSec: 24,
+        }),
+      }),
+    )
+    await act(() => vi.advanceTimersByTimeAsync(1_000))
+    // 화면은 21~22초 — 서버 24초로 되올라가지 않는다
+    expect(screen.getByText(/약 2[12]초 남았어요/)).toBeInTheDocument()
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
 test('SSE 가 끊기면 5초마다 작업 상태를 다시 받는다', async () => {
   vi.mocked(jobsApi.get).mockResolvedValue(job())
   renderRoute('/jobs/51')

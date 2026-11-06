@@ -30,6 +30,7 @@ export function ReportDialog({ open, line, reportedAtMs, onClose }: ReportDialog
   const { announce } = useAnnouncer()
   const groupId = useId()
   const detailId = useId()
+  const detailErrorId = useId()
   const [reason, setReason] = useState<ReportReason>('WRONG')
   const [detail, setDetail] = useState('')
   const [detailError, setDetailError] = useState(false)
@@ -138,16 +139,29 @@ export function ReportDialog({ open, line, reportedAtMs, onClose }: ReportDialog
                 value={detail}
                 onChange={(e) => {
                   setDetail(e.target.value)
-                  if (e.target.value.trim()) setDetailError(false)
+                  if (e.target.value.trim()) {
+                    setDetailError(false)
+                    // 포커스만으로 사유를 바꾸지 않는다 (Tab 으로 지나가기만 해도 바뀌면 안 된다, WCAG 3.2.1). 글자를 적으면 '기타'
+                    setReason('OTHER')
+                  }
                 }}
-                onFocus={() => setReason('OTHER')}
                 placeholder="기타를 고르면 여기에 적어요 (선택)"
                 aria-invalid={detailError || undefined}
+                aria-describedby={detailError ? detailErrorId : undefined}
                 className={cn(
                   'w-full rounded-md border-2 bg-paper px-4 py-3 text-lg',
                   detailError ? 'border-danger' : 'border-line',
                 )}
               />
+              {detailError && (
+                <p
+                  id={detailErrorId}
+                  className="mt-2 flex items-center gap-2 font-bold text-danger"
+                >
+                  <span aria-hidden="true">●</span>
+                  기타를 골랐으면 무엇이 문제인지 적어 주세요.
+                </p>
+              )}
             </div>
           </fieldset>
 

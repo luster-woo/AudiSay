@@ -14,6 +14,7 @@ import { STAGE_NAME, useProgressAnnounce } from '@/features/announcer/useProgres
 import { JobSteps } from '@/features/job/JobSteps'
 import { jobSteps, type SourceType } from '@/features/job/stages'
 import { useDisplayProgress } from '@/features/job/useDisplayProgress'
+import { useRemainingCountdown } from '@/features/job/useRemainingCountdown'
 import { StatusDialog } from '@/features/upload/StatusDialog'
 import { pageTitle } from '@/features/page/usePageEntry'
 import { formatDurationSpoken } from '@/utils/time'
@@ -61,9 +62,9 @@ function parseEvent(event: string, data: string): JobEvent | null {
   }
 }
 
-function remainingText(job: Job) {
+/** sec: 화면에서 1초씩 센 남은 시간(useRemainingCountdown) */
+function remainingText(job: Job, sec: number | null) {
   if (job.status === 'QUEUED') return '차례를 기다리고 있어요. 곧 시작해요.'
-  const sec = job.estimatedRemainingSec
   if (sec == null) return '남은 시간을 계산하고 있어요'
   if (sec < 10) return '거의 다 됐어요'
   return `약 ${formatDurationSpoken(sec)} 남았어요`
@@ -119,6 +120,10 @@ function JobPage({ jobId }: { jobId: number }) {
   const fromState = (useLocation().state as { sourceType?: SourceType } | null)?.sourceType
   const source = video?.sourceType ?? fromState ?? (videoQuery.isError ? 'YOUTUBE' : undefined)
   const progress = useDisplayProgress(source, job, video?.durationSec)
+  const remainingSec = useRemainingCountdown(
+    job?.estimatedRemainingSec,
+    job?.status === 'RUNNING',
+  )
 
   // ── 실시간 진행률 (SSE) ──
   useEffect(() => {
@@ -213,10 +218,10 @@ function JobPage({ jobId }: { jobId: number }) {
         ? job.currentStage
           ? `${STAGE_NAME[job.currentStage]} 중에 멈췄어요`
           : '시작하기 전에 멈췄어요'
-        : remainingText(job)
+        : remainingText(job, remainingSec)
   const valueText =
     phase === 'running' && job.currentStage
-      ? `${progress}퍼센트, ${STAGE_NAME[job.currentStage]} 중, ${remainingText(job)}`
+      ? `${progress}퍼센트, ${STAGE_NAME[job.currentStage]} 중, ${remainingText(job, remainingSec)}`
       : `${progress}퍼센트, ${statusLine}`
 
   return (

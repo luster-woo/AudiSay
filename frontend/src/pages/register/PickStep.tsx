@@ -19,6 +19,7 @@ export function PickStep({
   onPicked: (picked: PickedFile) => void
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
+  const headingRef = useRef<HTMLHeadingElement>(null)
   const hintId = useId()
   const [dragging, setDragging] = useState(false)
   const noneLeft = remaining === 0
@@ -35,7 +36,8 @@ export function PickStep({
     announce: noneLeft
       ? '영상 등록이에요. 오늘 내 영상 해설 횟수를 다 썼어요. 밤 12시에 다시 채워져요.'
       : '영상 등록이에요. 파일 고르기 버튼에 있어요. Enter를 누르면 파일 창이 열려요.',
-    focusRef: inputRef,
+    // 횟수를 다 썼으면 파일 입력이 disabled 라 포커스를 받지 못한다 → 제목으로
+    focusRef: noneLeft ? headingRef : inputRef,
   })
 
   const onDrop = (e: DragEvent) => {
@@ -55,7 +57,9 @@ export function PickStep({
   return (
     <div className="max-w-[60rem]">
       <p className="text-2xl font-bold text-navy">영상 올리기 · 1/3단계</p>
-      <h1 className="mt-6 text-[2.75rem] font-bold">올릴 영상 파일을 골라 주세요</h1>
+      <h1 ref={headingRef} tabIndex={-1} className="mt-6 text-[2.75rem] font-bold outline-none">
+        올릴 영상 파일을 골라 주세요
+      </h1>
       <p className="mt-8 text-2xl">
         {remaining == null
           ? '내 영상 해설 횟수 제한이 없어요.'

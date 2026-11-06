@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Dialog } from '@/components/ui/Dialog'
 import { useAnnouncer } from '@/features/announcer/context'
-import { formatEffectiveDate, type TermsDocument } from './documents'
+import type { TermsDocument } from './documents'
 
 /**
  * 약관 전문 창. 네이티브 <dialog>, 제목은 aria-labelledby 로 연결되고 열리면 포커스는 제목으로 간다.
@@ -23,19 +23,17 @@ export function TermsDialog({
   onAgree: () => void
 }) {
   const { announce } = useAnnouncer()
-  const count = doc.clauses.length
   const shortName = doc.key === 'terms' ? '이용약관' : '개인정보 안내'
 
   useEffect(() => {
-    if (open) announce(`${shortName} 창이에요. 조항 ${count}개. 제목에 있어요.`)
-  }, [open, shortName, count, announce])
+    if (open) announce(`${shortName} 창이에요. 제목에 있어요.`)
+  }, [open, shortName, announce])
 
   return (
     <Dialog
       open={open}
       onClose={onClose}
       title={doc.title}
-      description={`조항 ${count}개 · ${formatEffectiveDate(doc.effectiveDate)} 시행`}
       focusTitle
       longForm
       footer={
@@ -55,11 +53,8 @@ export function TermsDialog({
         </>
       }
     >
-      <p className="border-l-4 border-navy bg-line/40 px-6 py-5 text-lg leading-relaxed">
-        <strong>요약</strong> — {doc.summary}
-      </p>
-      {doc.clauses.map((c) => (
-        <section key={c.title} className="mt-6">
+      {doc.clauses.map((c, i) => (
+        <section key={c.title} className={i === 0 ? undefined : 'mt-6'}>
           <h3 className="text-xl font-bold">{c.title}</h3>
           {Array.isArray(c.body) ? (
             <ul className="mt-2 list-disc space-y-1 pl-7 text-lg leading-relaxed">

@@ -212,6 +212,60 @@ test('재생바로 크게 옮기면 읽던 소리를 끊고, 건너뛴 문장은
   expect(hook.result.current.currentLine?.text).toBe('중요한 문장') // 화면에는 보인다
 })
 
+test('markSeek: 옮긴다고 미리 알리면 다음 tick 이 끊지 않고, 옮긴 지점에서 시작하는 문장부터 읽는다', () => {
+  const { hook, tick, narrator, said } = setup({ narrationMode: 'WITH_VIDEO' })
+  tick(T(5))
+  // 목차에서 20초 장면을 골랐다: 호출한 쪽이 interrupt → seek → markSeek 순으로 부른다
+  act(() => {
+    hook.result.current.interrupt()
+    hook.result.current.markSeek(T(20))
+  })
+  narrator.stop.mockClear()
+  tick(T(20)) // seek 직후 들어오는 tick (옮긴 시각 그대로)
+  expect(narrator.stop).not.toHaveBeenCalled() // 큰 이동으로 보지 않는다
+  expect(said()).toEqual(['긴 문장']) // 정확히 20초에 시작하는 문장도 읽는다
+  tick(T(20.5))
+  expect(said()).toEqual(['긴 문장']) // 두 번 읽지 않는다
+})
+
+test('readLine: 대본에서 고른 문장은 해설 방식대로 읽고, 이어지는 tick 이 끊지도 또 읽지도 않는다', async () => {
+  const narrator = fakeNarrator({ hold: true })
+  const { hook, tick, controls, said } = setup({ narrationMode: 'AUTO' }, narrator)
+  tick(T(5))
+  // 대본 탭에서 2번 문장(20초)을 골랐다: Player 의 seekTo(interrupt·seek·markSeek) 뒤에 readLine
+  act(() => {
+    hook.result.current.interrupt()
+    hook.result.current.markSeek(T(20))
+    expect(hook.result.current.readLine(description.lines[1])).toBe(true)
+  })
+  expect(said()).toEqual(['긴 문장'])
+  expect(controls.pause).toHaveBeenCalledTimes(1) // 자동: 빈 구간이 짧아 멈추고 읽는다
+  narrator.stop.mockClear()
+  tick(T(20)) // seek 직후 tick
+  tick(T(20.4))
+  expect(narrator.stop).not.toHaveBeenCalled() // 읽던 소리가 살아남는다
+  expect(said()).toEqual(['긴 문장']) // 자동 해설과 겹쳐 두 번 읽지 않는다
+  narrator.finish()
+  await flush()
+  expect(controls.play).toHaveBeenCalledTimes(1) // 다 읽으면 이어서 재생
+
+  // 멈춘 상태에서 골라도 읽는다 (tick 은 멈춘 동안 읽지 않지만 사용자가 직접 골랐으므로)
+  tick(T(20.4), { playing: false })
+  act(() => {
+    hook.result.current.markSeek(T(10))
+    hook.result.current.readLine(description.lines[0])
+  })
+  expect(said()).toEqual(['긴 문장', '첫 문장'])
+})
+
+test('readLine: 대사만 설정이면 읽지 않고 false 를 준다', () => {
+  const { hook, said } = setup({ soundMix: 'DIALOGUE_ONLY' })
+  act(() => {
+    expect(hook.result.current.readLine(description.lines[0])).toBe(false)
+  })
+  expect(said()).toEqual([])
+})
+
 test('대사만: 아무것도 읽지 않지만 지금 문장은 보인다', () => {
   const { hook, tick, said } = setup({ soundMix: 'DIALOGUE_ONLY' })
   tick(T(9.5))

@@ -123,7 +123,7 @@ export function Player({ video }: { video: VideoDetail }) {
     refreshAudioUrl,
     announce,
   })
-  const { holdWhile, interrupt, currentLine, lines } = narration
+  const { holdWhile, interrupt, currentLine, lines, markSeek, readLine } = narration
 
   /* ── 화면 상태 ── */
   const [startedFlag, setStarted] = useState(false)
@@ -177,10 +177,12 @@ export function Player({ video }: { video: VideoDetail }) {
       beforeSeekRef.current = state.currentMs
       interrupt()
       controls.seek(ms)
+      // 다음 tick 이 큰 이동으로 보고 소리를 끊지 않게, 옮긴 자리부터 세게 한다 (옮긴 지점의 문장도 읽는다)
+      markSeek(ms)
       const at = sceneAtMs(description?.scenes, ms)
       announce(said ?? `${formatPositionSpoken(ms)}로 옮겼어요.${at ? ` ${at.title} 장면.` : ''}`)
     },
-    [state.currentMs, interrupt, controls, description, announce],
+    [state.currentMs, interrupt, controls, markSeek, description, announce],
   )
 
   const setDetail = useCallback(
@@ -629,11 +631,17 @@ export function Player({ video }: { video: VideoDetail }) {
     }
   }
 
+  /**
+   * 대본에서 문장을 골랐을 때: 그 시각으로 옮기고 그 문장을 해설 음성으로 읽는다.
+   * 안내 전광판(낭독기가 읽는다)에는 위치만 짧게 — 문장까지 넣으면 낭독기와 해설 음성이 같은 문장을 겹쳐 읽는다 (원칙 1장).
+   * '대사만' 설정이라 해설 음성이 읽지 않을 때만 문장을 전광판에 함께 넣는다.
+   * readLine 은 seekTo(interrupt → seek → markSeek) 뒤에 불러야 끊기지 않고, 다음 tick 이 또 읽지도 않는다.
+   */
   const onPickLine = (l: NarrationLine) => {
-    seekTo(l.startMs, `${formatPositionSpoken(l.startMs)}. ${l.text}`)
-    if (settings.soundMix !== 'DIALOGUE_ONLY') {
-      void narrator.say({ text: l.text, audioUrl: l.audioUrl, rate: settings.speechRate })
-    }
+    const willRead = settings.soundMix !== 'DIALOGUE_ONLY'
+    const at = formatPositionSpoken(l.startMs)
+    seekTo(l.startMs, willRead ? `${at}로 옮겼어요.` : `${at}. ${l.text}`)
+    readLine(l)
   }
 
   const descError = descriptionQ.error
@@ -728,6 +736,7 @@ export function Player({ video }: { video: VideoDetail }) {
                   seekBurstRef.current = true
                   interrupt()
                   controls.seek(ms)
+                  markSeek(ms)
                 }}
                 onSeekSettled={(ms) => {
                   seekBurstRef.current = false

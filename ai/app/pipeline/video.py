@@ -20,7 +20,7 @@ from difflib import SequenceMatcher
 from app import inference
 from app.errors import WorkerError
 from app.pipeline import local
-from app.pipeline.local import finish_sentence, mmss, mmss_ms, translate_segments
+from app.pipeline.local import mmss, mmss_ms, translate_segments
 from app.pipeline.narration_schema import Narration, to_ms
 from app.pipeline.prompts import genre_guide
 
@@ -287,7 +287,7 @@ def _plain(clause: str) -> str:
 
 def split_compound(text: str, level: int) -> list[str]:
     """글자 수를 넘긴 "A가 ~하고, B가 ~한다"를 두 문장으로(2026-11-04: 긴 문장 5개). 뒤 절에 주어가 있을 때만 나눈다."""
-    from app.pipeline.placement import LEVEL_MAX_CHARS
+    from app.pipeline.describe import LEVEL_MAX_CHARS
     m = COMPOUND.match(text.strip())
     if not m or len(text) <= LEVEL_MAX_CHARS.get(level, 30) + 5:
         return [text]

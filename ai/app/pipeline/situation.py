@@ -668,7 +668,8 @@ STORY_PROMPT = """당신은 시각장애인을 위한 화면해설 작가입니�
 """
 
 
-async def understand(inf, title: str, duration_ms: int, look: dict, faces: dict, segs: list[dict], guide: str) -> dict:
+async def understand(inf, title: str, duration_ms: int, look: dict, faces: dict, segs: list[dict], guide: str,
+                     labelled: Callable[[], Awaitable[None]] | None = None) -> dict:
     from app.pipeline.video import chapter_range, mmss
     lo, hi = chapter_range(duration_ms)
     counts = {p["id"]: p for p in faces["persons"]}
@@ -706,6 +707,8 @@ async def understand(inf, title: str, duration_ms: int, look: dict, faces: dict,
                                                                                        "minItems": 1, "maxItems": 14}},
                                           "required": ["people"], "additionalProperties": False},
                           max_tokens=1500, images=[sheet] if sheet else None)
+    if labelled:  # 호칭을 정했다(진행률). 상황 흐름 쓰기가 이어서 길게 걸린다
+        await labelled()
     known = set(look["cast"]) | set(counts)
     found = [p for p in r["result"]["people"] if p["id"] in known]
     found += [{"id": k, "same_as": "", "call": ""} for k in known if k not in {p["id"] for p in found}]

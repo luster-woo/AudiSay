@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { afterScreenChangeMs } from '@/features/search/speechLead'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -26,7 +26,7 @@ import { NarrationBox } from './NarrationBox'
 import { ReportDialog } from './ReportDialog'
 import { SettingsDialog } from './SettingsDialog'
 import { SummaryDialog } from './SummaryDialog'
-import { entriesFromServer } from './history'
+import type { HistoryEntry } from './history'
 import { CandidatesPanel, ChaptersPanel, HistoryPanel, ScriptPanel } from './panels'
 import { useAsk } from './useAsk'
 import { VideoStage } from './VideoStage'
@@ -52,6 +52,9 @@ const CONTROL_WIDE = 'w-[9.5rem] px-2! text-base whitespace-nowrap'
  * 시청 화면 본체. 영상 정보(해설 있음)를 받아 재생 주소·해설·목차·요약을 불러오고,
  * 플레이어 + 질문 패널을 그린다. 읽는 순서: 제목 → 플레이어 컨트롤 → 상세도 → 신고·설정·크게 보기 → 질문 → 패널 탭 (원칙 3장)
  */
+
+/** 화면에 들어올 때의 질문 기록: 늘 비어 있다 (매 렌더 같은 배열이라 useAsk 가 새로 그리지 않는다) */
+const NO_HISTORY: HistoryEntry[] = []
 
 export function Player({ video }: { video: VideoDetail }) {
   const videoId = video.videoId
@@ -86,12 +89,6 @@ export function Player({ video }: { video: VideoDetail }) {
     queryKey: queryKeys.summary(videoId),
     queryFn: () => videosApi.summary(videoId),
     staleTime: 5 * 60 * 60 * 1000,
-    retry: false,
-  })
-  const historyQ = useQuery({
-    queryKey: queryKeys.chatHistory(videoId),
-    queryFn: () => videosApi.chatHistory(videoId),
-    staleTime: Infinity,
     retry: false,
   })
   const description = descriptionQ.data
@@ -544,10 +541,6 @@ export function Player({ video }: { video: VideoDetail }) {
   useShortcutEntry('settings', () => openSettings(), { scope: 'user' })
   useShortcutEntry('report', () => openReport(), { scope: 'user' })
 
-  const initialEntries = useMemo(
-    () => (historyQ.data ? entriesFromServer(historyQ.data.messages) : []),
-    [historyQ.data],
-  )
   const ask = useAsk(
     {
       videoId,
@@ -570,7 +563,8 @@ export function Player({ video }: { video: VideoDetail }) {
       focusInput: () => inputRef.current?.focus(),
       showHistory: () => setTab('history'),
     },
-    initialEntries,
+    // 질문 기록은 이 화면에 있는 동안 한 것만 보여 준다. 나갔다 들어오면 비어 있다 (서버 기록은 불러오지 않는다)
+    NO_HISTORY,
   )
 
   // 말로 질문: 듣는 동안 영상을 멈추고, 취소하면 이어서 재생. 답이 끝나면 '답변이 끝났어요' 안내 뒤에 useAsk 가 이어서 재생한다

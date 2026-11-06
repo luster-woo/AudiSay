@@ -868,15 +868,17 @@ test('"들으시겠어요?"를 물은 답에는 다시 듣기·그 장면 보기
   expect(screen.getByRole('button', { name: '네, 뒤 내용 들을게요' })).not.toHaveAttribute(
     'aria-disabled',
   )
-  expect(screen.queryByRole('button', { name: /^다시 듣기/ })).not.toBeInTheDocument()
-  expect(screen.queryByRole('button', { name: /^그 장면 보기/ })).not.toBeInTheDocument()
+  // 질문 기록 안에서만 찾는다 (위 안내 띠에도 '다시 듣기 Alt+Shift+R' 버튼이 늘 있다)
+  const history = () => screen.getByRole('region', { name: /^질문 기록/ })
+  expect(within(history()).queryByRole('button', { name: /^다시 듣기/ })).not.toBeInTheDocument()
+  expect(within(history()).queryByRole('button', { name: /^그 장면 보기/ })).not.toBeInTheDocument()
 
   await user.click(no)
   await waitFor(() => expect(band()).toHaveTextContent('알겠어요.'))
   expect(chatApi.send).toHaveBeenCalledTimes(1)
   expect(subscribeSse).toHaveBeenCalledTimes(1)
   expect(screen.queryByRole('button', { name: /^아니요,/ })).not.toBeInTheDocument()
-  expect(screen.getByRole('button', { name: /^다시 듣기/ })).toBeInTheDocument()
+  expect(within(history()).getByRole('button', { name: /^다시 듣기/ })).toBeInTheDocument()
 })
 
 test('말로 질문: 알아들으면 바로 입력칸으로 포커스를 옮긴다 (답을 듣는 동안 포커스가 본문으로 빠지지 않게)', async () => {
@@ -1118,41 +1120,14 @@ test('재생 전(0초) "요약 들려줘"는 묻지 않고 바로 들려준다',
   expect(band()).not.toHaveTextContent('들으시겠어요?')
 })
 
-test('질문 기록에서 답을 끝까지 받지 못한 질문은 받은 데까지와 안내를 보여 준다', async () => {
+test('질문 기록은 이 화면에서 한 것만 보여 준다: 들어올 때 서버 기록을 불러오지 않는다', async () => {
   const user = userEvent.setup()
-  vi.mocked(videosApi.chatHistory).mockResolvedValue({
-    messages: [
-      {
-        chatLogId: 2,
-        inputMode: 'TEXT',
-        utterance: '두 번째 질문',
-        intent: 'QUESTION',
-        videoTimeMs: T(10),
-        targetMs: null,
-        answerText: null,
-        answerSource: null,
-        createdAt: '2026-11-05T00:01:00Z',
-      },
-      {
-        chatLogId: 1,
-        inputMode: 'TEXT',
-        utterance: '첫 질문',
-        intent: 'QUESTION',
-        videoTimeMs: T(5),
-        targetMs: null,
-        answerText: 'B반이',
-        answerSource: null,
-        createdAt: '2026-11-05T00:00:00Z',
-      },
-    ],
-    nextCursor: null,
-    hasNext: false,
-  })
   renderRoute('/watch/15')
   await screen.findByRole('button', { name: '재생' })
   await user.click(screen.getByRole('tab', { name: '질문 기록' }))
-  expect(await screen.findByText('B반이 (답을 다 받지 못했어요)')).toBeInTheDocument()
-  expect(screen.getByText('(답을 다 받지 못했어요)')).toBeInTheDocument()
+  expect(screen.getByText('질문 기록 · 0개')).toBeInTheDocument()
+  expect(screen.getByText(/아직 질문한 적이 없어요/)).toBeInTheDocument()
+  expect(videosApi.chatHistory).not.toHaveBeenCalled()
 })
 
 const keys = (k: string) => `{Alt>}{Shift>}${k}{/Shift}{/Alt}`

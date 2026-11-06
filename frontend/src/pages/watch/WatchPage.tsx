@@ -53,7 +53,8 @@ function WatchPage({ videoId }: { videoId: number | null }) {
       />
     )
   }
-  return <Player video={video} />
+  // 영상이 바뀌면 화면 상태(질문 기록·요약 단계 등)를 새로 시작한다
+  return <Player key={video.videoId} video={video} />
 }
 
 function Notice({ title, text }: { title: string; text: string }) {

@@ -40,3 +40,21 @@ async def test_new_sentence_is_cached_for_next_time(monkeypatch, tmp_path):
     out = await tts.synthesize_many(None, storage, [("tts/2/9-b.mp3", "처음 보는 문장입니다.")], ctx)  # 다른 해설, 같은 문장
     assert calls == ["처음 보는 문장입니다."] and out["tts/2/9-b.mp3"] == 1200
     assert (tmp_path / "tts/2/9-b.mp3").read_bytes() == b"ID3new"
+
+
+async def test_old_cache_audio_is_fixed_once(monkeypatch, tmp_path):
+    """헤더 잡음을 고치기 전에 캐시에 들어간 음성(headClean 없음)은 한 번 고쳐 다시 넣고, 다음부터는 그대로 쓴다."""
+    fixes = []
+
+    async def fix(mp3):
+        fixes.append(mp3)
+        return b"ID3fixed"
+
+    monkeypatch.setattr(tts, "remove_head_click", fix)
+    storage, text = LocalStorage(str(tmp_path)), "예전에 만든 문장입니다."
+    key = tts.tts_cache_key(tts.text_hash(text))
+    await storage.put_bytes(key, b"ID3old", "audio/mpeg")
+    await storage.put_json(key.removesuffix(".mp3") + ".json", {"durationMs": 900})
+    assert await tts.reuse(storage, text) == (b"ID3fixed", 900)
+    assert await tts.reuse(storage, text) == (b"ID3fixed", 900)
+    assert fixes == [b"ID3old"]

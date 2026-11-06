@@ -2,7 +2,7 @@
 import struct
 from array import array
 
-from app.pipeline.tts import SR, clean_tail, duration_ms, line_key, progress_step, strip_wav_header, summary_key
+from app.pipeline.tts import SR, clean_tail, duration_ms, line_key, mute_head_click, progress_step, strip_wav_header, summary_key
 
 
 def pcm(*parts: tuple[float, int]) -> bytes:
@@ -64,3 +64,19 @@ def test_wav_header_is_stripped():
 def test_raw_pcm_is_untouched():
     data = pcm((0.2, 6000))
     assert strip_wav_header(data) == data
+
+
+def test_head_click_is_muted_without_changing_length():
+    """이미 만든 mp3: 맨 앞 1ms 큰 잡음 → 조용 → 말. 잡음만 지우고 길이·말은 그대로."""
+    data = pcm((0.001, 25000), (0.1, 50), (0.3, 6000))
+    out = mute_head_click(data)
+    assert out is not None and len(out) == len(data)
+    s = array("h")
+    s.frombytes(out)
+    assert max(map(abs, s[:SR // 10])) < 100  # 잡음 자리
+    assert s[-1] == 6000  # 말 부분
+
+
+def test_speech_start_is_not_a_click():
+    assert mute_head_click(pcm((0.05, 0), (0.3, 9000))) is None  # 처음부터 큰 소리가 이어지면 말
+    assert mute_head_click(pcm((0.3, 6000))) is None  # 큰 소리가 없으면 그대로

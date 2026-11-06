@@ -21,6 +21,7 @@
 import asyncio
 import hashlib
 import logging
+import tempfile
 from array import array
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -90,6 +91,48 @@ def clean_tail(pcm: bytes) -> bytes:
     for k in range(fade):
         s[len(s) - fade + k] = int(s[len(s) - fade + k] * (fade - k) / fade)
     return s.tobytes()
+
+
+# 이미 만든 mp3의 맨 앞 "딱"(strip_wav_header 전에 만든 음성). 레포 음성 345개 측정: 잡음 번짐은 33ms 안에 끝나고 말은 87ms 뒤부터
+HEAD_SEARCH_MS = 120  # 잡음이 이 안에서 시작한다(파이프로 만든 mp3는 디코더 지연 46ms 뒤에 놓임)
+HEAD_MUTE_MS, HEAD_FADE_MS = 40, 10  # 잡음 시작부터 40ms를 지우고 10ms 페이드인
+HEAD_AFTER_MAX = 3000  # 잡음 뒤 5~35ms가 이보다 조용해야 잡음으로 본다(말이면 계속 크다)
+
+
+def mute_head_click(pcm: bytes) -> bytes | None:
+    """맨 앞 "딱" 소리를 지운 PCM. 잡음이 없으면 None. 길이는 그대로(audio_duration_ms를 바꾸지 않게)."""
+    s = array("h")
+    s.frombytes(pcm[: len(pcm) - len(pcm) % 2])
+    ms = SR // 1000
+    b = next((i for i in range(min(len(s), HEAD_SEARCH_MS * ms)) if abs(s[i]) >= LOUD), None)
+    if b is None or max(map(abs, s[b + 5 * ms:b + 35 * ms]), default=0) >= HEAD_AFTER_MAX:
+        return None
+    mute, fade = min(len(s), b + HEAD_MUTE_MS * ms), HEAD_FADE_MS * ms
+    for k in range(mute):
+        s[k] = 0
+    for k in range(min(fade, len(s) - mute)):
+        s[mute + k] = int(s[mute + k] * k / fade)
+    return s.tobytes()
+
+
+async def decode_mp3(mp3: bytes) -> bytes:
+    """mp3 → PCM(24kHz 16bit mono). 파일로 읽어야 인코더 지연 정보(LAME 헤더)를 써서 앞을 정확히 자른다."""
+    with tempfile.TemporaryDirectory() as d:
+        src = Path(d) / "in.mp3"
+        src.write_bytes(mp3)
+        proc = await asyncio.create_subprocess_exec(
+            "ffmpeg", "-loglevel", "error", "-i", str(src), "-f", "s16le", "-ar", str(SR), "-ac", "1", "pipe:1",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        out, err = await proc.communicate()
+    if proc.returncode != 0:
+        raise WorkerError("TRANSCODE_FAILED", f"ffmpeg mp3 읽기 실패: {err.decode(errors='replace')[:300]}")
+    return out
+
+
+async def remove_head_click(mp3: bytes) -> bytes | None:
+    """맨 앞 "딱" 소리를 지운 mp3. 잡음이 없으면 None."""
+    fixed = mute_head_click(await decode_mp3(mp3))
+    return None if fixed is None else await encode_mp3(fixed)
 
 
 def duration_ms(pcm: bytes) -> int:
@@ -184,14 +227,21 @@ async def reuse(storage: Storage, text: str) -> tuple[bytes, int] | None:
     if await storage.exists(key):
         meta_key = key.removesuffix(".mp3") + ".json"
         meta = await storage.get_json(meta_key) if await storage.exists(meta_key) else {}
-        return await storage.get_bytes(key), int(meta.get("durationMs") or 0)
+        mp3, ms = await storage.get_bytes(key), int(meta.get("durationMs") or 0)
+        if not meta.get("headClean"):  # 헤더 잡음을 고치기 전에 캐시에 들어간 음성은 한 번 고쳐 다시 넣는다
+            try:
+                mp3 = await remove_head_click(mp3) or mp3
+                await remember(storage, text, mp3, ms)
+            except WorkerError as e:  # 못 고치면 그대로 쓴다(다음에 다시 시도)
+                log.warning("캐시 음성 앞 잡음 고치기 실패 %s: %s", key, e)
+        return mp3, ms
     return _seed(h)
 
 
 async def remember(storage: Storage, text: str, mp3: bytes, ms: int) -> None:
     key = tts_cache_key(text_hash(text))
     await storage.put_bytes(key, mp3, "audio/mpeg")
-    await storage.put_json(key.removesuffix(".mp3") + ".json", {"durationMs": ms})
+    await storage.put_json(key.removesuffix(".mp3") + ".json", {"durationMs": ms, "headClean": True})
 
 
 OnDone = Callable[[int, int], Awaitable[None]]

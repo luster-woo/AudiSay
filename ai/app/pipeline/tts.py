@@ -8,6 +8,8 @@
 - line.tts: 사용자가 상세도 3을 처음 고를 때 BE가 보낸다. payload.lineIds가 있으면 그 문장만, 없으면 detailLevel(기본 3) 문장 중
   음성이 없는 것 전부.
 - 한 문장이 실패하면 그 문장만 비워 둔다(FE가 브라우저 음성으로 읽음). 모델은 gemini-3.8-flash-tts → 실패하면 lite.
+- 직접 올린 영상(UPLOAD)은 해설·요약 음성을 H200 Supertonic 3(F1 수아, 크레딧 0)으로 만든다(2026-11-06 사용자 결정, 데모와 같음).
+  유튜브 영상만 Gemini TTS(Kore)를 쓴다.
 - 문장만 보낸다(지시문을 붙이면 그것까지 읽음). PCM 24kHz 16bit mono → ffmpeg로 mp3(64k). Dockerfile에 ffmpeg 필요.
 - clean_tail: SDK 응답 끝에 붙는 0.1~0.3초 최대 음량 잡음("칙")을 잘라 낸다(데모 troubleshooting 6번).
 - strip_wav_header: 응답 앞의 WAV 헤더를 떼어 낸다(그대로 두면 해설 맨 앞에 "딱" 소리).
@@ -28,17 +30,20 @@ from pathlib import Path
 
 from google.genai import types
 
+from app import inference
 from app.db import Db
 from app.errors import WorkerError
 from app.gms.client import CallContext, GmsClient
 from app.mq.envelope import Envelope
 from app.mq.worker import Events
 from app.storage import Storage
+from app.tts_text import normalize_ko
 
 log = logging.getLogger(__name__)
 
 MODELS = ("gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts")
 VOICE_NAME = "Kore"
+UPLOAD_VOICE = "F1"  # 직접 올린 영상의 해설 목소리: Supertonic 수아(안내 목소리 기본과 같음, 데모 2026-11-04 결정과 같음)
 # 음성 동시 요청 수. 데모 실측(2026-11-03): 5개씩 32개 18.5초(개당 0.58초) → 10개씩 47개 13.8초(개당 0.29초), 오류 0
 CONCURRENCY = 10
 PRE_TTS_LEVEL = 2  # job.tts가 미리 만드는 상세도. 3은 line.tts
@@ -244,22 +249,43 @@ async def remember(storage: Storage, text: str, mp3: bytes, ms: int) -> None:
     await storage.put_json(key.removesuffix(".mp3") + ".json", {"durationMs": ms, "headClean": True})
 
 
+async def synthesize_supertonic(inf: inference.Inference, text: str) -> tuple[bytes, int] | None:
+    """문장 하나 → H200 Supertonic 3(안내 목소리와 같은 수아, 크레딧 0) → (mp3, 길이 ms). 실패하면 None(FE가 안내 목소리로 읽음).
+    긴 글(요약)은 안내 목소리처럼 120자 조각으로 나눠 합성하고 mp3를 잇는다."""
+    from app.internal_api import _join_mp3, tts_chunks
+
+    parts, ms = [], 0
+    try:
+        for chunk in tts_chunks(normalize_ko(text)):  # 차례로: H200 TTS는 한 번에 하나씩 처리한다
+            b, m = await inf.tts(chunk, UPLOAD_VOICE)
+            parts.append(b)
+            ms += m
+        return (await _join_mp3(parts), ms) if parts else None
+    except (inference.InferenceError, RuntimeError) as e:
+        log.warning("Supertonic 해설 음성 실패: %s", str(e)[:200])
+        return None
+
+
 OnDone = Callable[[int, int], Awaitable[None]]
 
 
 async def synthesize_many(gms: GmsClient, storage: Storage, items: list[tuple[str, str]], ctx: CallContext,
-                          on_done: OnDone | None = None) -> dict[str, int | None]:
-    """items: [(S3 키, 문장)]. 동시에 CONCURRENCY개씩. 반환 {키: 길이 ms 또는 None(실패)}."""
+                          on_done: OnDone | None = None, inf: inference.Inference | None = None) -> dict[str, int | None]:
+    """items: [(S3 키, 문장)]. 동시에 CONCURRENCY개씩. 반환 {키: 길이 ms 또는 None(실패)}.
+    inf가 있으면(직접 올린 영상) Supertonic으로 만들고 Gemini 음성 캐시는 쓰지 않는다(목소리가 다름)."""
     sem = asyncio.Semaphore(CONCURRENCY)
     out: dict[str, int | None] = {}
 
     async def one(key: str, text: str) -> None:
         async with sem:
-            made = await reuse(storage, text)  # 같은 문장이면 크레딧 0
-            if made is None:
-                made = await synthesize(gms, text, ctx)
-                if made:
-                    await remember(storage, text, *made)
+            if inf is not None:
+                made = await synthesize_supertonic(inf, text)
+            else:
+                made = await reuse(storage, text)  # 같은 문장이면 크레딧 0
+                if made is None:
+                    made = await synthesize(gms, text, ctx)
+                    if made:
+                        await remember(storage, text, *made)
             if made:
                 await storage.put_bytes(key, made[0], "audio/mpeg")
             out[key] = made[1] if made else None
@@ -273,8 +299,8 @@ async def synthesize_many(gms: GmsClient, storage: Storage, items: list[tuple[st
 class Tts:
     """job.tts: 상세도 1·2 문장 + 요약."""
 
-    def __init__(self, storage: Storage, gms: GmsClient, db: Db):
-        self.storage, self.gms, self.db = storage, gms, db
+    def __init__(self, storage: Storage, gms: GmsClient, db: Db, inf: inference.Inference | None = None):
+        self.storage, self.gms, self.db, self.inf = storage, gms, db, inf
 
     async def __call__(self, env: Envelope, events: Events) -> None:
         p, job_id = env.payload, env.jobId
@@ -297,7 +323,8 @@ class Tts:
                 sent = pct
                 await events.progress(pct)
 
-        done = await synthesize_many(self.gms, self.storage, items, CallContext("TTS", job_id=job_id), progress) if items else {}
+        inf = await _upload_inf(pool, desc_id, self.inf)
+        done = await synthesize_many(self.gms, self.storage, items, CallContext("TTS", job_id=job_id), progress, inf) if items else {}
         async with pool.acquire() as con, con.transaction():
             for r in rows:
                 key = line_key(desc_id, r["id"], r["text"])
@@ -318,8 +345,8 @@ class Tts:
 class LineTts:
     """line.tts: 상세도 3(또는 지정한 문장)의 음성을 나중에 만든다. 진행률 이벤트는 보내지 않고 완료만 보낸다."""
 
-    def __init__(self, storage: Storage, gms: GmsClient, db: Db):
-        self.storage, self.gms, self.db = storage, gms, db
+    def __init__(self, storage: Storage, gms: GmsClient, db: Db, inf: inference.Inference | None = None):
+        self.storage, self.gms, self.db, self.inf = storage, gms, db, inf
 
     async def __call__(self, env: Envelope, events: Events) -> None:
         p = env.payload
@@ -332,7 +359,8 @@ class LineTts:
             rows = await pool.fetch("SELECT id, text FROM description_lines WHERE description_id = $1 AND detail_level = $2"
                                     " AND audio_key IS NULL ORDER BY line_index", desc_id, int(p.get("detailLevel") or 3))
         items = [(line_key(desc_id, r["id"], r["text"]), r["text"]) for r in rows]
-        done = await synthesize_many(self.gms, self.storage, items, CallContext("TTS", job_id=env.jobId)) if items else {}
+        inf = await _upload_inf(pool, desc_id, self.inf)
+        done = await synthesize_many(self.gms, self.storage, items, CallContext("TTS", job_id=env.jobId), inf=inf) if items else {}
         async with pool.acquire() as con, con.transaction():
             for r in rows:
                 key = line_key(desc_id, r["id"], r["text"])
@@ -344,6 +372,15 @@ class LineTts:
         log.info("line.tts 완료 description=%s 음성 %s/%s", desc_id, ok, len(items))
         if env.jobId is not None:  # 작업에 묶인 메시지일 때만 job.events로 알린다
             await events.completed({"descriptionId": desc_id, "audioMade": ok, "audioTotal": len(items)})
+
+
+async def _upload_inf(pool, desc_id: int, inf: inference.Inference | None) -> inference.Inference | None:
+    """직접 올린 영상(videos.source_type = UPLOAD)이면 Supertonic으로 읽을 추론 클라이언트, 유튜브면 None(Gemini TTS)."""
+    if inf is None:
+        return None
+    source = await pool.fetchval("SELECT v.source_type FROM descriptions d JOIN videos v ON v.id = d.video_id WHERE d.id = $1",
+                                 desc_id)
+    return inf if source == "UPLOAD" else None
 
 
 def _pool(db: Db):

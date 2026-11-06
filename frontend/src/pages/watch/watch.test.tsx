@@ -17,6 +17,7 @@ import {
 } from '@/api/types'
 import type { PlayerControls, PlayerState } from '@/features/player/usePlayerSource'
 import { renderRoute } from '@/test/renderWithProviders'
+import { sttApi } from '@/api/stt'
 import { afterScreenChangeMs } from '@/features/search/speechLead'
 
 // 낭독기가 다 읽을 때까지 기다리는 시간은 테스트에서 0 (기다림 자체는 '요약 창 닫힘' 테스트에서 따로 본다)
@@ -108,6 +109,7 @@ vi.mock('@/api/chat', () => ({
 vi.mock('@/api/reports', () => ({ reportsApi: { create: vi.fn() } }))
 vi.mock('@/api/favorites', () => ({ favoritesApi: { add: vi.fn(), remove: vi.fn() } }))
 vi.mock('@/api/sse', () => ({ subscribeSse: vi.fn() }))
+vi.mock('@/api/stt', () => ({ sttApi: { transcribe: vi.fn() } }))
 
 const T = (s: number) => s * 1000
 const video: VideoDetail = {
@@ -738,6 +740,47 @@ test('"들으시겠어요?" 뒤에 아니요라고 하면 다시 받지 않고, 
   // 한 번 답했으면 그 뒤의 '네'는 새 질문이다
   await ask(user, '네')
   await waitFor(() => expect(chatApi.send).toHaveBeenCalledTimes(2))
+})
+
+test('말로 질문: 알아들으면 바로 입력칸으로 포커스를 옮긴다 (답을 듣는 동안 포커스가 본문으로 빠지지 않게)', async () => {
+  class FakeRecorder {
+    state = 'inactive'
+    mimeType = 'audio/webm'
+    stream = { getTracks: () => [{ stop: vi.fn() }] }
+    ondataavailable: ((e: { data: Blob }) => void) | null = null
+    onstop: (() => void) | null = null
+    start() {
+      this.state = 'recording'
+    }
+    stop() {
+      this.state = 'inactive'
+      this.ondataavailable?.({ data: new Blob(['x']) })
+      this.onstop?.()
+    }
+  }
+  vi.stubGlobal('MediaRecorder', FakeRecorder)
+  Object.defineProperty(navigator, 'mediaDevices', {
+    configurable: true,
+    value: { getUserMedia: vi.fn().mockResolvedValue({}) },
+  })
+  vi.mocked(sttApi.transcribe).mockResolvedValue({ text: '지금 화면에 숫자도 나와?', latencyMs: 1 })
+  vi.mocked(chatApi.send).mockResolvedValue({
+    chatLogId: 89,
+    inputMode: 'VOICE',
+    utterance: '지금 화면에 숫자도 나와?',
+    intent: 'QUESTION',
+    result: { answerStreamUrl: '/api/v1/chat/messages/89/stream' },
+  })
+  const user = userEvent.setup()
+  renderRoute('/watch/15')
+  await screen.findByRole('button', { name: '재생' })
+  await user.click(screen.getByRole('button', { name: '음성 인식' }))
+  await user.click(await screen.findByRole('button', { name: '말 끝내기' }))
+  await waitFor(() => expect(chatApi.send).toHaveBeenCalled())
+  expect(screen.getByRole('textbox', { name: '질문하거나 명령하기' })).toHaveFocus()
+
+  vi.unstubAllGlobals()
+  Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: undefined })
 })
 
 test('다른 탭을 보고 있어도 입력을 마치면(명령 포함) 질문 기록 탭을 보여 주고 포커스는 입력칸에 둔다', async () => {

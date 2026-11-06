@@ -710,7 +710,13 @@ export function Player({ video }: { video: VideoDetail }) {
       onNone={ask.dismissCandidates}
     />
   ) : (
-    <HistoryPanel entries={ask.entries} onReplay={ask.replay} onGoTo={seekTo} />
+    <HistoryPanel
+      entries={ask.entries}
+      onReplay={ask.replay}
+      onGoTo={seekTo}
+      offer={ask.offer}
+      onAnswerOffer={(reply) => onAsk(reply === 'yes' ? '네' : '아니요', 'TEXT')}
+    />
   )
 
   return (

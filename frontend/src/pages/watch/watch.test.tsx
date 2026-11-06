@@ -495,7 +495,10 @@ test('질문을 보낸 직후에는 낭독기가 읽을 시간만큼 기다렸�
   })
   renderRoute('/watch/15')
   await screen.findByRole('button', { name: '재생' })
-  await user.type(screen.getByRole('textbox', { name: '질문하거나 명령하기' }), '지금 뭐 나와?{Enter}')
+  await user.type(
+    screen.getByRole('textbox', { name: '질문하거나 명령하기' }),
+    '지금 뭐 나와?{Enter}',
+  )
   await waitFor(() =>
     expect(subscribeSse).toHaveBeenCalledWith('/chat/messages/90/stream', expect.anything()),
   )
@@ -525,7 +528,10 @@ test('재생 중 질문: 답이 끝나면 "답변이 끝났어요" 안내를 낭
   renderRoute('/watch/15')
   await screen.findByRole('button', { name: '재생' })
   act(() => setPlayerState?.({ playing: true, currentMs: T(30) }))
-  await user.type(screen.getByRole('textbox', { name: '질문하거나 명령하기' }), '지금 뭐 나와?{Enter}')
+  await user.type(
+    screen.getByRole('textbox', { name: '질문하거나 명령하기' }),
+    '지금 뭐 나와?{Enter}',
+  )
   await waitFor(() =>
     expect(subscribeSse).toHaveBeenCalledWith('/chat/messages/91/stream', expect.anything()),
   )
@@ -840,6 +846,33 @@ test('"들으시겠어요?" 뒤에 아니요라고 하면 다시 받지 않고, 
   // 한 번 답했으면 그 뒤의 '네'는 새 질문이다
   await ask(user, '네')
   await waitFor(() => expect(chatApi.send).toHaveBeenCalledTimes(2))
+})
+
+test('"들으시겠어요?"를 물은 답에는 다시 듣기·그 장면 보기 대신 네/아니요 버튼이 붙는다', async () => {
+  const user = userEvent.setup()
+  vi.mocked(chatApi.send).mockResolvedValue({
+    chatLogId: 93,
+    inputMode: 'TEXT',
+    utterance: '범인이 누구야?',
+    intent: 'QUESTION',
+    result: { answerStreamUrl: '/api/v1/chat/messages/93/stream' },
+  })
+  renderRoute('/watch/15')
+  await screen.findByRole('button', { name: '재생' })
+  await ask(user, '범인이 누구야?')
+  await waitFor(() => expect(subscribeSse).toHaveBeenCalledTimes(1))
+  answer('뒤에 나오는데, 들으시겠어요?', true)
+  const no = await screen.findByRole('button', { name: '아니요, 뒤 내용 듣지 않을게요' })
+  expect(screen.getByRole('button', { name: '네, 뒤 내용 들을게요' })).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /^다시 듣기/ })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /^그 장면 보기/ })).not.toBeInTheDocument()
+
+  await user.click(no)
+  await waitFor(() => expect(band()).toHaveTextContent('알겠어요.'))
+  expect(chatApi.send).toHaveBeenCalledTimes(1)
+  expect(subscribeSse).toHaveBeenCalledTimes(1)
+  expect(screen.queryByRole('button', { name: /^아니요,/ })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /^다시 듣기/ })).toBeInTheDocument()
 })
 
 test('말로 질문: 알아들으면 바로 입력칸으로 포커스를 옮긴다 (답을 듣는 동안 포커스가 본문으로 빠지지 않게)', async () => {

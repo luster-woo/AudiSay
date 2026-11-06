@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/Button'
 import { cn } from '@/components/ui/cn'
 import { formatClock, formatPositionSpoken } from '@/utils/time'
 import type { HistoryEntry } from './history'
+import type { FutureOffer } from './useAsk'
 
 /** 시각 표기. 눈에는 '2:14', 낭독기에는 '2분 14초' */
 export function Clock({ ms, className }: { ms: number; className?: string }) {
@@ -143,10 +144,15 @@ export function HistoryPanel({
   entries,
   onReplay,
   onGoTo,
+  offer = null,
+  onAnswerOffer,
 }: {
   entries: HistoryEntry[]
   onReplay: (e: Extract<HistoryEntry, { kind: 'answer' }>) => void
   onGoTo: (ms: number) => void
+  /** 마지막 항목이 "들으시겠어요?"를 물은 상태면 그 항목에 네/아니요 버튼을 단다 */
+  offer?: FutureOffer | null
+  onAnswerOffer?: (reply: 'yes' | 'no') => void
 }) {
   const listRef = useRef<HTMLOListElement>(null)
   const last = entries[entries.length - 1]
@@ -175,57 +181,87 @@ export function HistoryPanel({
         </p>
       ) : (
         <ol ref={listRef} className="mt-3 max-h-[32rem] space-y-3 overflow-y-auto pr-1">
-          {entries.map((e) => (
-            <li
-              key={e.key}
-              className={cn(
-                'rounded-md border-2 px-4 py-3',
-                e.kind === 'answer' && 'border-navy bg-yellow',
-                e.kind === 'me' && 'border-navy bg-paper',
-                e.kind === 'command' && 'border-dashed border-navy bg-paper',
-              )}
-            >
-              <p className="font-bold">
-                <span aria-hidden="true">
-                  {e.kind === 'me' ? '나' : e.kind === 'answer' ? 'AudiSay 답' : '명령'}
-                  {e.videoTimeMs != null && ` · ${formatClock(e.videoTimeMs)}`}
-                </span>
-                <span className="sr-only">
-                  {stamp(
-                    e.kind === 'me' ? '나' : e.kind === 'answer' ? 'AudiSay 답' : '명령',
-                    e.videoTimeMs,
-                  )}
-                </span>
-              </p>
-              <p className={cn('mt-1 text-lg', e.kind === 'answer' && 'font-bold')}>
-                {e.text || (e.kind === 'answer' && !e.done ? '답을 만드는 중이에요…' : '')}
-              </p>
-              {/* 버튼 자리는 답을 받는 동안에도 잡아 둔다 (끝난 뒤 생기면 카드 높이가 바뀌어 화면이 밀린다).
+          {entries.map((e, i) => {
+            // "들으시겠어요?"를 물은 항목: 마지막 항목이고 같은 질문이어야 한다 (답이 다 읽힌 뒤에만)
+            const asking =
+              !!offer &&
+              !!onAnswerOffer &&
+              i === entries.length - 1 &&
+              e.chatLogId === offer.chatLogId &&
+              (e.kind === 'command' || (e.kind === 'answer' && e.done))
+            const offerWhat = offer?.kind === 'summary' ? '요약' : '뒤 내용'
+            return (
+              <li
+                key={e.key}
+                className={cn(
+                  'rounded-md border-2 px-4 py-3',
+                  e.kind === 'answer' && 'border-navy bg-yellow',
+                  e.kind === 'me' && 'border-navy bg-paper',
+                  e.kind === 'command' && 'border-dashed border-navy bg-paper',
+                )}
+              >
+                <p className="font-bold">
+                  <span aria-hidden="true">
+                    {e.kind === 'me' ? '나' : e.kind === 'answer' ? 'AudiSay 답' : '명령'}
+                    {e.videoTimeMs != null && ` · ${formatClock(e.videoTimeMs)}`}
+                  </span>
+                  <span className="sr-only">
+                    {stamp(
+                      e.kind === 'me' ? '나' : e.kind === 'answer' ? 'AudiSay 답' : '명령',
+                      e.videoTimeMs,
+                    )}
+                  </span>
+                </p>
+                <p className={cn('mt-1 text-lg', e.kind === 'answer' && 'font-bold')}>
+                  {e.text || (e.kind === 'answer' && !e.done ? '답을 만드는 중이에요…' : '')}
+                </p>
+                {/* 버튼 자리는 답을 받는 동안에도 잡아 둔다 (끝난 뒤 생기면 카드 높이가 바뀌어 화면이 밀린다).
                   읽는 중에는 누를 수 없게(aria-disabled) 두었다가 답이 끝나면 누를 수 있다 */}
-              {e.kind === 'answer' && (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Button
-                    variant="secondary"
-                    disabled={!e.done}
-                    onClick={() => onReplay(e)}
-                    aria-label={`다시 듣기, ${stamp('AudiSay 답', e.videoTimeMs)}`}
-                  >
-                    다시 듣기
-                  </Button>
-                  {e.videoTimeMs != null && (
+                {asking ? (
+                  // 예/아니요로 묻는 말에는 예/아니요로 답하게 한다. 누르면 '네'·'아니요'라고 적은 것과 같다
+                  <div className="mt-3 flex flex-wrap gap-2">
                     <Button
                       variant="secondary"
-                      disabled={!e.done}
-                      onClick={() => onGoTo(e.videoTimeMs!)}
-                      aria-label={`그 장면 보기, ${formatPositionSpoken(e.videoTimeMs)}`}
+                      onClick={() => onAnswerOffer!('yes')}
+                      aria-label={`네, ${offerWhat} 들을게요`}
                     >
-                      그 장면 보기
+                      네
                     </Button>
-                  )}
-                </div>
-              )}
-            </li>
-          ))}
+                    <Button
+                      variant="secondary"
+                      onClick={() => onAnswerOffer!('no')}
+                      aria-label={`아니요, ${offerWhat} 듣지 않을게요`}
+                    >
+                      아니요
+                    </Button>
+                  </div>
+                ) : (
+                  e.kind === 'answer' && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button
+                        variant="secondary"
+                        disabled={!e.done}
+                        onClick={() => onReplay(e)}
+                        aria-label={`다시 듣기, ${stamp('AudiSay 답', e.videoTimeMs)}`}
+                      >
+                        다시 듣기
+                      </Button>
+                      {e.videoTimeMs != null && (
+                        <Button
+                          variant="secondary"
+                          disabled={!e.done}
+                          onClick={() => onGoTo(e.videoTimeMs!)}
+                          aria-label={`그 장면 보기, ${formatPositionSpoken(e.videoTimeMs)}`}
+                        >
+                          그 장면 보기
+                        </Button>
+                      )}
+                    </div>
+                  )
+                )}
+              </li>
+            )
+          })}
         </ol>
       )}
     </section>

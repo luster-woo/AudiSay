@@ -12,7 +12,9 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -37,8 +39,23 @@ public class KeywordSceneScorer {
     static final int MERGE_WINDOW_MS = 15_000;
     static final double SUMMARY_PENALTY = 0.5;
     static final double EVIDENCE_BONUS = 0.3;
-    /** 낱말 뒤 같은 마디(문장부호 전, 12자 안)에 오면 그 일이 일어나지 않은 것 */
-    private static final Pattern NEGATION = Pattern.compile("없|못|아니|안 |실패|무산|놓치|놓쳤|빗나");
+    /**
+     * 낱말 뒤 같은 마디(문장부호 전, 12자 안)에 오면 그 일이 일어나지 않은 것. 가정·막힘도 포함
+     * ("득점이 될 만한", "골이 될 수도", "골을 막아 냅니다")
+     */
+    private static final Pattern NEGATION = Pattern.compile(
+            "없|못|아니|안 |실패|무산|놓치|놓쳤|빗나|될 만|될 수|될 뻔|뻔했|저지|막아|막았|막혔|막힌|선방|노리|노린");
+    /**
+     * 낱말 바로 뒤에 붙으면 그 일이 일어나지 않은 것("득점 시도와 오프사이드", "득점 기회"). 바로 뒤만 본다 —
+     * "회전 점프를 시도합니다"처럼 동사로 쓰면 실제로 한 일이다
+     */
+    private static final Pattern ATTEMPT = Pattern.compile("\\s?(?:시도|기회)");
+    /** 검색어가 시도·막힘을 찾는 말이면("슈팅 시도 장면", "골키퍼 선방") 그런 문장을 빼지 않는다 */
+    private static final Pattern QUERY_ATTEMPT = Pattern.compile("시도|막아|막았|막는|막힌|막혔|선방|저지|노리|노린|뻔");
+    /** 하이라이트가 같은 순간을 다시 보여 주는 장면(목차 제목) */
+    private static final Pattern REPLAY = Pattern.compile("리플레이|다시 ?보기|느린 화면|슬로 ?모션");
+    /** 리플레이 장면은 이 시간 안 앞에 같은 일을 찾은 후보가 있으면 뺀다 */
+    static final int REPLAY_WINDOW_MS = 60_000;
     /** 검색어 어절이 이 말로 시작하면 검색어 자체가 부정을 말하는 것 */
     private static final Pattern QUERY_NEGATION = Pattern.compile("^(?:못|않|아니|안됐|안된|안되|안들|실패|무산|놓치|놓친|놓쳤|빗나)");
     /** 낱말 앞에 오면 그 순간이 아니라 요약·기록을 말하는 것일 수 있음 */
@@ -51,10 +68,24 @@ public class KeywordSceneScorer {
             "에게", "한테", "처럼", "하는", "하던", "했던", "되는", "되던", "하게", "해서", "하기", "는지", "은지", "랑");
     private static final List<String> PARTICLES = List.of("은", "는", "이", "가", "을", "를", "에", "로", "와", "과", "의", "도", "만");
     private static final List<String> SHORT_ENDINGS = List.of("한", "던", "게", "고", "서");
+    /** 합성어 끝 한 글자 낱말 뒤에 올 수 있는 조사·어미의 첫 글자: "선제골을", "헤더골로", "추가골입니다", "쐐기골까지" */
+    private static final String COMPOUND_TAIL = "은는이가을를에로와과의도만입인으까부처랑하";
     private static final Set<String> STOPWORDS = Set.of("장면", "부분", "데", "곳", "때", "거", "것", "다시", "그", "저", "이",
             "아까", "보고", "싶어", "싶", "찾아", "줘", "가줘", "가자", "가", "이동", "보여", "보여줘", "나오", "나온", "나왔",
             "있", "있는", "하", "좀", "한번", "번", "더", "영상", "거기", "쪽", "다", "해", "할", "한", "되", "했", "가요", "주세요",
-            "넘어가", "친", "치는", "순간", "당한", "당하는", "당했던", "하던", "나오는");
+            "넘어가", "친", "치는", "순간", "당한", "당하는", "당했던", "하던", "나오는", "된", "됐", "될");
+    /** 같은 일을 다르게 쓰는 말: 해설은 "골" 대신 "득점", "헤딩" 대신 "헤더"라고 쓸 때가 많다 */
+    private static final Map<String, String> SYNONYMS = Map.of("골", "득점", "헤딩", "헤더", "헤더", "헤딩");
+    /** 골을 말할 때 붙는 동사 — 해설은 "득점에 성공", "골망을 흔든다"처럼 '넣'이 없을 때가 많아 뺀다 */
+    private static final Set<String> GOAL_TERMS = Set.of("골", "득점", "골인");
+    /** "첫 골", "두 번째 골", "마지막 골" — 순서는 낱말로 찾지 않고 찾은 후보 중 시간순으로 고른다 */
+    private static final Pattern ORDINAL = Pattern.compile(
+            "(?<![가-힣\\d])(첫|두|세|네|다섯|여섯|일곱|여덟|아홉|열|\\d+)\\s*번째|(?<![가-힣])첫(?=\\s)|(?<![가-힣])마지막(?=\\s)");
+    private static final Map<String, Integer> ORDINAL_NUMBERS = Map.of("첫", 1, "두", 2, "세", 3, "네", 4, "다섯", 5,
+            "여섯", 6, "일곱", 7, "여덟", 8, "아홉", 9, "열", 10);
+    /** 점수 "2대 0", "2:0", "2-0"은 한 낱말 "2:0"으로 본다 */
+    private static final Pattern SCORE = Pattern.compile("(\\d+)\\s*(?:대|:|-)\\s*(\\d+)");
+    private static final Pattern SCORE_TERM = Pattern.compile("\\d+:\\d+");
 
     private static final double KEYWORD = 3;
     private static final double TITLE = 3;
@@ -99,7 +130,7 @@ public class KeywordSceneScorer {
         double[] idf = idf(terms, scenes);
         // 검색어 자체가 부정·요약을 말하면("패스 못 받는 장면", "시즌 첫 홈런") 그 문장을 빼거나 깎지 않는다
         String loweredQuery = lower(query);
-        boolean dropNegated = negationFilter && !negates(loweredQuery);
+        boolean dropNegated = negationFilter && !negates(loweredQuery) && !QUERY_ATTEMPT.matcher(loweredQuery).find();
         boolean penalizeSummary = negationFilter && !SUMMARY_TALK.matcher(loweredQuery).find();
         List<Hit> hits = new ArrayList<>();
         for (SceneText scene : scenes) {
@@ -107,7 +138,7 @@ public class KeywordSceneScorer {
             double chapterScore = 0;
             Set<Integer> chapterMatched = new HashSet<>();
             for (int i = 0; i < terms.size(); i++) {
-                double w = fields.weight(terms.get(i));
+                double w = fields.weight(terms.get(i), dropNegated);
                 if (w > 0) {
                     chapterScore += w * idf[i];
                     chapterMatched.add(i);
@@ -118,15 +149,17 @@ public class KeywordSceneScorer {
                 String text = lower(moment.text());
                 double score = 0;
                 Set<Integer> matched = new HashSet<>(chapterMatched);
-                boolean any = false;
+                int own = 0;
                 for (int i = 0; i < terms.size(); i++) {
                     if (contains(text, terms.get(i))) {
                         score += MOMENT * idf[i];
                         matched.add(i);
-                        any = true;
+                        own++;
                     }
                 }
-                if (any && covers(matched.size(), terms.size())) {
+                // 문장 자체가 낱말 절반 이상을 말해야 후보: 목차에 "라면 사리"가 있다고 같은 장면의 "김치를 넣는다"가
+                // "라면 사리 넣는"에 다 맞는 것으로 치지 않게(세 낱말 이상 검색어에서만 달라진다)
+                if (own > 0 && own * 2 >= terms.size() && covers(matched.size(), terms.size())) {
                     if (dropNegated && negated(text, terms)) {
                         continue;
                     }
@@ -143,8 +176,25 @@ public class KeywordSceneScorer {
             }
         }
         List<Hit> merged = merge(hits, evidenceBonus);
+        if (!REPLAY.matcher(loweredQuery).find()) {
+            merged = dropReplays(merged);
+        }
         merged.sort(Comparator.comparingDouble(Hit::score).reversed());
         return decide(terms, merged, nowMs);
+    }
+
+    /**
+     * 리플레이 장면 후보는 1분 안 앞에 리플레이가 아닌 후보가 있으면 뺀다 — 하이라이트는 골 장면을 바로 다시 보여 주므로
+     * "골 장면"이 같은 골을 두 번 고르게 하지 않는다. 앞 후보가 없으면(리플레이에만 나온 순간) 남긴다
+     */
+    static List<Hit> dropReplays(List<Hit> hits) {
+        List<Hit> originals = hits.stream().filter(h -> !isReplay(h)).toList();
+        return new ArrayList<>(hits.stream().filter(h -> !isReplay(h) || originals.stream().noneMatch(o ->
+                o.targetMs() < h.targetMs() && h.targetMs() - o.targetMs() <= REPLAY_WINDOW_MS)).toList());
+    }
+
+    private static boolean isReplay(Hit hit) {
+        return REPLAY.matcher(lower(hit.scene().title())).find();
     }
 
     /**
@@ -229,7 +279,7 @@ public class KeywordSceneScorer {
 
     /** 맞은 낱말 바로 뒤(같은 마디)에 부정 표현이 있으면 true: "안타가 하나도 없네요" → true, "아웃 아니고 안타!" → false */
     static boolean negated(String text, List<String> terms) {
-        for (String term : terms) {
+        for (String term : withSynonyms(terms)) {
             int at = indexOf(text, term);
             if (at < 0) {
                 continue;
@@ -237,6 +287,9 @@ public class KeywordSceneScorer {
             // 끝 글자를 뗀 앞부분으로 맞았으면(indexOf) 실제로 맞은 길이만큼만 건너뛴다(문장 끝이면 범위를 넘어 예외가 났다)
             int from = at + (text.startsWith(term, at) ? term.length() : term.length() - 1);
             String after = text.substring(from, Math.min(text.length(), from + 12));
+            if (ATTEMPT.matcher(after).lookingAt()) {
+                return true;
+            }
             var end = CLAUSE_END.matcher(after);
             if (end.find()) {
                 after = after.substring(0, end.start());
@@ -272,13 +325,19 @@ public class KeywordSceneScorer {
 
     /** 맞은 낱말 앞에 요약·기록하는 말이 있으면 true: "오늘 안타가 3개째" → true */
     static boolean summarizing(String text, List<String> terms) {
-        for (String term : terms) {
+        for (String term : withSynonyms(terms)) {
             int at = indexOf(text, term);
             if (at > 0 && SUMMARY_TALK.matcher(text.substring(0, at)).find()) {
                 return true;
             }
         }
         return false;
+    }
+
+    private static List<String> withSynonyms(List<String> terms) {
+        List<String> all = new ArrayList<>(terms);
+        terms.stream().map(SYNONYMS::get).filter(s -> s != null && !all.contains(s)).forEach(all::add);
+        return all;
     }
 
     private static int indexOf(String text, String term) {
@@ -299,7 +358,7 @@ public class KeywordSceneScorer {
         return terms.stream().mapToDouble(term -> {
             long df = 0;
             for (int i = 0; i < scenes.size(); i++) {
-                if (fields.get(i).weight(term) > 0
+                if (fields.get(i).weight(term, false) > 0
                         || scenes.get(i).moments().stream().anyMatch(m -> contains(lower(m.text()), term))) {
                     df++;
                 }
@@ -310,13 +369,60 @@ public class KeywordSceneScorer {
 
     static List<String> terms(String query) {
         Set<String> terms = new LinkedHashSet<>();
-        for (String token : SPLIT.split(query.toLowerCase(Locale.ROOT))) {
+        String q = withoutOrdinal(query).toLowerCase(Locale.ROOT);
+        Matcher score = SCORE.matcher(q);
+        while (score.find()) {
+            terms.add(score.group(1) + ":" + score.group(2));
+        }
+        for (String token : SPLIT.split(SCORE.matcher(q).replaceAll(" "))) {
             String term = strip(token);
             if (!term.isEmpty() && !STOPWORDS.contains(term) && !STOPWORDS.contains(token)) {
                 terms.add(term);
             }
         }
+        if (terms.stream().anyMatch(GOAL_TERMS::contains)) {
+            terms.remove("넣");
+        }
         return List.copyOf(terms);
+    }
+
+    /**
+     * 목차 제목이 검색어 낱말을 모두 담았고(두 글자 이상 낱말이 둘 이상) 부정·시도가 아니면 true.
+     * RAG 확인에서 LLM이 하나도 고르지 않았을 때 이런 곳만은 믿고 보여 준다("9회 말 수비" → "9회 말 … 다이빙 캐치 수비")
+     */
+    public static boolean titleCovers(List<String> terms, SceneText scene) {
+        String title = lower(scene.title());
+        return terms.stream().filter(t -> t.length() >= 2).count() >= 2
+                && terms.stream().allMatch(t -> contains(title, t))
+                && !negated(title, terms);
+    }
+
+    /** 순서 말을 뺀 검색어("두 번째 골" → "골"). 순서 말만 있으면 그대로 */
+    static String withoutOrdinal(String query) {
+        Matcher m = ORDINAL.matcher(query);
+        if (!m.find()) {
+            return query;
+        }
+        String rest = (query.substring(0, m.start()) + " " + query.substring(m.end())).strip();
+        return rest.isEmpty() ? query : rest;
+    }
+
+    /**
+     * 검색어에 순서 말("첫 골", "두 번째 골", "마지막 골")이 있고 후보가 여럿이면 시간순으로 그 번째 하나만.
+     * 순서 말이 없거나, 후보가 하나뿐이거나, 그 번째가 없으면 그대로
+     */
+    public static List<Hit> pickOrdinal(String query, List<Hit> hits) {
+        Matcher m = ORDINAL.matcher(query);
+        if (hits.size() < 2 || !m.find() || withoutOrdinal(query).equals(query)) {
+            return hits;
+        }
+        String word = m.group(1) != null ? m.group(1) : m.group();
+        int nth = word.equals("마지막") ? hits.size()
+                : ORDINAL_NUMBERS.getOrDefault(word, word.chars().allMatch(Character::isDigit) ? Integer.parseInt(word) : 0);
+        if (nth < 1 || nth > hits.size()) {
+            return hits;
+        }
+        return List.of(hits.stream().sorted(Comparator.comparingInt(Hit::targetMs)).toList().get(nth - 1));
     }
 
     /** 조사·어미를 뒤에서부터 뗀다(두 번까지, 한 글자는 남김): "차가" → "차", "튀기는" → "튀기", "만들고" → "만들" */
@@ -352,13 +458,25 @@ public class KeywordSceneScorer {
     }
 
     /**
-     * 글에 낱말이 있는지. 한 글자("차", "양")는 낱말 맨 앞에서만, 세 글자 이상은 끝 한 글자를 뗀 것도("뒤집히" → "뒤집"),
-     * 끝 글자 모음이 줄어든 꼴도("튀기" → "튀겨")
+     * 글에 낱말이 있는지. 한 글자("차", "골")는 낱말 맨 앞이나 세 글자 이상 합성어 끝에서만("골키퍼", "선제골을", "자동차가"),
+     * 세 글자 이상은 끝 한 글자를 뗀 것도("뒤집히" → "뒤집"), 끝 글자 모음이 줄어든 꼴도("튀기" → "튀겨")
      */
     static boolean contains(String text, String term) {
+        if (SCORE_TERM.matcher(term).matches()) {
+            return Pattern.compile("(?<!\\d)" + Pattern.quote(term) + "(?!\\d)")
+                    .matcher(SCORE.matcher(text).replaceAll("$1:$2")).find();
+        }
+        if (containsWord(text, term)) {
+            return true;
+        }
+        String synonym = SYNONYMS.get(term);
+        return synonym != null && containsWord(text, synonym);
+    }
+
+    private static boolean containsWord(String text, String term) {
         if (term.length() == 1) {
             for (String word : SPLIT.split(text)) {
-                if (word.startsWith(term)) {
+                if (word.startsWith(term) || endsCompound(word, term)) {
                     return true;
                 }
             }
@@ -369,6 +487,19 @@ public class KeywordSceneScorer {
         }
         String contracted = contracted(term);
         return contracted != null && text.contains(contracted);
+    }
+
+    /**
+     * 한 글자 낱말이 두 글자 이상 말 뒤에 붙은 합성어의 끝인지: "선제골을"·"헤더골입니다"(골), "자동차가"(차).
+     * 두 글자 말("시골", "모양", "다양한", "배우")은 한 낱말이라 빼서 이런 말 끝에 우연히 걸리지 않게 한다
+     */
+    static boolean endsCompound(String word, String term) {
+        for (int i = word.indexOf(term, 2); i >= 0; i = word.indexOf(term, i + 1)) {
+            if (i == word.length() - 1 || COMPOUND_TAIL.indexOf(word.charAt(i + 1)) >= 0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -411,13 +542,18 @@ public class KeywordSceneScorer {
             this.sceneDescription = lower(scene.sceneDescription());
         }
 
-        double weight(String term) {
-            if (term.length() == 1 ? keywords.contains(term)
+        /** @param dropNegated 제목·요약·장면 설명에서 낱말 뒤가 부정·시도면("득점 시도와 오프사이드") 맞지 않은 것으로 */
+        double weight(String term, boolean dropNegated) {
+            if (term.length() == 1 ? keywords.stream().anyMatch(k -> k.equals(term) || endsCompound(k, term))
                     : keywords.stream().anyMatch(k -> k.contains(term) || (k.length() >= 2 && term.contains(k)))) {
                 return KEYWORD;
             }
-            return contains(title, term) ? TITLE : contains(summary, term) ? SUMMARY
-                    : contains(sceneDescription, term) ? SCENE : 0;
+            return matches(title, term, dropNegated) ? TITLE : matches(summary, term, dropNegated) ? SUMMARY
+                    : matches(sceneDescription, term, dropNegated) ? SCENE : 0;
+        }
+
+        private static boolean matches(String field, String term, boolean dropNegated) {
+            return contains(field, term) && !(dropNegated && negated(field, List.of(term)));
         }
     }
 }

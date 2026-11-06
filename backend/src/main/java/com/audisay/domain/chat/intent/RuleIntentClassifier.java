@@ -38,6 +38,8 @@ public class RuleIntentClassifier {
     /** 이동이 아니라 그 장면을 묻는 말("방금 전 장면 설명해 줘"), 고르는 말("이전 장면 말고 다음 장면") */
     private static final Pattern NAV_NOT_MOVE = Pattern.compile("설명|알려|말해|묘사|읽어|들려|말고");
     private static final Pattern RECAP_WHAT = Pattern.compile("줄거리|요약|정리|무슨일|무슨이야기|어떻게됐|어떤내용|있었"
+            // "지금까지 어떻게 만들었어"·"여태 뭐 했어" — 지금까지 바로 뒤에 붙을 때만("지금까지 소스는 어떻게 만들었어"는 질문)
+            + "|(?:지금까지|여태까지|여태|이때까지|여기까지)(?:는)?(?:어떻게|뭘|뭐)(?:만들|했|진행|흘러)"
             + "|(?:지금까지|여태까지|여태|이때까지|여기까지|아까까지|지난(?:내용|이야기|부분))(?:의|영상|(?:본|나온)(?:거|게|것은?)?)?(?:이|은|는|가)?무슨(?:내용|얘기)(?!으로|을|를|에서|때문|이제일|이중요)");
     /** "지금까지 내용"처럼 약한 말은 질문 낱말이 없을 때만 RECAP("지금까지 나온 내용 중에 범인이 누구야"는 질문) */
     private static final Pattern RECAP_WHAT_WEAK = Pattern.compile("내용|이야기");
@@ -54,6 +56,10 @@ public class RuleIntentClassifier {
     private static final Pattern TO_START = Pattern.compile("^(?:(?:이\\s*)?영상\\s*)?(?:맨\\s*)?처음\\s*(?:으로|부터)" + MOVE_TAIL);
     /** "끝까지 봐"·"끝까지 틀어"는 끝으로 가는 게 아니라 계속 보는 것이라 "으로"만 */
     private static final Pattern TO_END = Pattern.compile("^(?:(?:이\\s*)?영상\\s*)?(?:맨\\s*끝|끝|마지막)\\s*으로" + MOVE_TAIL);
+    /** "후반 30분"·"전반전 10분"은 영상 시각이 아니라 경기 시각이다 — 시각 이동이 아니라 그 장면 찾기로 */
+    private static final Pattern MATCH_CLOCK = Pattern.compile("(?:전반|후반|연장)(?:\\s*전)?$");
+    /** "이동 간격 30초로"는 시각 이동이 아니라 이동 간격(seekStepSec) 설정 */
+    private static final Pattern STEP_SETTING = Pattern.compile("(?:간격|단위)(?:을|를|은|는)?(5|10|30|오|십|삼십)초");
     private static final Pattern AFTER_ABSOLUTE = Pattern.compile("^\\s*(?:으로|로)(?![가-힣])");
     private static final Pattern AFTER_BACKWARD = Pattern.compile(
             "^\\s*(?:만\\s*)?(?:전으로|전|이전으로|앞으로|앞에|되감|되돌|돌려|돌아가|앞당겨)");
@@ -85,7 +91,8 @@ public class RuleIntentClassifier {
         if (c.isEmpty()) {
             return null;
         }
-        if (REPORT.matcher(c).find()) {
+        // "신고하는 장면으로 가 줘"는 신고가 아니라 장면 찾기
+        if (REPORT.matcher(c).find() && seekScene(s) == null) {
             return ClassifiedIntent.unknown(REPORT_MESSAGE);
         }
         if (SELF.matcher(c).find()) {
@@ -147,6 +154,12 @@ public class RuleIntentClassifier {
         }
         String before = s.substring(0, time.start()).strip();
         String after = s.substring(time.end());
+        if (STEP_SETTING.matcher(s.replace(" ", "")).find()) {
+            return null;
+        }
+        if (MATCH_CLOCK.matcher(before).find()) {
+            return ClassifiedIntent.seekScene(s.substring(0, time.end()).strip());
+        }
         if (ASK_AFTER_TIME.matcher(after.replace(" ", "")).find()) {
             return null;
         }
@@ -186,6 +199,10 @@ public class RuleIntentClassifier {
         if (find(c, "요약") && !SUMMARY_SETTING.matcher(c).find() && find(c, "들려|읽어|틀어|해줘|보여|말해|재생|요약해")) {
             return ActionCode.PLAY_SUMMARY;
         }
+        // "튜토리얼 다시 들려줘"는 방금 말 다시가 아니라 튜토리얼
+        if (find(c, "튜토리얼|사용법(?:을)?다시|처음설명다시")) {
+            return ActionCode.REPLAY_TUTORIAL;
+        }
         if (find(c, "다시(?:말|읽|들려)|한번더(?:말|읽|들려)|못들었|^(?:방금)?뭐라고(?:했|그랬)(?:어|지|나요|어요|니)?$")) {
             return ActionCode.REPEAT_LAST;
         }
@@ -204,9 +221,6 @@ public class RuleIntentClassifier {
         }
         if (find(c, "(?:화면|영상)?(?:글자|글씨|텍스트)(?:를|좀)?(?:자세히|다|전부)?읽")) {
             return ActionCode.READ_DETAIL;
-        }
-        if (find(c, "튜토리얼|사용법(?:을)?다시|처음설명다시")) {
-            return ActionCode.REPLAY_TUTORIAL;
         }
         if (find(c, "도움말|뭐라고말하면|어떻게말하면|무슨말(?:을)?하면|쓸수있는(?:말|명령)|명령어|사용법")) {
             return ActionCode.HELP;
@@ -237,6 +251,16 @@ public class RuleIntentClassifier {
             }
             return ClassifiedIntent.setting("summaryMode", find(c, "물어|묻(?!지말)") ? "ASK" : "ALWAYS");
         }
+        Matcher step = STEP_SETTING.matcher(c);
+        if (step.find()) {
+            String n = step.group(1);
+            return ClassifiedIntent.setting("seekStepSec", switch (n) {
+                case "오" -> "5";
+                case "십" -> "10";
+                case "삼십" -> "30";
+                default -> n;
+            });
+        }
         if (find(c, "고대비")) {
             return ClassifiedIntent.setting("highContrast", find(c, "꺼|끄|해제|없애") ? "false" : "true");
         }
@@ -250,11 +274,12 @@ public class RuleIntentClassifier {
             if (find(c, "꺼|끄|읽지마|안읽|그만")) {
                 return ClassifiedIntent.setting("subtitleReading", "OFF");
             }
+            // "자막 다를 때만 읽어"의 '다'를 '다(전부)'로 읽지 않게 먼저 본다
+            if (find(c, "(?:다른|번역|외국어)자막만|다를때만|다른것만|다를때")) {
+                return ClassifiedIntent.setting("subtitleReading", "DIFFERENT_ONLY");
+            }
             if (find(c, "자막(?:을|은)?(?:다|모두|전부)")) {
                 return ClassifiedIntent.setting("subtitleReading", "ALL");
-            }
-            if (find(c, "(?:다른|번역|외국어)자막만|다를때만")) {
-                return ClassifiedIntent.setting("subtitleReading", "DIFFERENT_ONLY");
             }
             return null;
         }

@@ -9,7 +9,7 @@
   음성이 없는 것 전부.
 - 한 문장이 실패하면 그 문장만 비워 둔다(FE가 브라우저 음성으로 읽음). 모델은 gemini-3.8-flash-tts → 실패하면 lite.
 - 직접 올린 영상(UPLOAD)은 해설·요약 음성을 H200 Supertonic 3(F1 수아, 크레딧 0)으로 만든다(2026-11-06 사용자 결정, 데모와 같음).
-  유튜브 영상만 Gemini TTS(Kore)를 쓴다.
+  유튜브 영상과, GPU 서버가 끊겼을 때의 업로드 영상은 Gemini TTS(Kore)를 쓴다.
 - 문장만 보낸다(지시문을 붙이면 그것까지 읽음). PCM 24kHz 16bit mono → ffmpeg로 mp3(64k). Dockerfile에 ffmpeg 필요.
 - clean_tail: SDK 응답 끝에 붙는 0.1~0.3초 최대 음량 잡음("칙")을 잘라 낸다(데모 troubleshooting 6번).
 - strip_wav_header: 응답 앞의 WAV 헤더를 떼어 낸다(그대로 두면 해설 맨 앞에 "딱" 소리).
@@ -375,12 +375,18 @@ class LineTts:
 
 
 async def _upload_inf(pool, desc_id: int, inf: inference.Inference | None) -> inference.Inference | None:
-    """직접 올린 영상(videos.source_type = UPLOAD)이면 Supertonic으로 읽을 추론 클라이언트, 유튜브면 None(Gemini TTS)."""
+    """직접 올린 영상(videos.source_type = UPLOAD)이면 Supertonic으로 읽을 추론 클라이언트, 유튜브면 None(Gemini TTS).
+    GPU 서버(터널)가 끊겼으면 업로드 영상도 None → 유튜브처럼 Gemini TTS로 만든다(문장이 비지 않게, 2026-11-06)."""
     if inf is None:
         return None
     source = await pool.fetchval("SELECT v.source_type FROM descriptions d JOIN videos v ON v.id = d.video_id WHERE d.id = $1",
                                  desc_id)
-    return inf if source == "UPLOAD" else None
+    if source != "UPLOAD":
+        return None
+    if not await inf.healthy():
+        log.warning("H200이 응답하지 않아 업로드 영상 해설 음성을 Gemini TTS로 description=%s", desc_id)
+        return None
+    return inf
 
 
 def _pool(db: Db):

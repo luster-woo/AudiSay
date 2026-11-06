@@ -90,6 +90,19 @@ async def test_only_upload_videos_pick_supertonic():
     assert await tts._upload_inf(Pool("UPLOAD"), 1, None) is None
 
 
+async def test_upload_video_falls_back_to_gemini_when_h200_down():
+    """GPU 서버가 끊겼으면 업로드 영상도 Gemini TTS로(음성이 비지 않게)."""
+    class Pool:
+        async def fetchval(self, sql, desc_id):
+            return "UPLOAD"
+
+    class Down(inference.MockInference):
+        async def healthy(self):
+            return False
+
+    assert await tts._upload_inf(Pool(), 1, Down()) is None
+
+
 async def test_old_cache_audio_is_fixed_once(monkeypatch, tmp_path):
     """헤더 잡음을 고치기 전에 캐시에 들어간 음성(headClean 없음)은 한 번 고쳐 다시 넣고, 다음부터는 그대로 쓴다."""
     fixes = []

@@ -121,8 +121,8 @@ audisay:
   usage-limits:
     general:
       youtube:
-        max-duration-sec: 300
-        daily-count: 2
+        max-duration-sec: 600
+        daily-count: 5
       upload:
         max-duration-sec: 300
         daily-count: 1
@@ -130,7 +130,7 @@ audisay:
     visually-impaired:
       youtube:
         max-duration-sec: 3600
-        daily-count: 5
+        daily-count: 10
       upload:
         max-duration-sec: 3600
         daily-count: 3

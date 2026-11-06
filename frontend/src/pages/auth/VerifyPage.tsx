@@ -290,8 +290,8 @@ const BENEFITS: { title: string; rows: { label: string; now: string; after: stri
   {
     title: '유튜브 해설',
     rows: [
-      { label: '영상 길이', now: '5분 이하', after: '60분 이하' },
-      { label: '하루', now: '2개', after: '5개' },
+      { label: '영상 길이', now: '10분 이하', after: '60분 이하' },
+      { label: '하루', now: '5개', after: '10개' },
     ],
   },
   {
@@ -305,7 +305,7 @@ const BENEFITS: { title: string; rows: { label: string; now: string; after: stri
 
 /**
  * 항목 하나의 '지금 → 인증 후' 비교 표.
- * 낭독기에는 "유튜브 해설 표, 영상 길이, 지금 5분 이하, 인증 후 60분 이하"처럼 칸 제목과 함께 읽힌다.
+ * 낭독기에는 "유튜브 해설 표, 영상 길이, 지금 10분 이하, 인증 후 60분 이하"처럼 칸 제목과 함께 읽힌다.
  */
 function BenefitTable({ title, rows }: (typeof BENEFITS)[number]) {
   return (

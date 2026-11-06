@@ -26,7 +26,10 @@ export function VideoStage({
   className,
 }: VideoStageProps) {
   return (
+    // 영상 상자는 보기만 하는 곳. 조작은 바깥 버튼·재생바로 하므로 낭독기에서 숨긴다
+    // (유튜브 iframe 안의 '동영상 재생' 버튼 등이 읽히거나 포커스가 들어가지 않게)
     <div
+      aria-hidden="true"
       className={cn(
         'relative w-full overflow-hidden',
         fill

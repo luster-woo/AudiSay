@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { usersApi } from '@/api/users'
 import { queryKeys } from '@/api/queryKeys'
 import { tokenStore } from '@/api/token'
-import { toUserMessage } from '@/api/errors'
+import { ApiError, toUserMessage } from '@/api/errors'
 import { useAnnouncer } from '@/features/announcer/context'
 import { useAuth } from '@/features/auth/context'
 import { usePageEntry } from '@/features/page/usePageEntry'
@@ -24,6 +24,30 @@ function checkFile(file: File): string | null {
   return null
 }
 
+/** 실패 안내. 서류 거절(USER_006)·하루 초과(USER_007)·확인 밀림(USER_008)은 서버 문구를 그대로 읽는다 */
+interface SubmitError {
+  title: string
+  message: string
+}
+
+function toSubmitError(err: unknown): SubmitError & { code?: string } {
+  if (err instanceof ApiError) {
+    switch (err.code) {
+      case 'USER_006':
+        return {
+          code: err.code,
+          title: '서류를 확인하지 못했어요',
+          message: `${err.message} 파일을 다시 골라 올려 주세요.`,
+        }
+      case 'USER_007':
+        return { code: err.code, title: '오늘은 더 신청할 수 없어요', message: err.message }
+      case 'USER_008':
+        return { code: err.code, title: '지금은 확인할 수 없어요', message: err.message }
+    }
+  }
+  return { title: '인증하지 못했어요', message: toUserMessage(err) }
+}
+
 export default function VerifyPage() {
   const queryClient = useQueryClient()
   const { user, updateUser } = useAuth()
@@ -33,13 +57,16 @@ export default function VerifyPage() {
   const agreeRef = useRef<HTMLInputElement>(null)
   const hintId = useId()
   const fileStatusId = useId()
+  const agreeHintId = useId()
 
   const [file, setFile] = useState<File | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
   const [agreed, setAgreed] = useState(false)
   const [agreeError, setAgreeError] = useState<string | null>(null)
-  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [submitError, setSubmitError] = useState<SubmitError | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  /** 오늘 시도 횟수를 다 씀 (USER_007). 다시 눌러도 같은 답이라 버튼을 막는다 */
+  const [blocked, setBlocked] = useState(false)
   const [done, setDone] = useState(false)
 
   // 이미 인증한 회원은 이 화면에서 할 일이 없으므로 내 정보로 보낸다 (주소를 직접 입력해 들어온 경우).
@@ -80,6 +107,8 @@ export default function VerifyPage() {
     }
 
     setSubmitting(true)
+    setSubmitError(null)
+    announce('서류를 확인하고 있어요. 잠시 기다려 주세요.')
     try {
       const res = await usersApi.verify(file!)
       // 역할이 AccessToken 에 담기므로 새 토큰으로 바꾼다 (API 명세)
@@ -96,9 +125,16 @@ export default function VerifyPage() {
         announce('시각장애인 인증이 끝났어요. 이제 60분까지 해설을 만들 수 있어요.')
       })
     } catch (err) {
-      const msg = toUserMessage(err)
-      setSubmitError(msg)
-      announce(`인증하지 못했어요. ${msg}`)
+      const e = toSubmitError(err)
+      setSubmitError(e)
+      if (e.code === 'USER_007') setBlocked(true)
+      if (e.code === 'USER_006') {
+        // 같은 파일로는 다시 거절되므로 고른 파일을 비우고 파일 고르기로 보낸다
+        setFile(null)
+        if (fileRef.current) fileRef.current.value = ''
+        fileRef.current?.focus()
+      }
+      announce(`${e.title}. ${e.message}`, { politeness: 'assertive' })
     } finally {
       setSubmitting(false)
     }
@@ -128,12 +164,13 @@ export default function VerifyPage() {
         ) : (
           <>
             <p className="mt-4 text-xl text-ink-muted">
-              서류 한 장을 올리면 바로 적용돼요. 서류는 형식만 확인하고 어디에도 저장하지 않아요.
+              서류 한 장을 올리면 바로 확인해요. 서류는 글자를 읽어 종류만 확인하고 어디에도
+              저장하지 않아요.
             </p>
 
             {submitError && (
-              <Notice title="인증하지 못했어요" className="mt-8">
-                {submitError}
+              <Notice title={submitError.title} className="mt-8">
+                {submitError.message}
               </Notice>
             )}
 
@@ -194,8 +231,12 @@ export default function VerifyPage() {
                   }}
                   required
                   aria-invalid={agreeError ? true : undefined}
-                  aria-describedby={agreeError ? 'agree-error' : undefined}
+                  aria-describedby={agreeError ? `${agreeHintId} agree-error` : agreeHintId}
                 />
+                <p id={agreeHintId} className="mt-1 text-lg text-ink-muted">
+                  서류의 글자를 읽어 복지카드·장애인증명서인지와 장애 유형만 확인해요. 서류와 읽은
+                  글자는 저장하지 않아요.
+                </p>
                 {agreeError && (
                   <p
                     id="agree-error"
@@ -208,13 +249,22 @@ export default function VerifyPage() {
               </div>
 
               <div className="flex flex-wrap items-center gap-4">
-                <Button type="submit" variant="accent" size="lg" loading={submitting}>
-                  {submitting ? '인증하는 중' : '인증 신청'}
+                <Button
+                  type="submit"
+                  variant="accent"
+                  size="lg"
+                  loading={submitting}
+                  disabled={blocked}
+                >
+                  {submitting ? '서류를 확인하는 중' : '인증 신청'}
                 </Button>
                 <Link to="/" className="min-h-touch content-center font-bold text-navy underline">
                   나중에 할게요
                 </Link>
               </div>
+              {submitting && (
+                <p className="text-lg text-ink-muted">서류를 확인하고 있어요. 길면 1분쯤 걸려요.</p>
+              )}
             </form>
           </>
         )}

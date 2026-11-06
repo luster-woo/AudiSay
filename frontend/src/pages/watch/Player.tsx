@@ -125,7 +125,7 @@ export function Player({ video }: { video: VideoDetail }) {
     refreshAudioUrl,
     announce,
   })
-  const { holdWhile, interrupt, currentLine, lines } = narration
+  const { holdWhile, interrupt, currentLine, lines, markSeek, readLine } = narration
 
   /* ── 화면 상태 ── */
   const [startedFlag, setStarted] = useState(false)
@@ -179,10 +179,12 @@ export function Player({ video }: { video: VideoDetail }) {
       beforeSeekRef.current = state.currentMs
       interrupt()
       controls.seek(ms)
+      // 다음 tick 이 큰 이동으로 보고 소리를 끊지 않게, 옮긴 자리부터 세게 한다 (옮긴 지점의 문장도 읽는다)
+      markSeek(ms)
       const at = sceneAtMs(description?.scenes, ms)
       announce(said ?? `${formatPositionSpoken(ms)}로 옮겼어요.${at ? ` ${at.title} 장면.` : ''}`)
     },
-    [state.currentMs, interrupt, controls, description, announce],
+    [state.currentMs, interrupt, controls, markSeek, description, announce],
   )
 
   const setDetail = useCallback(
@@ -227,14 +229,18 @@ export function Player({ video }: { video: VideoDetail }) {
     autoSummaryRef.current = true
     void playSummary('30초 요약을 먼저 들려 드려요. Esc를 누르면 건너뛰어요.').then(() => {
       setDecided('done')
+      announce('요약이 끝났어요. 재생해요.')
       start()
     })
-  }, [phase, decided, playSummary, start])
+  }, [phase, decided, playSummary, start, announce])
 
   const onListenSummary = () => {
     setDecided('playing')
+    // 요약을 듣는 동안에도 포커스가 갈 곳이 있어야 한다 (창이 닫히면 본문으로 빠졌다). 재생 버튼은 aria-disabled 라 포커스는 받는다
+    requestAnimationFrame(() => playRef.current?.focus({ preventScroll: true }))
     void playSummary('요약을 들려 드릴게요. Esc를 누르면 건너뛰어요.').then(() => {
       setDecided('done')
+      announce('요약이 끝났어요. 재생해요.')
       start()
     })
   }
@@ -297,8 +303,9 @@ export function Player({ video }: { video: VideoDetail }) {
   /* ── 신고 (여는 동안 영상을 멈춘다) ── */
   const reportResume = useRef(false)
   const openReport = useCallback(() => {
-    reportResume.current = state.playing
-    interrupt(false)
+    // 해설을 읽느라 잠깐 멈춰 둔 상태도 '재생 중'으로 본다
+    const holding = interrupt(false)
+    reportResume.current = state.playing || holding
     controls.pause()
     setReport({ line: currentLine, ms: state.currentMs })
     announce(
@@ -311,6 +318,28 @@ export function Player({ video }: { video: VideoDetail }) {
     setReport(null)
     if (reportResume.current) controls.play()
     reportResume.current = false
+  }
+
+  /* ── 재생 설정 (재생 중이었으면 여는 동안 멈추고 닫으면 이어서 재생. 멈춰 있었으면 그대로) ──
+   * 창 안의 안내를 낭독기가 읽는 동안 영상·해설 소리가 겹치지 않게 한다 (원칙 1장, 2026-11-06 변경) */
+  const settingsResume = useRef(false)
+  const openSettings = useCallback(() => {
+    const holding = interrupt(false)
+    const wasPlaying = state.playing || holding
+    settingsResume.current = wasPlaying
+    if (wasPlaying) {
+      controls.pause()
+      announce('영상을 멈췄어요. 창을 닫으면 이어서 재생해요.')
+    }
+    setSettingsOpen(true)
+  }, [state.playing, interrupt, controls, announce])
+  const closeSettings = () => {
+    setSettingsOpen(false)
+    if (settingsResume.current && !state.ended) {
+      controls.play()
+      announce('이어서 재생해요.')
+    }
+    settingsResume.current = false
   }
 
   /* ── 지금 장면 설명 (ASK-03, Alt+Shift+D) ── */
@@ -465,7 +494,7 @@ export function Player({ video }: { video: VideoDetail }) {
   useShortcutEntry('position', () => void runAction('CURRENT_POSITION'), { scope: 'user' })
   useShortcutEntry('describe', () => void describeScene(), { scope: 'user' })
   useShortcutEntry('detail', (key) => setDetail(Number(key) as 1 | 2 | 3), { scope: 'user' })
-  useShortcutEntry('settings', () => setSettingsOpen(true), { scope: 'user' })
+  useShortcutEntry('settings', () => openSettings(), { scope: 'user' })
   useShortcutEntry('report', () => openReport(), { scope: 'user' })
 
   const initialEntries = useMemo(
@@ -604,14 +633,17 @@ export function Player({ video }: { video: VideoDetail }) {
     }
   }
 
+  /**
+   * 대본에서 문장을 골랐을 때: 그 시각으로 옮기고 그 문장을 해설 음성으로 읽는다.
+   * 안내 전광판(낭독기가 읽는다)에는 위치만 짧게 — 문장까지 넣으면 낭독기와 해설 음성이 같은 문장을 겹쳐 읽는다 (원칙 1장).
+   * '대사만' 설정이라 해설 음성이 읽지 않을 때만 문장을 전광판에 함께 넣는다.
+   * readLine 은 seekTo(interrupt → seek → markSeek) 뒤에 불러야 끊기지 않고, 다음 tick 이 또 읽지도 않는다.
+   */
   const onPickLine = (l: NarrationLine) => {
-    const reads = settings.soundMix !== 'DIALOGUE_ONLY'
-    // 문장은 우리 음성이 읽으니 낭독기에는 시각만 알린다 (같은 문장을 두 번 읽지 않게)
+    const willRead = settings.soundMix !== 'DIALOGUE_ONLY'
     const at = formatPositionSpoken(l.startMs)
-    seekTo(l.startMs, reads ? `${at}.` : `${at}. ${l.text}`)
-    if (reads) {
-      void narrator.say({ text: l.text, audioUrl: l.audioUrl, rate: settings.speechRate })
-    }
+    seekTo(l.startMs, willRead ? `${at}로 옮겼어요.` : `${at}. ${l.text}`)
+    readLine(l)
   }
 
   const descError = descriptionQ.error
@@ -706,6 +738,7 @@ export function Player({ video }: { video: VideoDetail }) {
                   seekBurstRef.current = true
                   interrupt()
                   controls.seek(ms)
+                  markSeek(ms)
                 }}
                 onSeekSettled={(ms) => {
                   seekBurstRef.current = false
@@ -768,7 +801,7 @@ export function Player({ video }: { video: VideoDetail }) {
               </Button>
               <Button
                 variant="secondary"
-                onClick={() => setSettingsOpen(true)}
+                onClick={openSettings}
                 aria-keyshortcuts="Alt+Shift+S"
                 className={CONTROL}
               >
@@ -850,9 +883,7 @@ export function Player({ video }: { video: VideoDetail }) {
       />
       <SettingsDialog
         open={settingsOpen}
-        onClose={() => {
-          setSettingsOpen(false)
-        }}
+        onClose={closeSettings}
         onPreview={() =>
           void narrator.say({
             text: '안녕하세요. 지금 설정한 속도로 해설을 읽어 드려요.',

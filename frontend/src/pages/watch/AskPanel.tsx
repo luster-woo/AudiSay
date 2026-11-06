@@ -111,6 +111,10 @@ export function AskPanel({
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
+    if (busy) {
+      announce('답을 듣는 중이에요. 끝나면 다시 물어보세요.')
+      return
+    }
     const q = text.trim()
     if (!q) {
       inputRef.current?.focus()
@@ -136,7 +140,9 @@ export function AskPanel({
             aria-labelledby="ask-title"
             value={text}
             onChange={(e) => setText(e.target.value)}
-            disabled={busy}
+            // disabled 를 걸면 보내는 순간 포커스가 본문으로 빠지고, 답이 끝나도 돌아오지 못한다 (NVDA 점검 11-06).
+            // 읽기 전용으로만 막아 포커스를 입력칸에 남긴다 (원칙 9장)
+            readOnly={busy}
             className="min-h-touch w-full rounded-md border-2 border-navy bg-paper px-5 text-lg"
           />
           {/* 아래 목차·대본·질문 기록 탭과 같은 3칸·같은 크기로 맞춘다 */}

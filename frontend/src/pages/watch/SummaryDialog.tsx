@@ -26,6 +26,8 @@ export function SummaryDialog({ open, summaryText, onListen, onSkip }: SummaryDi
       description="요약을 들으면 무슨 내용인지 미리 알 수 있어요."
       hideCloseButton
       initialFocusRef={listenRef}
+      // 닫으면 Player 가 재생 버튼으로 포커스를 옮긴다. 창이 원래 자리(로고 등)로 먼저 돌려보내면 두 곳이 읽힌다
+      restoreFocus={false}
       className="p-10"
     >
       {summaryText && (

@@ -110,45 +110,64 @@ export function useNarration({
 
   /**
    * 사용자가 직접 재생·멈춤·이동했을 때: 우리가 걸어 둔 멈춤과 읽던 소리를 모두 거둔다.
-   * 해설 때문에 멈춰 둔 상태였으면(resume) 영상을 이어서 재생한다 — 사용자는 재생 중이라고 알고 있다
+   * 해설 때문에 멈춰 둔 상태였으면(resume) 영상을 이어서 재생한다 — 사용자는 재생 중이라고 알고 있다.
+   * 돌려주는 값: 해설 때문에 멈춰 둔 상태였는지 (= 사용자 입장에선 재생 중이었는지)
    */
   const interrupt = useCallback(
-    (resume = true) => {
+    (resume = true): boolean => {
       const wasHolding = holdRef.current
       holdRef.current = false
       narrator.stop()
       speakingImportance.current = null
       if (wasHolding && resume) controls.play()
+      return wasHolding
     },
     [narrator, controls],
   )
 
-  const speakLine = useEffectEvent((line: NarrationLine) => {
-    if (settings.soundMix === 'DIALOGUE_ONLY') return
-    const rate = settings.speechRate
-    const needMs = (line.audioDurationMs ?? estimateSpeechMs(line.text)) / rate
-    const gapMs = line.gapEndMs == null ? 0 : line.gapEndMs - line.startMs
-    const mode = settings.narrationMode
-    const mustPause = mode === 'PAUSE_AFTER' || (mode === 'AUTO' && needMs > gapMs + 300)
-    const item = {
-      text: line.text,
-      audioUrl: line.audioUrl,
-      rate,
-      refreshUrl: () => refreshAudioUrl(line.lineId),
-    }
-    if (mustPause) {
-      void holdWhile(() => narrator.say(item))
-      return
-    }
-    if (narrator.busy) {
-      if (line.importance <= (speakingImportance.current ?? 0)) return
-      narrator.stop()
-    }
-    speakingImportance.current = line.importance
-    void narrator.say(item).finally(() => {
-      speakingImportance.current = null
-    })
-  })
+  /**
+   * 문장 하나를 해설 방식대로 읽는다. 읽기 시작했으면 true, '대사만' 설정이라 읽지 않으면 false.
+   * onTick 이 시각을 지날 때 부르고, 대본에서 문장을 골랐을 때(readLine)도 같은 길을 탄다.
+   */
+  const speakLine = useCallback(
+    (line: NarrationLine): boolean => {
+      if (settings.soundMix === 'DIALOGUE_ONLY') return false
+      // 이 문장은 지금 읽으므로, 다음 tick 이 시각을 지났다고 또 읽지 않게 센 자리를 넘겨 둔다
+      lastMsRef.current = Math.max(lastMsRef.current, line.startMs)
+      const rate = settings.speechRate
+      const needMs = (line.audioDurationMs ?? estimateSpeechMs(line.text)) / rate
+      const gapMs = line.gapEndMs == null ? 0 : line.gapEndMs - line.startMs
+      const mode = settings.narrationMode
+      const mustPause = mode === 'PAUSE_AFTER' || (mode === 'AUTO' && needMs > gapMs + 300)
+      const item = {
+        text: line.text,
+        audioUrl: line.audioUrl,
+        rate,
+        refreshUrl: () => refreshAudioUrl(line.lineId),
+      }
+      if (mustPause) {
+        void holdWhile(() => narrator.say(item))
+        return true
+      }
+      if (narrator.busy) {
+        if (line.importance <= (speakingImportance.current ?? 0)) return true
+        narrator.stop()
+      }
+      speakingImportance.current = line.importance
+      void narrator.say(item).finally(() => {
+        speakingImportance.current = null
+      })
+      return true
+    },
+    [
+      settings.soundMix,
+      settings.speechRate,
+      settings.narrationMode,
+      holdWhile,
+      narrator,
+      refreshAudioUrl,
+    ],
+  )
 
   const readScreenText = useEffectEvent((t: ScreenText) => {
     if (settings.soundMix === 'DIALOGUE_ONLY') return
@@ -192,6 +211,16 @@ export function useNarration({
     onTick(state.currentMs)
   }, [state.currentMs])
 
+  /**
+   * "이 시각으로 옮긴다"고 미리 알린다 — controls.seek 바로 뒤에 부른다.
+   * 그러면 다음 tick 이 큰 이동으로 보고 읽던 소리를 끊지 않고(옮긴 뒤 바로 읽기 시작한 문장이 살아남는다),
+   * 옮긴 지점에서 정확히 시작하는 문장부터 읽는다. 끊는 것은 호출한 쪽이 interrupt 로 먼저 한다.
+   */
+  const markSeek = useCallback((ms: number) => {
+    lastMsRef.current = ms - 1
+    coveredWarned.current = false
+  }, [])
+
   // 영상이 끝나면 읽던 소리도 멈춘다
   useEffect(() => {
     if (state.ended) interrupt(false)
@@ -207,5 +236,14 @@ export function useNarration({
     return true
   }, [screenTexts, state.currentMs, holdWhile, narrator, settings.speechRate])
 
-  return { lines, currentLine, holdWhile, interrupt, readDetail }
+  return {
+    lines,
+    currentLine,
+    holdWhile,
+    interrupt,
+    readDetail,
+    markSeek,
+    /** 사용자가 고른 문장을 지금 읽는다 (대본 탭). 해설 방식을 따르고, 다음 tick 이 또 읽지 않는다. '대사만'이면 false */
+    readLine: speakLine,
+  }
 }

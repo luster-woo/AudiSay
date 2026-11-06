@@ -99,9 +99,15 @@ def assemble(full: dict, chunks: list[dict], covered_until_ms: int | None = None
     names: dict[str, dict] = {}
     dropped: set[str] = set()
     voiced = set(full.get("voiceNames") or [])
+    labels = bool(full.get("labelNames"))
     for s in full["scenes"]:
         for p in s.get("people", []):
             name = trusted_name(p.get("name"), p.get("basis"))
+            if labels and p.get("name"):
+                # 업로드 영상 파이프라인은 이름 대신 겉모습 호칭을 인물로 남긴다(말한 사람·인물별 번역 목소리에 쓰려고).
+                # 호칭은 이름 근거 확인 대상이 아니다
+                names.setdefault(p["name"], {"name": p["name"], "appearance": p.get("appearance"), "nameSource": "AI"})
+                continue
             if name and seen is not None and "사전" not in (p.get("basis") or "") and re.sub(r"\s+", "", name) not in seen:
                 name = None
             if not name and seen is not None and p.get("name") in voiced and voiced_label_ok(p["name"], seen):
@@ -163,7 +169,7 @@ def assemble(full: dict, chunks: list[dict], covered_until_ms: int | None = None
         in_scene = [x for x in lines if a <= x["startMs"] < b]
         people = []
         for p in s.get("people", []):
-            name = trusted_name(p.get("name"), p.get("basis"))
+            name = p.get("name") if labels else trusted_name(p.get("name"), p.get("basis"))
             people.append(f"{name}({p['appearance']})" if name else f"이름 모르는 인물({p['appearance']})")
         desc = " ".join(x["text"] for x in in_scene)
         if people:

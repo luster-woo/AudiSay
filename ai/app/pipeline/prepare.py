@@ -90,7 +90,9 @@ def normalize(raw: dict, video_id: int | None, model: str, duration_ms: int | No
             # 32B 영상 보기 엔진(video.py)만: 줄거리가 바뀌는 메인 장면 목차, 목소리로 대사와 짝지은 호칭
             "chapters": [{"startMs": min(to_ms(c["start"]), duration_ms), "title": c["title"]}
                          for c in raw.get("chapters") or [] if c.get("title")],
-            "voiceNames": raw.get("voice_names") or []}
+            "voiceNames": raw.get("voice_names") or [],
+            # 업로드 영상 파이프라인(상황 먼저): 인물 이름 대신 겉모습 호칭("갈색 코트 여성")을 인물로 남긴다
+            "labelNames": bool(raw.get("label_names"))}
 
 
 def _inside_dialogue(t: int, dialogues: list[dict]) -> dict | None:

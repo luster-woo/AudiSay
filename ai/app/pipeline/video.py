@@ -7,9 +7,11 @@ Qwen3-VL-32B FP8(H200 vLLM)에 영상 파일을 1분 조각으로 넣어 Gemini�
 - 해설이 끝난 뒤 상세도 1 문장·대사를 글로만 보내 줄거리가 바뀌는 메인 장면 목차(H200 /generate_json)
 - 진행률: 조각·검사 문장마다 실제로 끝낸 만큼
 H200 gpu_server 버전 22 이상이 필요하다(/describe_video, /generate_json, /speakers, /sounds).
+기본은 업로드 영상 파이프라인(상황 먼저, situation.py, 버전 23)이고 UPLOAD_FLOW=old면 위 옛 방식.
 """
 import asyncio
 import json
+import logging
 import os
 import re
 from collections import Counter
@@ -22,6 +24,8 @@ from app.pipeline.local import finish_sentence, mmss, mmss_ms, translate_segment
 from app.pipeline.narration_schema import Narration, to_ms
 from app.pipeline.prompts import genre_guide
 
+log = logging.getLogger(__name__)
+
 
 def _norm(text: str) -> str:
     return re.sub(r"[\W_]+", "", text).lower()
@@ -32,10 +36,6 @@ SOUND_IGNORE = {"Television", "Radio", "Zipper (clothing)", "Static", "Mechanism
                 "Outside, rural or natural", "Outside, urban or manmade", "Hubbub, speech noise, speech babble", "Echo"}
 
 
-def sound_lines(events: list[dict], a_ms: int, b_ms: int) -> str:
-    """소리 사건 가운데 [a, b) 구간과 겹치는 것을 "41~45초 기차 경적" 줄로. 같은 이름은 한 번만."""
-    out, seen = [], set()
-    for e in events:
 # 한자·가나가 없는 글(32B가 "미겔"을 "미格尔"로 썼다, 2026-11-05 모던 패밀리). 스키마 pattern으로 걸면 vLLM이 그 글자를 아예 못 고른다
 def no_cjk(n: int) -> str:
     """한자·가나 없이 n자까지. pattern을 걸면 vLLM이 maxLength를 안 지켜(" Miguel 1 2 3 …"으로 출력 한도까지 썼다) 길이도 pattern에 넣는다.
@@ -77,6 +77,10 @@ def korean_only(raw: dict) -> None:
     raw["summary_30s"] = clean(raw.get("summary_30s")) or ""
 
 
+def sound_lines(events: list[dict], a_ms: int, b_ms: int) -> str:
+    """소리 사건 가운데 [a, b) 구간과 겹치는 것을 "41~45초 기차 경적" 줄로. 같은 이름은 한 번만."""
+    out, seen = [], set()
+    for e in events:
         name = e.get("ko") or e["label"]
         if e["label"] in SOUND_IGNORE:
             continue
@@ -892,10 +896,89 @@ async def describe_video_parts(inf, playback, title: str, segs: list[dict], soun
     return merged, f"{first['model']} ({len(parts)}조각)", parts
 
 
+async def analyze_situation(inf, title: str | None, files: dict, work, duration_ms: int, progress,
+                            gms=None, job_id: int | None = None) -> tuple[dict, str]:
+    """업로드 영상 파이프라인(상황 먼저, situation.py): 듣기 → 얼굴로 사람 묶기 → 본 일 기록 → 대사마다 말한 사람 →
+    호칭·상황 흐름·목차 → 해설 대본 → 끼워 넣기·검사. 이름은 쓰지 않고 성별+겉모습 호칭(같은 사람은 같은 호칭).
+    progress(pct)는 PREPARE 구간(6~18) 안에서 실제로 끝낸 만큼 올린다."""
+    from app.pipeline import situation as st
+    title = title or ""
+    playback, wav = files["playback"], files["wav"]
+    await progress(6)
+    stt = await inf.transcribe(wav)
+    language = stt.get("language")
+    segs = await translate_segments(inf, stt["segments"], language, title, gms, job_id)
+    await progress(7)
+    sound_events = (await inf.sounds(wav)).get("events", [])
+    await label_speakers(inf, wav, segs)  # 목소리로 나눈 "화자1, 화자2…"(WeSpeaker)
+    faces = await st.find_faces(inf, playback)  # 얼굴로 같은 사람끼리 P1, P2…(H200 /faces, CPU)
+    copy = await asyncio.to_thread(video_copy, playback)
+    video = await asyncio.to_thread(st.label_video, copy, faces) if faces["persons"] else copy
+    guide, _ = genre_guide(title, characters=False)  # 이름을 쓰지 않아 시리즈 등장인물 사전도 넣지 않는다
+    await progress(8)
+
+    async def looked(d: int, t: int) -> None:
+        await progress(8 + 5 * d // t)
+    look, parts = await st.look_parts(inf, video, title, segs, sound_events, duration_ms, faces, guide, looked)
+    await asyncio.to_thread(st.voice_gender, wav, segs)  # 줄마다 목소리 높이로 남녀
+    await st.attribute_speakers(inf, title, look, faces, segs)
+    body_fixes = st.fix_injury_owners(look)  # 얼굴 없이 보인 다친 곳(발목)의 주인을 영상 전체 기록의 다수로
+    await progress(14)
+    sit = await st.understand(inf, title, duration_ms, look, faces, segs, guide)
+    calls = {p["id"]: p["call"] for p in sit["people"]}
+    for x in segs:  # 말한 사람: 번호 → 호칭(같은 사람으로 합친 번호도). 못 정한 줄은 비운다
+        x["name"] = calls.get(sit["canon"].get(x.get("pid"), x.get("pid")))
+        x["who"] = x["name"]
+
+    async def wrote(d: int, t: int) -> None:
+        await progress(14 + d // t)
+    lines = await st.write_script(inf, title, duration_ms, sit, look, segs, calls, wrote)
+    owners = look.get("injury_owner", {})
+    for x in sit["situations"]:  # 다친 곳 주인을 상황 흐름·목차·요약 글에도 맞춘다
+        x["title"], x["what"] = st.fix_injury_text(x["title"], calls, owners), st.fix_injury_text(x["what"], calls, owners)
+    for c in sit["chapters"]:
+        c["title"] = st.fix_injury_text(c["title"], calls, owners)
+    sit["summary"] = st.fix_injury_text(sit["summary"], calls, owners)
+    text_notes = st.clean_screen_texts(look, segs, duration_ms)  # 계속 떠 있는 로고는 한 번만, 대사 받아쓴 자막은 읽지 않게
+    raw = st.to_narration(sit, look, faces, calls, duration_ms)
+    log.info("상황 먼저: 얼굴 %d명, 본 일 %d, 대본 %d문장, 호칭 고침 %s, 다친 곳 %s, 화면 글자 %s", len(faces["persons"]),
+             len(look["seen"]), len(lines), sit.get("label_fixes"), body_fixes, text_notes)
+    lines = [{**x, "text": t} for x in lines for t in split_compound(x["text"], x["level"])]
+    lines = [x for x in lines if not (x["level"] > 1 and TINY_DETAIL.search(x["text"]))]
+    lines = drop_repeated_actions(drop_said(sorted(lines, key=lambda x: (to_ms(x["at"]), x["level"])), segs))
+    cuts = await asyncio.to_thread(scene_cuts, playback)
+    raw["lines"] = tidy_video_lines(lines, cuts, duration_ms)
+    if os.getenv("VERIFY_LINES", "on") != "off":
+        cast = [{"people": [{"name": p["call"], "appearance": look["cast"].get(p["id"], {}).get("look", "")
+                             + (f" (얼굴 번호표 {p['id']})" if p["id"].startswith("P") else "")} for p in sit["people"]]}]
+
+        async def checked(d: int, t: int) -> None:
+            await progress(15 + 2 * d // t)
+        await verify_lines(inf, video, raw["lines"], segs, cast, duration_ms, checked)
+        for x in raw["lines"]:  # 검사가 고친 문장의 번호(P5)를 호칭으로, 다친 곳 주인도 다시 맞춤
+            x["text"] = st.fix_injury_text(st.clean_ids(x["text"], calls), calls, owners)
+    await progress(18)
+    if not raw["chapters"]:
+        raw["chapters"] = await pick_chapters(inf, title, raw["lines"], segs, duration_ms)
+    raw["voice_names"] = sorted({x["name"] for x in segs if x.get("name")})
+    raw["dialogue"] = [{"start": mmss_ms(x["startMs"]), "end": mmss_ms(x["endMs"]), "speaker": x.get("name"), "text": x["text"],
+                        "original": x.get("original")} for x in segs]
+    raw["dialogue_language"] = language if any(x.get("original") for x in segs) else None
+    korean_only(raw)
+    try:
+        Narration.model_validate(raw)
+    except ValueError as e:
+        raise inference.InferenceError("INFER_FAILED", f"상황 먼저 해설 형식이 맞지 않아요: {str(e)[:120]}") from None
+    return raw, f"local-video:{parts[0]['model']} (상황 먼저)"
+
+
 async def analyze_video(inf, title: str | None, files: dict, work, duration_ms: int, progress,
                         gms=None, job_id: int | None = None) -> tuple[dict, str]:
     """32B 영상 보기 경로: 받아쓰기·소리·화자(H200) → 32B 1분 조각 해설 → 이름 고치기 → 정리 → 화면 검사 → 메인 장면 목차.
+    UPLOAD_FLOW=old가 아니면 상황 먼저(analyze_situation, 업로드 영상 파이프라인).
     progress(pct)는 PREPARE 구간(6~18) 안에서 실제로 끝낸 만큼 올린다."""
+    if os.getenv("UPLOAD_FLOW", "situation") != "old" and inf.name != "mock":
+        return await analyze_situation(inf, title, files, work, duration_ms, progress, gms, job_id)
     title = title or ""
     playback, wav = files["playback"], files["wav"]
     await progress(6)
@@ -941,9 +1024,9 @@ async def analyze_video(inf, title: str | None, files: dict, work, duration_ms: 
                         "speaker": x.get("who") if x.get("who") in names else None, "text": x["text"],
                         "original": x.get("original")} for x in segs]
     raw["dialogue_language"] = language if any(x.get("original") for x in segs) else None
+    korean_only(raw)  # 한자·가나 거름(옛 방식에도)
     try:
         Narration.model_validate(raw)
     except ValueError as e:
         raise inference.InferenceError("INFER_FAILED", f"영상 보기 해설 형식이 맞지 않아요: {str(e)[:120]}") from None
     return raw, f"local-video:{model}"
-    korean_only(raw)  # 한자·가나 거름(옛 방식에도)

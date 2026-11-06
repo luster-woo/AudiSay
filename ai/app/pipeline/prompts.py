@@ -48,12 +48,13 @@ def character_guide(series: str) -> str:
 """
 
 
-def genre_guide(title: str | None) -> tuple[str, str | None]:
-    """제목으로 고른 추가 지침과 시리즈 이름."""
+def genre_guide(title: str | None, characters: bool = True) -> tuple[str, str | None]:
+    """제목으로 고른 추가 지침과 시리즈 이름. characters=False면 시리즈 등장인물 사전을 넣지 않는다
+    (업로드 영상 파이프라인은 이름을 쓰지 않는다)."""
     series = series_of(title)
     extra = ""
     if series:
-        extra += ANIMATION_GUIDE + character_guide(series)
+        extra += ANIMATION_GUIDE + (character_guide(series) if characters else "")
     if any(w in (title or "") for w in ("요리", "레시피", "만들기")):
         extra += COOKING_GUIDE
     return extra, series

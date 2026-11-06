@@ -18,6 +18,11 @@ export interface DialogProps {
    * 닫을 때 부모가 직접 다른 곳으로 포커스를 옮기면 false — 두 번 옮겨져 낭독기가 두 곳을 읽는다
    */
   restoreFocus?: boolean
+  /**
+   * 닫는 즉시(같은 순간) 포커스를 줄 곳. 브라우저가 열기 전 자리(본문 등)로 먼저 돌려보내면
+   * 낭독기가 그 자리와 화면 전체를 읽기 시작하므로, 닫자마자 바로 옮겨 한 곳만 읽게 한다
+   */
+  focusAfterCloseRef?: RefObject<HTMLElement | null>
   /** 열릴 때 제목(h2)에 포커스. 긴 글 창처럼 처음부터 읽어 내려가야 할 때 */
   focusTitle?: boolean
   /** 긴 글 창: 창 전체가 스크롤되고(안쪽 스크롤 상자 없음) 제목 줄과 버튼 줄은 위·아래에 붙어 있다 */
@@ -45,6 +50,7 @@ export function Dialog({
   alert = false,
   initialFocusRef,
   restoreFocus = true,
+  focusAfterCloseRef,
   focusTitle = false,
   longForm = false,
   hideCloseButton = false,
@@ -74,8 +80,9 @@ export function Dialog({
       el.close()
       unregisterRef.current?.()
       unregisterRef.current = null
+      focusAfterCloseRef?.current?.focus({ preventScroll: true })
     }
-  }, [open, initialFocusRef, focusTitle, restoreFocus, registerLiveHost])
+  }, [open, initialFocusRef, focusTitle, restoreFocus, registerLiveHost, focusAfterCloseRef])
 
   // 창이 열린 채로 화면을 떠나면(라우트 이동) 안내 영역 자리를 돌려놓는다
   useEffect(

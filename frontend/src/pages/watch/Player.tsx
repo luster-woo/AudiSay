@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { afterScreenChangeMs } from '@/features/search/speechLead'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { favoritesApi } from '@/api/favorites'
@@ -144,20 +145,6 @@ export function Player({ video }: { video: VideoDetail }) {
   const scene = sceneAtMs(description?.scenes, state.currentMs)
 
   /* ── 재생 조작 ── */
-  const start = useCallback(() => {
-    setStarted(true)
-    controls.play()
-    // 요약 창이 닫히고(창이 포커스를 되돌린 뒤) 재생 버튼으로 옮긴다. 창이 열린 동안엔 바깥이 inert 라 포커스가 안 간다.
-    // 브라우저 기본 스크롤은 화면을 크게 끌어올리므로, 버튼이 가려질 때만 최소한으로 스크롤한다
-    requestAnimationFrame(() => {
-      const el = playRef.current
-      if (!el) return
-      el.focus({ preventScroll: true })
-      const r = el.getBoundingClientRect()
-      if (r.top < 0 || r.bottom > window.innerHeight) el.scrollIntoView({ block: 'nearest' })
-    })
-  }, [controls])
-
   const toggle = useCallback(() => {
     if (state.playing) {
       interrupt(false)
@@ -195,25 +182,84 @@ export function Player({ video }: { video: VideoDetail }) {
     [update, announce],
   )
 
+  /*
+   * 낭독기가 화면 변화(창 닫힘·포커스 이동)와 안내를 다 읽을 때까지 기다린다 (원칙 1장: 소리는 한 번에 하나).
+   * 웹 페이지는 낭독기가 언제 다 읽었는지 알 수 없어 글자 수로 어림한다. 기다리는 중 Esc 면 바로 끝난다
+   */
+  const waitDoneRef = useRef<(() => void) | null>(null)
+  const waitForReader = useCallback(
+    (text: string) =>
+      new Promise<void>((resolve) => {
+        const done = () => {
+          window.clearTimeout(id)
+          waitDoneRef.current = null
+          resolve()
+        }
+        const id = window.setTimeout(done, afterScreenChangeMs(text))
+        waitDoneRef.current = done
+      }),
+    [],
+  )
+  useEffect(() => () => waitDoneRef.current?.(), [])
+
   /* ── 30초 요약 (NAV-06) ── */
+  // 요약을 들려줄 때마다 올라가는 번호. 멈추거나 처음부터 다시 들으면 올라가서, 이전 요약의 남은 단계를 건너뛴다
+  const summaryGenRef = useRef(0)
+  /** 요약을 들려준다. 끝까지 들었으면 true, 중간에 멈췄으면(건너뛰기·다시 듣기) false */
   const playSummary = useCallback(
     async (said: string) => {
       if (!summary) {
         announce('이 영상은 요약이 없어요.')
-        return
+        return false
       }
+      const gen = ++summaryGenRef.current
       announce(said)
-      const say = () =>
-        narrator.say({
+      const say = async () => {
+        // 안내를 다 들은 뒤에 요약 소리를 낸다. 기다리는 중 멈췄으면 요약은 내지 않는다
+        await waitForReader(said)
+        if (summaryGenRef.current !== gen) return
+        await narrator.say({
           text: summary.summary.text,
           audioUrl: summary.summary.audioUrl,
           rate: settings.speechRate,
           refreshUrl: async () => (await summaryQ.refetch()).data?.summary.audioUrl ?? null,
         })
+      }
       if (started) await holdWhile(say)
       else await say()
+      return summaryGenRef.current === gen
     },
-    [summary, narrator, settings.speechRate, summaryQ, started, holdWhile, announce],
+    [summary, narrator, settings.speechRate, summaryQ, started, holdWhile, announce, waitForReader],
+  )
+  /** 듣는 중인 요약을 멈춘다 (기다림·소리 모두) */
+  const stopSummary = useCallback(() => {
+    summaryGenRef.current += 1
+    waitDoneRef.current?.()
+    narrator.stop()
+  }, [narrator])
+
+  /*
+   * 요약 창은 요약을 듣는 동안에도, 다 들은 뒤에도 그대로 둔다 (화면이 바뀌면 낭독기가 다시 읽어 소리가 겹친다).
+   * 창은 '건너뛰기'(Esc)로만 닫고, 닫히면 재생하지 않고 재생 버튼에서 기다린다 (원칙 1장: 자동 재생 없음).
+   * 창이 닫히는 즉시 재생 버튼으로 포커스를 옮긴다(focusAfterCloseRef)
+   */
+  const [summaryInDialog, setSummaryInDialog] = useState(false)
+  const waitAtPlay = useCallback(
+    (text: string) => {
+      setDecided('done')
+      setSummaryInDialog(false)
+      announce(text)
+      // 창 없이 들은 경우(요약 '항상')에는 여기서 재생 버튼으로 옮긴다. 창이면 창이 닫히며 옮긴다
+      // 브라우저 기본 스크롤은 화면을 크게 끌어올리므로, 버튼이 가려질 때만 최소한으로 스크롤한다
+      requestAnimationFrame(() => {
+        const el = playRef.current
+        if (!el) return
+        if (document.activeElement !== el) el.focus({ preventScroll: true })
+        const r = el.getBoundingClientRect()
+        if (r.top < 0 || r.bottom > window.innerHeight) el.scrollIntoView({ block: 'nearest' })
+      })
+    },
+    [announce],
   )
 
   // 요약을 받은 뒤 설정(묻기 / 항상 / 안 듣기)대로 시작 단계가 정해진다. 사용자가 고르면 decided 가 앞선다
@@ -227,41 +273,39 @@ export function Player({ video }: { video: VideoDetail }) {
   useEffect(() => {
     if (phase !== 'playing' || decided !== null || autoSummaryRef.current) return
     autoSummaryRef.current = true
-    void playSummary('30초 요약을 먼저 들려 드려요. Esc를 누르면 건너뛰어요.').then(() => {
-      setDecided('done')
-      announce('요약이 끝났어요. 재생해요.')
-      start()
-    })
-  }, [phase, decided, playSummary, start, announce])
+    void playSummary('30초 요약을 먼저 들려 드려요. Esc를 누르면 건너뛰어요.').then((done) =>
+      waitAtPlay(done ? '요약이 끝났어요. Space를 누르면 재생해요.' : 'Space를 누르면 재생해요.'),
+    )
+  }, [phase, decided, playSummary, waitAtPlay])
 
+  // 요약 듣고 시작: 창과 버튼은 그대로. 듣는 중에 다시 누르면 처음부터 다시 들려준다
   const onListenSummary = () => {
+    if (phase === 'playing') stopSummary()
     setDecided('playing')
-    // 요약을 듣는 동안에도 포커스가 갈 곳이 있어야 한다 (창이 닫히면 본문으로 빠졌다). 재생 버튼은 aria-disabled 라 포커스는 받는다
-    requestAnimationFrame(() => playRef.current?.focus({ preventScroll: true }))
-    void playSummary('요약을 들려 드릴게요. Esc를 누르면 건너뛰어요.').then(() => {
+    setSummaryInDialog(true)
+    void playSummary('요약을 들려 드릴게요.').then((done) => {
+      if (!done) return // 건너뛰기·다시 듣기로 멈췄으면 그쪽에서 처리한다
       setDecided('done')
-      announce('요약이 끝났어요. 재생해요.')
-      start()
+      announce('요약이 끝났어요. 다시 들으려면 Enter, 닫으려면 Esc.')
     })
   }
+  // 건너뛰기(Esc): 듣는 중이면 요약을 멈추고, 창을 닫아 재생 버튼에서 기다린다. 재생은 하지 않는다
   const onSkipSummary = () => {
-    setDecided('done')
-    start()
-    announce('바로 재생해요.')
+    if (phase === 'playing') stopSummary()
+    waitAtPlay('Space를 누르면 재생해요.')
   }
-  // 요약을 듣는 중 Esc → 건너뛰기
+  // 창 없이 요약을 듣는 중(요약 '항상') Esc → 건너뛰기. 창이 있으면 창의 Esc 가 맡는다
   useEffect(() => {
-    if (phase !== 'playing') return
+    if (phase !== 'playing' || summaryInDialog) return
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault()
-        narrator.stop()
-        announce('요약을 건너뛰어요.')
+        stopSummary()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [phase, narrator, announce])
+  }, [phase, summaryInDialog, stopSummary])
 
   /* ── 화면 진입 ── */
   const ready = summarySettled && descriptionQ.isFetched
@@ -269,7 +313,7 @@ export function Player({ video }: { video: VideoDetail }) {
   const entryText =
     `영상 보기예요. ${video.title}, ${dur}. ` +
     (settings.summaryMode === 'ASK' && summaryQ.isSuccess
-      ? '30초 요약을 들을까요? Enter는 듣기, Esc는 바로 재생.'
+      ? '30초 요약을 들을까요? Enter는 듣기, Esc는 건너뛰기.'
       : settings.summaryMode === 'ALWAYS' && summaryQ.isSuccess
         ? '30초 요약을 먼저 들려 드려요.'
         : '재생 버튼에 있어요. Space로 재생해요.')
@@ -878,10 +922,11 @@ export function Player({ video }: { video: VideoDetail }) {
       </aside>
 
       <SummaryDialog
-        open={phase === 'asking'}
+        open={phase === 'asking' || summaryInDialog}
         summaryText={summary?.summary.text ?? null}
         onListen={onListenSummary}
         onSkip={onSkipSummary}
+        focusAfterCloseRef={playRef}
       />
       <SettingsDialog
         open={settingsOpen}

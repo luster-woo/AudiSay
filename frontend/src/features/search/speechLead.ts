@@ -11,3 +11,10 @@ export function screenReaderLeadMs(text: string) {
   const chars = text.replace(/\s/g, '').length
   return Math.min(MAX_MS, FOCUS_MS + chars * PER_CHAR_MS)
 }
+
+/** 창이 닫히는 등 화면이 바뀐 직후: 낭독기가 새 위치의 랜드마크·이름까지 읽으므로 조금 더 기다린다 */
+const SCREEN_CHANGE_MS = 800
+
+export function afterScreenChangeMs(text: string) {
+  return screenReaderLeadMs(text) + SCREEN_CHANGE_MS
+}

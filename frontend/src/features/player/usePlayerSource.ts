@@ -198,8 +198,14 @@ export function usePlayerSource(
       },
       seek: (ms) => {
         const clamped = Math.max(0, ms)
-        if (sourceType === 'YOUTUBE') ytRef.current?.seekTo(clamped / 1000, true)
-        else if (videoRef.current) videoRef.current.currentTime = clamped / 1000
+        if (sourceType === 'YOUTUBE') {
+          const yt = ytRef.current
+          // 유튜브 seekTo 는 끝남·대기 상태에서 부르면 재생까지 시작한다. 이동만 하고 멈춘 상태는 그대로 둔다
+          const s = yt?.getPlayerState()
+          const wasPlaying = s === YT.PlayerState.PLAYING || s === YT.PlayerState.BUFFERING
+          yt?.seekTo(clamped / 1000, true)
+          if (yt && !wasPlaying) yt.pauseVideo()
+        } else if (videoRef.current) videoRef.current.currentTime = clamped / 1000
         patch({ currentMs: clamped, ended: false })
       },
       setVolume: (v) => {

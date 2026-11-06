@@ -30,6 +30,8 @@ vi.mock('@/features/player/Narrator', () => ({
     busy = false
     say = say
     stop = stopNarrator
+    onBusyChange = () => () => {}
+    setQuietWait = () => {}
     get last() {
       return lastSaid
     }
@@ -246,11 +248,15 @@ test('요약 듣고 시작: 요약을 읽은 뒤 재생한다', async () => {
   mockAll({ summaryMode: 'ASK' })
   renderRoute('/watch/15')
   const dialog = await screen.findByRole('dialog', { name: '30초 요약을 먼저 들을까요?' })
+  await waitFor(() => expect(band()).toHaveTextContent('30초 요약을 들을까요?'))
   await user.click(within(dialog).getByRole('button', { name: '요약 듣고 시작' }))
+  // 요약을 듣는 동안 포커스는 재생 버튼 (창이 닫히며 본문으로 빠지지 않게)
+  await waitFor(() => expect(screen.getByRole('button', { name: '재생' })).toHaveFocus())
   await waitFor(() =>
     expect(say).toHaveBeenCalledWith(expect.objectContaining({ text: '그래프 수업 요약이에요.' })),
   )
   await waitFor(() => expect(controls.play).toHaveBeenCalled())
+  await waitFor(() => expect(band()).toHaveTextContent('요약이 끝났어요. 재생해요.'))
 })
 
 test('안 듣기: 재생 버튼에 포커스. 목차를 고르면 그 시각으로 옮기고 장면을 읽어 준다', async () => {
@@ -370,6 +376,9 @@ test('질문: 영상을 멈추고 답을 문장 단위로 읽은 뒤 끝났다�
     expect(subscribeSse).toHaveBeenCalledWith('/chat/messages/88/stream', expect.anything()),
   )
   expect(controls.pause).toHaveBeenCalled()
+  // 답을 받는 동안에도 포커스는 입력칸에 남는다 (disabled 면 본문으로 빠진다). 읽기 전용으로만 막는다
+  expect(input).toHaveFocus()
+  expect(input).toHaveAttribute('readonly')
   expect(screen.getByRole('tab', { name: '질문 기록' })).toHaveAttribute('aria-selected', 'true')
 
   act(() => sse().onMessage({ event: 'delta', data: JSON.stringify({ text: '네. 막대 위에 ' }) }))
@@ -398,9 +407,9 @@ test('질문: 영상을 멈추고 답을 문장 단위로 읽은 뒤 끝났다�
   await waitFor(() =>
     expect(say).toHaveBeenCalledWith(expect.objectContaining({ audioUrl: 'https://s3/a.mp3' })),
   )
-  await waitFor(() =>
-    expect(band()).toHaveTextContent('답변이 끝났어요. 네. 막대 위에 12, 30, 21이 적혀 있어요.'),
-  )
+  // 답 본문은 우리 음성이 읽었으니 낭독기 안내에는 넣지 않는다 (두 번 읽힘 방지)
+  await waitFor(() => expect(band()).toHaveTextContent('답변이 끝났어요. 입력칸에 있어요.'))
+  expect(band()).not.toHaveTextContent('막대 위에')
   expect(controls.play).toHaveBeenCalled()
   expect(screen.getByRole('textbox', { name: '질문하거나 명령하기' })).toHaveFocus()
   expect(screen.getByText('질문 기록 · 2개')).toBeInTheDocument()
@@ -576,8 +585,9 @@ test('지금까지 줄거리(RECAP)는 질문처럼 답변을 받아 읽는다',
   const replay = await screen.findByRole('button', { name: /^다시 듣기, AudiSay 답/ })
   expect(replay).toHaveAttribute('aria-disabled', 'true')
   answer('막대그래프로 두 반을 비교했어요.')
-  await waitFor(() =>
-    expect(band()).toHaveTextContent('답변이 끝났어요. 막대그래프로 두 반을 비교했어요.'),
+  await waitFor(() => expect(band()).toHaveTextContent('답변이 끝났어요. 입력칸에 있어요.'))
+  expect(say).toHaveBeenCalledWith(
+    expect.objectContaining({ text: '막대그래프로 두 반을 비교했어요.' }),
   )
   expect(replay).not.toHaveAttribute('aria-disabled')
   expect(band()).not.toHaveTextContent('알아듣지 못했어요')
@@ -608,7 +618,36 @@ test('"들으시겠어요?" 뒤에 네라고 하면 같은 질문을 뒤 내용�
   )
   expect(chatApi.send).toHaveBeenCalledTimes(1) // 새 질문으로 보내지 않는다
   answer('범인은 B반 선생님이에요.')
-  await waitFor(() => expect(band()).toHaveTextContent('답변이 끝났어요. 범인은 B반 선생님이에요.'))
+  await waitFor(() => expect(band()).toHaveTextContent('답변이 끝났어요. 입력칸에 있어요.'))
+  expect(say).toHaveBeenCalledWith(expect.objectContaining({ text: '범인은 B반 선생님이에요.' }))
+})
+
+test('이미 끝난 답을 다시 받아 문장 없이 done 만 오면 답 본문을 우리 음성으로 읽는다', async () => {
+  const user = userEvent.setup()
+  vi.mocked(chatApi.send).mockResolvedValue({
+    chatLogId: 93,
+    inputMode: 'TEXT',
+    utterance: '지금까지 줄거리',
+    intent: 'RECAP',
+    result: { answerStreamUrl: '/api/v1/chat/messages/93/stream' },
+  })
+  renderRoute('/watch/15')
+  await screen.findByRole('button', { name: '재생' })
+  await ask(user, '지금까지 줄거리')
+  await waitFor(() => expect(subscribeSse).toHaveBeenCalledTimes(1))
+  act(() =>
+    sse().onMessage({
+      event: 'done',
+      data: JSON.stringify({
+        answerText: '두 반의 점수를 비교했어요.',
+        answerSource: 'STORED',
+        firstAudioMs: 1,
+        totalLatencyMs: 2,
+      }),
+    }),
+  )
+  await waitFor(() => expect(band()).toHaveTextContent('답변이 끝났어요. 입력칸에 있어요.'))
+  expect(say).toHaveBeenCalledWith(expect.objectContaining({ text: '두 반의 점수를 비교했어요.' }))
 })
 
 test('"들으시겠어요?" 뒤에 아니요라고 하면 다시 받지 않고, 다른 말이면 새 질문으로 보낸다', async () => {

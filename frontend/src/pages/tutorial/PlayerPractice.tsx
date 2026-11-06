@@ -4,6 +4,7 @@ import { useAudio } from '@/features/audio/useAudio'
 import { useShortcutEntry } from '@/features/shortcuts/context'
 import { Button } from '@/components/ui/Button'
 import { StatusLine } from '@/components/ui/StatusLine'
+import { withRo } from '@/utils/korean'
 import { formatClock, formatDurationSpoken } from '@/utils/time'
 
 const LENGTH = 10
@@ -77,7 +78,7 @@ export function PlayerPractice({ done, onDone }: { done: boolean; onDone: () => 
     const next = Math.min(LENGTH, Math.max(0, time + delta))
     setTime(next)
     stop()
-    announce(`${formatDurationSpoken(next)}로 옮겼어요.`)
+    announce(`${withRo(formatDurationSpoken(next))} 옮겼어요.`)
   }
 
   const describe = () => announce(`지금 장면. ${sceneAt(time).detail}`)

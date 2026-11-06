@@ -15,6 +15,7 @@ import { useAnnouncer } from '@/features/announcer/context'
 import { useSettings } from '@/features/settings/context'
 import { useShortcutEntry } from '@/features/shortcuts/context'
 import { coerceSetting, settingSpoken } from '@/pages/watch/useAsk'
+import { withRo } from '@/utils/korean'
 import { formatClock } from '@/utils/time'
 import { isYoutubeUrl } from '@/utils/youtube'
 import { MIC_MESSAGES } from './micPermission'
@@ -101,7 +102,7 @@ export function SearchBar({
             setText('')
             await updateSettings(patch)
             ownInputRef.current?.focus()
-            announce(message || `${settingSpoken(settingKey, settingValue)}로 바꿨어요.`)
+            announce(message || `${withRo(settingSpoken(settingKey, settingValue))} 바꿨어요.`)
             return
           }
         }

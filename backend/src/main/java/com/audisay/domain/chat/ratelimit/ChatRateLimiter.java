@@ -37,7 +37,7 @@ public class ChatRateLimiter {
         acquire("stt", userId, properties.requestsPerMinute());
     }
 
-    /** LLM 호출 한 번(발화 분류·장면 선택). 1분에 llmCallsPerMinute를 넘으면 CHAT_009 */
+    /** LLM 호출 한 번(발화 분류·장면 선택·다시 묻기·뒤 확인). 1분에 llmCallsPerMinute를 넘으면 CHAT_009 */
     public void acquireLlm(Long userId) {
         acquire("llm", userId, properties.llmCallsPerMinute());
     }

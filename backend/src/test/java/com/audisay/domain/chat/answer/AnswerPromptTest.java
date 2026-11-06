@@ -1,5 +1,7 @@
 package com.audisay.domain.chat.answer;
 
+import com.audisay.domain.chat.search.ChapterTitle;
+import com.audisay.domain.chat.search.VectorLine;
 import com.audisay.domain.description.service.AnswerContext;
 import com.audisay.domain.description.service.AnswerContext.Dialogue;
 import com.audisay.domain.description.service.AnswerContext.Narration;
@@ -44,6 +46,28 @@ class AnswerPromptTest {
                 .contains("\"최근 60초 대사\":[{\"시각\":\"04:24\",\"말한 사람\":null,\"대사\":\"This goes fast. (정말 빠릅니다.)\"}]")
                 .contains("\"등장인물\":[{\"이름\":\"일론 머스크\"")
                 .endsWith("\n\n질문: 몇 초 걸렸어?");
+    }
+
+    @Test
+    void 앞_줄이_있으면_끝난_장면_제목을_시간순으로_앞_줄보다_먼저_넣는다() {
+        List<VectorLine> earlier = List.of(new VectorLine("NARRATION", 1L, 148_000, "디아즈가 타구를 놓치는 실책을 범한다.", 0.8));
+        String user = prompt.questionUser(context, earlier,
+                List.of(new ChapterTitle(118_000, "10회 초 디아즈 적시타"), new ChapterTitle(136_000, "10회 말 수비 미스")), "실책 몇 회야?");
+
+        assertThat(user).contains("\n\n지금까지 장면 순서:\n[{\"시작\":\"01:58\",\"제목\":\"10회 초 디아즈 적시타\"},"
+                        + "{\"시작\":\"02:16\",\"제목\":\"10회 말 수비 미스\"}]\n\n앞에서 나온 관련 내용:\n")
+                .endsWith("\n\n질문: 실책 몇 회야?");
+        assertThat(prompt.questionUser(context, earlier, List.of(), "질문")).doesNotContain("장면 순서");
+        assertThat(prompt.questionUser(context, List.of(), List.of(new ChapterTitle(0, "오프닝")), "질문"))
+                .isEqualTo(prompt.questionUser(context, "질문"));
+    }
+
+    @Test
+    void 질문_규칙에_지금_상태와_묻는_것만_답하는_규칙이_있다() {
+        assertThat(List.of(AnswerPrompt.QUESTION_SYSTEM, AnswerPrompt.QUESTION_EARLIER_SYSTEM))
+                .allSatisfy(system -> assertThat(system).contains(AnswerPrompt.STATE_RULE, AnswerPrompt.SAME_ASK_RULE,
+                        AnswerPrompt.COUNT_RULE));
+        assertThat(AnswerPrompt.QUESTION_EARLIER_SYSTEM).contains("지금까지 장면 순서");
     }
 
     @Test

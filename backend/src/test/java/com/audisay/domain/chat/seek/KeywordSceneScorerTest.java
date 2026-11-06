@@ -161,6 +161,9 @@ class KeywordSceneScorerTest {
             안타 없이 끝났어요      | true
             아웃 아니고 안타!      | false
             중견수 앞 안타!        | false
+            안타 시도가 막혔어요    | true
+            안타가 될 만한 타구였어요 | true
+            안타를 시도해 성공합니다  | false
             """)
     void 낱말_뒤_같은_마디의_부정만_본다(String text, boolean negated) {
         assertThat(KeywordSceneScorer.negated(text, List.of("안타"))).isEqualTo(negated);
@@ -226,6 +229,125 @@ class KeywordSceneScorerTest {
         KeywordSceneScorer.Result result = scorer.score("반죽 튀기는", scenes, 0);
 
         assertThat(result.chosen()).extracting(h -> h.scene().chapterIndex()).containsExactly(1, 2);
+    }
+
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', textBlock = """
+            손흥민의 선제골입니다 | 골 | true
+            오세훈이 헤더골로 쐐기를 박습니다 | 골 | true
+            추가골! | 골 | true
+            골키퍼가 막아 냅니다 | 골 | true
+            시골 마을 풍경 | 골 | false
+            다양한 모양을 만듭니다 | 양 | false
+            자동차가 지나갑니다 | 차 | true
+            """)
+    void 한_글자_낱말은_맨_앞이나_세_글자_이상_합성어_끝에서_맞는다(String text, String term, boolean expected) {
+        assertThat(KeywordSceneScorer.contains(text, term)).isEqualTo(expected);
+    }
+
+    @Test
+    void 골_넣은_장면은_선제골과_헤더골을_모두_후보로_준다() {
+        List<SceneText> scenes = List.of(
+                chapter(1, 0, 60_000, "경기 시작", "", List.of(), narration(10_000, "선수들이 입장합니다.")),
+                chapter(2, 60_000, 120_000, "손흥민 득점", "", List.of(), narration(86_000, "손흥민이 왼발로 선제골을 넣습니다.")),
+                chapter(3, 120_000, 180_000, "오세훈 득점", "", List.of(),
+                        narration(150_000, "오세훈이 머리로 받아 넣은 헤더골입니다.")));
+
+        Result result = scorer.score("골 넣은 장면", scenes, 0);
+
+        assertThat(result.decision()).isEqualTo(Decision.MULTIPLE);
+        assertThat(result.chosen()).extracting(Hit::targetMs).containsExactly(84_000, 148_000);
+    }
+
+    /** 축구 하이라이트: 실제 골 2개 + 리플레이 + 득점 '시도'·'될 만한'·'될 수도' 같은 일어나지 않은 득점 */
+    private final List<SceneText> soccer = List.of(
+            chapter(1, 0, 84_000, "경기 시작", "", List.of(), narration(10_000, "선수들이 입장합니다.")),
+            chapter(2, 84_000, 104_000, "손흥민의 프리킥 득점 후 세리머니 장면", "", List.of(),
+                    narration(86_000, "손흥민이 오른발 프리킥 슈팅으로 득점에 성공한다.")),
+            chapter(3, 104_000, 131_000, "손흥민의 프리킥 골 리플레이 장면", "", List.of(),
+                    narration(106_000, "프리킥 득점 장면의 리플레이가 재생된다.")),
+            chapter(4, 131_000, 334_000, "우즈베키스탄의 득점 시도와 오프사이드 판정", "", List.of(),
+                    narration(133_000, "우즈베키스탄 선수가 침투 패스를 받아 박스 안으로 침투한다.")),
+            chapter(5, 334_000, 440_000, "손흥민의 강력한 프리킥 슈팅과 골키퍼의 선방", "", List.of(),
+                    dialogue(336_000, "아 지금도 충분히 득점이 될 만한 궤적이지 않았나 생각이 들고요.")),
+            chapter(6, 440_000, 469_000, "오세훈의 헤더 추가골과 동료들의 축하 세리머니", "", List.of(),
+                    dialogue(442_000, "오세훈의 높이이기에 가능한 득점이 나옵니다.")),
+            chapter(7, 469_000, 600_000, "오세훈 추가골 장면의 다각도 리플레이", "", List.of(),
+                    narration(471_000, "손흥민이 환하게 웃으며 오세훈의 득점을 축하한다.")),
+            chapter(8, 600_000, 700_000, "황인범의 중거리 굴절 슈팅 공격", "", List.of(),
+                    dialogue(600_000, "상대 굴절이 발생하면 이런 슈팅들이 또 득점이 될 수도 있죠.")));
+
+    @Test
+    void 득점_시도와_될_만한_득점과_리플레이는_빼고_실제_득점만_준다() {
+        Result result = scorer.score("득점 장면", soccer, 0);
+
+        assertThat(result.chosen()).extracting(h -> h.scene().chapterIndex()).containsExactly(2, 6);
+    }
+
+    @Test
+    void 검색어가_시도를_찾으면_시도_장면을_빼지_않는다() {
+        Result result = scorer.score("득점 시도 장면", soccer, 0);
+
+        assertThat(result.hits()).extracting(h -> h.scene().chapterIndex()).contains(4);
+    }
+
+    @Test
+    void 검색어가_리플레이를_찾으면_리플레이도_준다() {
+        Result result = scorer.score("득점 리플레이", soccer, 0);
+
+        assertThat(result.chosen()).extracting(h -> h.scene().chapterIndex()).contains(3);
+    }
+
+    @ParameterizedTest(name = "{0} → {1}")
+    @CsvSource(delimiter = '|', textBlock = """
+            골 넣은 장면 | 골
+            두 번째 골 장면 | 골
+            첫 골 | 골
+            마지막 골 장면 | 골
+            2대 0 된 장면 | 2:0
+            첫눈 오는 장면 | 첫눈,오
+            """)
+    void 골에_붙는_동사_순서_말_점수를_낱말로_다룬다(String query, String expected) {
+        assertThat(KeywordSceneScorer.terms(query)).containsExactly(expected.split(","));
+    }
+
+    @Test
+    void 점수는_대_쌍점_줄표를_같게_보고_다른_숫자에_걸리지_않는다() {
+        assertThat(KeywordSceneScorer.contains("대한민국 2 : 0 우즈베키스탄", "2:0")).isTrue();
+        assertThat(KeywordSceneScorer.contains("2대0으로 앞서 갑니다", "2:0")).isTrue();
+        assertThat(KeywordSceneScorer.contains("12:05에 시작", "2:0")).isFalse();
+    }
+
+    @Test
+    void 골은_득점이라고_쓴_해설에서도_찾는다() {
+        Result result = scorer.score("골 넣은 장면", soccer, 0);
+
+        assertThat(result.chosen()).extracting(h -> h.scene().chapterIndex()).containsExactly(2, 6);
+    }
+
+    @Test
+    void 순서를_말하면_찾은_곳_중_시간순으로_그_번째만() {
+        List<Hit> hits = scorer.score("골 장면", soccer, 200_000).chosen();
+
+        assertThat(KeywordSceneScorer.pickOrdinal("두 번째 골 장면", hits)).extracting(h -> h.scene().chapterIndex())
+                .containsExactly(6);
+        assertThat(KeywordSceneScorer.pickOrdinal("첫 골", hits)).extracting(h -> h.scene().chapterIndex())
+                .containsExactly(2);
+        assertThat(KeywordSceneScorer.pickOrdinal("마지막 골", hits)).extracting(h -> h.scene().chapterIndex())
+                .containsExactly(6);
+        assertThat(KeywordSceneScorer.pickOrdinal("골 장면", hits)).hasSize(2);
+        assertThat(KeywordSceneScorer.pickOrdinal("세 번째 골", hits)).hasSize(2);
+    }
+
+    @Test
+    void 목차_제목이_검색어를_다_담았는지_본다() {
+        SceneText defense = chapter(1, 0, 60_000, "9회 말 김지찬의 다이빙 캐치 수비", "", List.of());
+        SceneText attempt = chapter(2, 60_000, 120_000, "우즈베키스탄의 득점 시도와 오프사이드", "", List.of());
+
+        assertThat(KeywordSceneScorer.titleCovers(KeywordSceneScorer.terms("9회 말 수비 장면"), defense)).isTrue();
+        assertThat(KeywordSceneScorer.titleCovers(KeywordSceneScorer.terms("수비 장면"), defense)).isFalse(); // 두 글자 낱말 하나뿐
+        assertThat(KeywordSceneScorer.titleCovers(KeywordSceneScorer.terms("10회 말 수비"), defense)).isFalse();
+        assertThat(KeywordSceneScorer.titleCovers(KeywordSceneScorer.terms("우즈베키스탄 득점"), attempt)).isFalse(); // 시도
     }
 
     private static SceneText chapter(int n, int startMs, int endMs, String title, String summary, List<String> keywords,

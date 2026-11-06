@@ -153,3 +153,28 @@ def test_engine_fallback_to_gemini_when_h200_fails(tmp_path):
         assert "opensource: INFER_UNREACHABLE" in str(e) and "gemini: GMS 꺼짐" in str(e)
     else:
         raise AssertionError("실패해야 함")
+
+
+def test_h200_down_goes_straight_to_gemini(tmp_path, monkeypatch):
+    """GPU 서버(터널)가 끊겼으면 H200 엔진을 건너뛰고 바로 Gemini로(유튜브 영상처럼, 2026-11-06)."""
+    called = []
+
+    class DownH200(inference.MockInference):
+        async def healthy(self):
+            return False
+
+        async def transcribe(self, wav):
+            called.append("h200")
+            raise inference.InferenceError("INFER_UNREACHABLE", "끊김")
+
+    async def gemini(gms, title, playback, duration_sec, job_id):
+        called.append("gemini")
+        return {"lines": []}, "gemini:gemini-3.8-flash"
+
+    async def progress(pct):
+        pass
+
+    monkeypatch.setattr(local, "analyze_gemini", gemini)
+    raw, model, errors = asyncio.run(local.analyze("video", DownH200(), object(), True, "t", {"playback": Path("x"), "wav": None},
+                                                   tmp_path, 10_000, progress, 1))
+    assert called == ["gemini"] and errors == ["h200: 연결 안 됨"] and model == "gemini:gemini-3.8-flash (대체)"

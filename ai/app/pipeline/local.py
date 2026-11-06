@@ -384,6 +384,11 @@ async def analyze(engine: str, inf, gms: GmsClient | None, has_gms: bool, title:
     from app.pipeline import video
     order = {"gemini": ["gemini", "opensource"], "video": ["video", "opensource", "gemini"]}.get(engine, ["opensource", "gemini"])
     errors: list[str] = []
+    if gms and has_gms and not await inf.healthy():
+        # GPU 서버(터널)가 끊겼으면 H200 엔진을 하나씩 기다리지 않고 바로 Gemini로(유튜브 영상과 같은 방식, 2026-11-06)
+        errors.append("h200: 연결 안 됨")
+        order = ["gemini"]
+        log.warning("H200이 응답하지 않아 업로드 분석을 Gemini로 job=%s", job_id)
     for eng in order:
         try:
             if eng == "video":

@@ -357,12 +357,31 @@ def to_raw(segs: list[dict], language: str | None, scenes: list[dict], desc_scen
 LONG_VIDEO_SEC = 180
 MODEL_LONG, MODEL_SHORT = "gemini-3.5-flash", "gemini-3.8-flash"
 INLINE_MAX_BYTES = 19 * 1024 * 1024  # inline_data 요청 한도 20MB(가정)
+GEMINI_AUDIO_KBPS = 32  # Gemini 사본의 소리(모노 16kHz). 말소리만 알아들으면 된다. 긴 영상은 더 줄인다
+
+
+def gemini_copy(playback: Path, duration_sec: int) -> Path:
+    """inline_data 한도를 넘는 재생용 파일은 Gemini에 넣을 작은 사본으로(640px 이하·초당 2장·모노 16kHz).
+    Gemini는 영상을 초당 1장으로 보므로 화질을 줄여도 해설은 거의 같다. GPU 서버가 끊겨 긴 업로드 영상도 Gemini로 갈 때 쓴다."""
+    if playback.stat().st_size <= INLINE_MAX_BYTES:
+        return playback
+    out = playback.parent / "gemini.mp4"
+    total_kbps = INLINE_MAX_BYTES * 8 * 0.85 / max(1, duration_sec) / 1000  # 한도의 85%를 목표로(60분이면 약 38kbps)
+    audio_kbps = int(min(GEMINI_AUDIO_KBPS, max(12, total_kbps * 0.4)))
+    for share in (1.0, 0.5):  # 한 번에 안 들어가면 화면 몫을 절반으로 한 번 더
+        video_kbps = max(8, int((total_kbps - audio_kbps) * share))
+        _ff("-i", str(playback), "-vf", "scale='min(640,iw)':-2,fps=2", "-c:v", "libx264", "-preset", "veryfast",
+            "-b:v", f"{video_kbps}k", "-maxrate", f"{video_kbps}k", "-bufsize", f"{video_kbps * 2}k", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-ac", "1", "-ar", "16000", "-b:a", f"{audio_kbps}k", str(out))
+        if out.stat().st_size <= INLINE_MAX_BYTES:
+            return out
+    return out  # 그래도 크면 analyze_gemini가 한도 오류를 낸다
 
 
 async def analyze_gemini(gms: GmsClient, title: str | None, playback: Path, duration_sec: int, job_id: int | None) -> tuple[dict, str]:
     """재생용 MP4를 Gemini에 inline_data로 넣어 유튜브와 같은 누적형 해설 JSON을 받는다(크레딧 사용)."""
     model = MODEL_LONG if duration_sec >= LONG_VIDEO_SEC else MODEL_SHORT
-    data = playback.read_bytes()
+    data = (await asyncio.to_thread(gemini_copy, playback, duration_sec)).read_bytes()
     if len(data) > INLINE_MAX_BYTES:
         raise WorkerError("UNKNOWN", f"Gemini 파일 입력은 {INLINE_MAX_BYTES // 1024 // 1024}MB까지만 시험했어요", retryable=False)
     prompt, _ = prompts.build_prompt(PROMPT, title)

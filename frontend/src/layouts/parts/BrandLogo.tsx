@@ -10,7 +10,8 @@ export function BrandLogo({ to = '/', subtitle }: { to?: string; subtitle?: stri
         <LogoMark />
         AudiSay
       </span>
-      {subtitle && <span className="text-sm text-ink-muted">{subtitle}</span>}
+      {/* 좁은 화면에서는 부제를 술겨 로고가 한 줄에 들어가게 한다 (링크 이름은 aria-label 이라 낭독에는 영향 없음) */}
+      {subtitle && <span className="text-sm text-ink-muted max-[46rem]:hidden">{subtitle}</span>}
     </Link>
   )
 }

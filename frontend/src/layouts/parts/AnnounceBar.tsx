@@ -15,10 +15,10 @@ export function AnnounceBar() {
   return (
     // 고대비: 남색 띠 대신 검정 띠 + 노란 선(navy 가 노랑이 되므로 따로 정한다)
     <section aria-label="방금 안내" className="bg-navy hc:border-b-2 hc:border-yellow hc:bg-paper">
-      <div className="mx-auto flex max-w-[90rem] flex-wrap items-center gap-x-6 gap-y-1 px-16 py-1">
+      <div className="mx-auto flex max-w-[90rem] flex-wrap items-center gap-x-6 gap-y-1 px-4 py-1 sm:px-8 lg:px-16">
         <span className="text-sm text-cream/80 hc:text-ink-muted">방금 안내</span>
         {/* 늘 두 줄 높이를 잡아 둔다. 안내 문구 길이가 바뀔 때마다 띠 높이가 바뀌면 아래 화면 전체가 위아래로 움직인다 */}
-        <p className="flex min-h-[3em] min-w-0 flex-1 items-center font-bold text-yellow">
+        <p className="flex min-h-[3em] min-w-[16rem] flex-1 items-center font-bold text-yellow">
           {lastMessage}
         </p>
         <button

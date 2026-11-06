@@ -172,7 +172,7 @@ test('음성 입력 단계와 모든 음성 명령 표는 따옴표와 슬래시
   renderRoute('/help')
   await openTab('말로 하는 명령')
   expect(screen.getByText('① Alt+Shift+Q 누르기')).toHaveAttribute('aria-hidden', 'true')
-  expect(screen.getByRole('heading', { name: '이 단계. 띵 소리가 나면 말하세요.' })).toBeVisible()
+  expect(screen.getByRole('heading', { name: '이 단계. 띠 소리가 나면 말하세요.' })).toBeVisible()
   expect(screen.getByRole('heading', { name: '삼 단계. 들은 내용을 확인하세요.' })).toBeVisible()
   expect(screen.getByText('내용이 틀리면 ‘아니’라고 말해 주세요.')).toHaveAttribute(
     'aria-hidden',

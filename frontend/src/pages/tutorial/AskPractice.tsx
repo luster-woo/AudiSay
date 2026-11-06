@@ -3,7 +3,9 @@ import { useAnnouncer } from '@/features/announcer/context'
 import { useShortcutEntry } from '@/features/shortcuts/context'
 import { Button } from '@/components/ui/Button'
 import { StatusLine } from '@/components/ui/StatusLine'
+import { playBeep } from '@/features/search/beep'
 import { MIC_MESSAGES, queryMic, recognitionErrorMessage } from '@/features/search/micPermission'
+import { screenReaderLeadMs } from '@/features/search/speechLead'
 
 /** 브라우저 음성 인식 (크롬은 webkit 접두사) */
 function getRecognition(): SpeechRecognition | null {
@@ -68,9 +70,12 @@ export function AskPractice({ done, onDone }: { done: boolean; onDone: () => voi
     rec.onend = () => setListening(false)
     setListening(true)
     // 처음이면 브라우저가 마이크 허용 팝업을 띄운다
-    announce(
-      (await queryMic()) === 'prompt' ? MIC_MESSAGES.asking : "'띠' 소리 뒤에 말씀해 주세요.",
-    )
+    const intro =
+      (await queryMic()) === 'prompt' ? MIC_MESSAGES.asking : "'띠' 소리 뒤에 말씀해 주세요."
+    announce(intro)
+    // 실제 화면과 같은 순서: 안내 → 낭독기가 읽는 동안 기다림 → '띠' → 듣기 (원칙 1장)
+    await new Promise((r) => setTimeout(r, screenReaderLeadMs(intro)))
+    playBeep()
     rec.start()
   }
 

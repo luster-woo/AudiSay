@@ -191,6 +191,45 @@ public class SceneSearchStore {
     }
 
     /**
+     * 질문 답변 RAG: centersMs 각 시각 앞뒤 radiusMs 안에 있는 줄(start_ms < toMs)을 시간순으로(similarity 0).
+     * 줄 단위로 찾으면 "감독 인터뷰가 시작된다"(해설)와 감독이 한 말(대사)이 갈라지므로, 찾은 줄 옆 줄을 함께 붙일 때 쓴다
+     */
+    public List<VectorLine> linesAround(long descriptionId, String model, List<Integer> centersMs, int radiusMs, int toMs) {
+        if (centersMs.isEmpty()) {
+            return List.of();
+        }
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("id", descriptionId)
+                .addValue("model", model)
+                .addValue("toMs", toMs);
+        List<String> ranges = new ArrayList<>();
+        for (int i = 0; i < centersMs.size(); i++) {
+            int center = centersMs.get(i);
+            ranges.add("start_ms BETWEEN :from" + i + " AND :to" + i);
+            params.addValue("from" + i, Math.max(0, center - radiusMs));
+            params.addValue("to" + i, center + radiusMs);
+        }
+        return jdbc.query("""
+                        SELECT source_type, source_id, start_ms, text
+                        FROM scene_search_lines
+                        WHERE description_id = :id AND model = :model AND start_ms < :toMs AND (%s)
+                        ORDER BY start_ms, id
+                        """.formatted(String.join(" OR ", ranges)), params,
+                (rs, i) -> new VectorLine(rs.getString("source_type"), rs.getLong("source_id"), rs.getInt("start_ms"),
+                        rs.getString("text"), 0));
+    }
+
+    /** 질문 답변 RAG: toMs까지 끝난 장면(목차) 제목을 순서대로. 끝난 장면만이라 뒤 내용이 담기지 않는다 */
+    public List<ChapterTitle> chapterTitlesBefore(long descriptionId, int toMs) {
+        return jdbc.query("""
+                        SELECT start_ms, title FROM chapters
+                        WHERE description_id = :id AND end_ms <= :toMs
+                        ORDER BY chapter_index
+                        """, new MapSqlParameterSource().addValue("id", descriptionId).addValue("toMs", toMs),
+                (rs, i) -> new ChapterTitle(rs.getInt("start_ms"), rs.getString("title")));
+    }
+
+    /**
      * 공개 해설이 아닌데, 같은 영상의 공개 해설이 createdBefore보다 먼저 만들어진 해설의 색인을 지운다(재생성 뒤 보관 기간이 지남).
      *
      * @return 지운 줄 수

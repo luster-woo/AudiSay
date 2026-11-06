@@ -276,6 +276,25 @@ class SceneSeekerTest {
     }
 
     @Test
+    void RAG에서_LLM이_모두_빼도_목차_제목이_검색어를_다_담은_곳은_준다() {
+        List<SceneText> baseball = List.of(
+                new SceneText(1L, 1, 0, 80_000, "8회 박영현 등판", "", List.of(), "",
+                        List.of(new Moment(53_000, MomentType.NARRATION, "박영현이 마운드에 오른다"))),
+                new SceneText(2L, 2, 88_000, 106_000, "9회 말 김지찬의 다이빙 캐치 수비", "", List.of(), "",
+                        List.of(new Moment(90_000, MomentType.NARRATION, "9회 말 김지찬이 다이빙 캐치로 실점을 막는다."))));
+        when(reader.read(DESCRIPTION_ID)).thenReturn(baseball);
+        when(vectorSearch.ready(DESCRIPTION_ID)).thenReturn(true);
+        when(vectorSearch.search(DESCRIPTION_ID, "9회 말 수비", 31L, 20)).thenReturn(List.of(
+                new VectorLine("NARRATION", 9L, 90_000, "9회 말 김지찬이 다이빙 캐치로 실점을 막는다.", 0.6)));
+        when(verifier.check(eq("9회 말 수비"), any(), eq(31L), any())).thenReturn(List.of());
+
+        SceneSeeker.Outcome outcome = seeker.seek(2L, DESCRIPTION_ID, "9회 말 수비", 31L, 0);
+
+        assertThat(outcome.source()).isEqualTo(SeekSource.RAG);
+        assertThat(outcome.hits()).extracting(h -> h.scene().chapterIndex()).containsExactly(2);
+    }
+
+    @Test
     void RAG_확인이_실패하면_1등_후보_하나만_준다() {
         when(vectorSearch.ready(DESCRIPTION_ID)).thenReturn(true);
         when(vectorSearch.search(DESCRIPTION_ID, "도루", 31L, 20)).thenReturn(List.of(

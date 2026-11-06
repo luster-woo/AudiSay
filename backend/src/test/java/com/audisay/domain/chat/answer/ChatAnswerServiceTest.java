@@ -12,6 +12,7 @@ import com.audisay.domain.chat.ratelimit.ChatRateLimiter;
 import com.audisay.domain.chat.repository.ChatLogRepository;
 import com.audisay.domain.chat.search.AnswerRetriever;
 import com.audisay.domain.chat.search.SceneSearchProperties.Mode;
+import com.audisay.domain.chat.search.ChapterTitle;
 import com.audisay.domain.chat.search.VectorLine;
 import com.audisay.domain.chat.tuning.ChatTuningProperties;
 import com.audisay.domain.description.service.AnswerContext;
@@ -60,6 +61,7 @@ import java.util.regex.Pattern;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -492,6 +494,26 @@ class ChatAnswerServiceTest {
     }
 
     @Test
+    void FALLBACK이어도_수를_묻는_질문은_앞에서_찾은_줄을_처음부터_함께_넣어_센다() {
+        ChatLog chat = chatLog(31L, ChatIntent.QUESTION, "실책이 몇 번 나왔어?");
+        when(answerRetriever.mode()).thenReturn(Mode.FALLBACK);
+        float[] vector = {0.1f, 0.2f};
+        when(answerRetriever.embed(DESC, "실책이 몇 번 나왔어?", 31L)).thenReturn(vector);
+        when(answerRetriever.before(DESC, vector, 180_000)).thenReturn(
+                List.of(new VectorLine("NARRATION", 7L, 20_000, "디아즈가 타구를 놓치는 실책을 범한다.", 0.8)));
+        stream("지금까지는 2번이에요.");
+
+        service.subscribe(USER, 31L);
+
+        assertThat(chat.getAnswerSource()).isEqualTo(AnswerSource.STORED);
+        ArgumentCaptor<LlmRequest> captor = ArgumentCaptor.forClass(LlmRequest.class);
+        verify(llmClient).stream(captor.capture(), any());
+        assertThat(captor.getValue().system()).isEqualTo(AnswerPrompt.QUESTION_EARLIER_SYSTEM);
+        assertThat(captor.getValue().user()).contains("디아즈가 타구를 놓치는 실책을 범한다.");
+        assertThat(meterRegistry.get("audisay.chat.answer.rag").tag("result", "count").counter().count()).isEqualTo(1);
+    }
+
+    @Test
     void FALLBACK은_지금_자료로_답하지_못하면_앞_줄을_더해_다시_묻는다() {
         ChatLog chat = chatLog(31L, ChatIntent.QUESTION, "클템의 역할이 뭐야?");
         when(answerRetriever.mode()).thenReturn(Mode.FALLBACK);
@@ -499,6 +521,7 @@ class ChatAnswerServiceTest {
         when(answerRetriever.embed(DESC, "클템의 역할이 뭐야?", 31L)).thenReturn(vector);
         when(answerRetriever.before(DESC, vector, 180_000)).thenReturn(
                 List.of(new VectorLine("DIALOGUE", 7L, 20_000, "오늘 해설을 맡은 클템입니다", 0.8)));
+        when(answerRetriever.pastTitles(eq(DESC), anyInt())).thenReturn(List.of(new ChapterTitle(0, "오프닝 해설진 소개")));
         streamInTurn("그건 해설 자료에 없어요.", "해설을 맡았어요.");
 
         service.subscribe(USER, 31L);
@@ -510,7 +533,8 @@ class ChatAnswerServiceTest {
         verify(llmClient, times(2)).stream(captor.capture(), any());
         assertThat(captor.getAllValues()).extracting(LlmRequest::system)
                 .containsExactly(AnswerPrompt.QUESTION_SYSTEM, AnswerPrompt.QUESTION_EARLIER_SYSTEM);
-        assertThat(captor.getAllValues().get(1).user()).contains("오늘 해설을 맡은 클템입니다");
+        assertThat(captor.getAllValues().get(0).user()).doesNotContain("지금까지 장면 순서");
+        assertThat(captor.getAllValues().get(1).user()).contains("오늘 해설을 맡은 클템입니다", "지금까지 장면 순서", "오프닝 해설진 소개");
         verify(rateLimiter, times(2)).acquireLlm(2L);
         verify(llmClient, never()).generate(any());
         assertThat(meterRegistry.get("audisay.chat.answer.rag").tag("result", "earlier").counter().count()).isEqualTo(1);
@@ -758,18 +782,22 @@ class ChatAnswerServiceTest {
     }
 
     @Test
-    void 뒤_내용_확인은_대체_모델을_부르지_않는다() {
+    void 뒤_내용_확인은_SSE_남은_시간_안에서만_대체_모델을_부를_수_있다() {
         chatLog(31L, ChatIntent.QUESTION, "감독 이름이 뭐야?");
         stream("그건 해설 자료에 없어요.");
         when(contextReader.readFuture(DESC, 200_000)).thenReturn(Optional.of(future));
         when(llmClient.generate(any())).thenReturn(
                 new LlmResult("{\"evidence\": \"\"}", "gemini-3.1-flash-lite", 500, 5, 400, false, 2L));
+        long before = System.nanoTime();
 
         service.subscribe(USER, 31L);
 
         ArgumentCaptor<LlmRequest> captor = ArgumentCaptor.forClass(LlmRequest.class);
         verify(llmClient).generate(captor.capture());
-        assertThat(captor.getValue().noFallback()).isTrue();
+        assertThat(captor.getValue().noFallback()).isFalse();
+        // SSE 90초 − 음성 대기(여기선 1초) − 지난 시간 안. 대체 모델을 부를지는 GmsLlmClient가 이 기한과 시간 제한으로 정한다
+        assertThat(captor.getValue().fallbackDeadlineNanos()).isNotNull()
+                .isBetween(before, System.nanoTime() + 89_000_000_000L);
     }
 
     @Test

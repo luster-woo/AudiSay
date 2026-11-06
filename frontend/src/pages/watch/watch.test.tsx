@@ -515,14 +515,49 @@ test('장면 이동 후보가 여럿이면 번호를 읽어 주고, 고르면 �
   const group = await screen.findByRole('radiogroup', { name: '장면 후보' })
   await waitFor(() =>
     expect(band()).toHaveTextContent(
-      '비슷한 장면이 2곳 있어요. 1번, 52초. 2번, 2분 21초. 번호를 고르세요.',
+      // 장면 이름이 같으면 찾은 문장으로 구분해 읽는다
+      '비슷한 장면이 2곳 있어요. 1번, B반 막대가 처음 나와요, 52초. 2번, 선생님이 B 막대를 가리켜요, 2분 21초. 번호를 고르세요.',
     ),
   )
   const first = within(group).getAllByRole('radio')[0]
   await waitFor(() => expect(first).toHaveFocus())
   await user.keyboard('{ArrowDown}{Enter}')
   expect(controls.seek).toHaveBeenCalledWith(T(141))
-  await waitFor(() => expect(band()).toHaveTextContent('막대그래프 비교, 2분 21초으로 옮겼어요.'))
+  await waitFor(() => expect(band()).toHaveTextContent('막대그래프 비교, 2분 21초로 옮겼어요.'))
+  expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument()
+})
+
+test('장면 후보를 읽어 준 뒤 "2번"이라고 말하거나 적으면 서버로 보내지 않고 그 후보로 옮긴다', async () => {
+  const user = userEvent.setup()
+  vi.mocked(chatApi.send).mockResolvedValue({
+    chatLogId: 94,
+    inputMode: 'TEXT',
+    utterance: '골 장면',
+    intent: 'SEEK_SCENE',
+    result: {
+      targetMs: null,
+      chapterId: null,
+      candidates: [
+        { chapterId: 1, title: '첫 골', startMs: T(52), summary: '선제골' },
+        { chapterId: 2, title: '두 번째 골', startMs: T(141), summary: '추가골' },
+      ],
+    },
+  })
+  renderRoute('/watch/15')
+  await screen.findByRole('button', { name: '재생' })
+  await ask(user, '골 장면')
+  await screen.findByRole('radiogroup', { name: '장면 후보' })
+  await waitFor(() =>
+    expect(band()).toHaveTextContent('1번, 첫 골, 52초. 2번, 두 번째 골, 2분 21초.'),
+  )
+
+  await ask(user, '3번')
+  await waitFor(() =>
+    expect(band()).toHaveTextContent('3번 후보는 없어요. 1번부터 2번 중에서 골라 주세요.'),
+  )
+  await ask(user, '두 번째')
+  expect(controls.seek).toHaveBeenCalledWith(T(141))
+  expect(chatApi.send).toHaveBeenCalledTimes(1)
   expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument()
 })
 

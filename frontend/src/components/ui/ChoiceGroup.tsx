@@ -55,12 +55,8 @@ export function ChoiceGroup<T extends string | number>({
               value={String(o.value)}
               checked={o.value === value}
               onChange={() => onChange(o.value)}
-              className="peer sr-only"
+              className="sr-only"
             />
-            {/* 고른 보기는 채움 색뿐 아니라 체크 표시·굵은 테두리로도 구분한다 (원칙 10장). 상태는 라디오가 읽으므로 기호는 숨긴다 */}
-            <span aria-hidden="true" className="mr-1 hidden peer-checked:inline">
-              ✓
-            </span>
             {o.label}
           </label>
         ))}

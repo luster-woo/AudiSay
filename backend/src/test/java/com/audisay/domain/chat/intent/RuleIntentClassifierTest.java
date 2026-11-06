@@ -39,6 +39,17 @@ class RuleIntentClassifierTest {
     @ParameterizedTest(name = "{0} → {1}")
     @CsvSource(delimiter = '|', textBlock = """
             3분 20초로 가 줘 | SEEK_TIME target=200000
+            이동 간격 30초로 | SETTING seekStepSec=30
+            지금까지 어떻게 만들었어 | RECAP
+            여태 뭐 했어 | RECAP
+            지금까지 소스는 어떻게 만들었어 | QUESTION
+            건너뛰는 간격 십 초로 해 줘 | SETTING seekStepSec=10
+            자막 다를 때만 읽어 | SETTING subtitleReading=DIFFERENT_ONLY
+            자막 다 읽어 줘 | SETTING subtitleReading=ALL
+            튜토리얼 다시 들려줘 | ACTION REPLAY_TUTORIAL
+            신고하는 장면으로 가 줘 | SEEK_SCENE q=신고하는
+            후반 30분으로 가 줘 | SEEK_SCENE q=후반 30분
+            전반전 10분 장면으로 가 줘 | SEEK_SCENE q=전반전 10분
             3:20 | SEEK_TIME target=200000
             1분 30초 | SEEK_TIME target=90000
             2분 반 | SEEK_TIME target=150000

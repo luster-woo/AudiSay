@@ -10,6 +10,7 @@ import type {
   UserSettings,
 } from '@/api/types'
 import type { Narrator } from '@/features/player/Narrator'
+import { withRo } from '@/utils/korean'
 import { formatPositionSpoken } from '@/utils/time'
 import { commandText, type HistoryEntry } from './history'
 
@@ -104,12 +105,68 @@ export const SUMMARY_OFFER = '요약에는 뒤 내용이 있어요. 들으시겠
 
 /** "들으시겠어요?" 다음 말이 그러겠다는 뜻인지 / 아니라는 뜻인지. 둘 다 아니면 새 질문으로 처리한다 */
 const YES = /^(네|넵|예|응|웅|그래|좋아|좋아요|들을게|들려|들어|듣고|듣기|계속|ㅇㅇ|ok|오케이)/i
-const NO = /^(아니|아뇨|아냐|싫어|됐어|괜찮아|괜찮습니다|안 들|안들|나중에|ㄴㄴ|no)/i
+/** "네 번째 장면", "세 개"처럼 수를 말하는 '네'는 대답이 아니다 */
+const COUNTING = /^(네|세)\s*(번|개|명|시|분|초|살|가지|째)/
+const NO = /^(아니요|아니|아뇨|아냐|싫어|됐어|괜찮아|괜찮습니다|안 들|안들|나중에|ㄴㄴ|no)/i
 export function answerToOffer(utterance: string): 'yes' | 'no' | null {
   const t = utterance.trim().replace(/^[\s"'“”‘’.,!?~]+/, '')
-  if (NO.test(t)) return 'no'
-  if (YES.test(t)) return 'yes'
+  const no = NO.exec(t)
+  if (no) {
+    // "아니, 다음 장면으로 가 줘"처럼 뒤에 다른 명령이 이어지면 거절이 아니라 새 명령으로 본다
+    const rest = t.slice(no[0].length).replace(/^[\s,.!?~요]+/, '')
+    return rest.split(/\s+/).filter(Boolean).length <= 3 ? 'no' : null
+  }
+  if (YES.test(t) && !COUNTING.test(t)) return 'yes'
   return null
+}
+
+const KOREAN_NUMBERS: Record<string, number> = {
+  첫: 1,
+  한: 1,
+  하나: 1,
+  일: 1,
+  두: 2,
+  둘: 2,
+  이: 2,
+  세: 3,
+  셋: 3,
+  삼: 3,
+  네: 4,
+  넷: 4,
+  사: 4,
+  다섯: 5,
+  오: 5,
+  여섯: 6,
+  육: 6,
+  일곱: 7,
+  칠: 7,
+  여덟: 8,
+  팔: 8,
+  아홉: 9,
+  구: 9,
+  열: 10,
+  십: 10,
+}
+const CANDIDATE_NUMBER =
+  /^(\d+|첫|한|하나|일|두|둘|이|세|셋|삼|네|넷|사|다섯|오|여섯|육|일곱|칠|여덟|팔|아홉|구|열|십)(번째|번|째)?(거|것|꺼|장면|후보)?(이요|요)?(으로|로)?(가줘|가요|가|이동해줘|이동|골라줘|고를게요|고를게|할게요|할게|선택|보여줘)?(요)?$/
+/**
+ * 장면 후보를 고르는 말이면 그 번호(1부터): "2번", "2", "두 번째", "첫 번째 거", "삼 번으로 가 줘". 아니면 null.
+ * 숫자가 아닌 말은 '번·번째'가 있어야 한다("네"는 대답, "이"는 지시어)
+ */
+export function candidateNumber(utterance: string): number | null {
+  const m = CANDIDATE_NUMBER.exec(utterance.replace(/[\s.!?~,"'“”]/g, ''))
+  if (!m) return null
+  const [, word, unit] = m
+  const digits = /^\d+$/.test(word)
+  if (!digits && !unit) return null
+  const n = digits ? Number(word) : KOREAN_NUMBERS[word]
+  return n >= 1 ? n : null
+}
+
+/** 후보를 읽어 줄 이름: 장면 이름이 겹치면 찾은 문장으로 구분한다 */
+function candidateLabel(cand: SceneCandidate, all: SceneCandidate[]) {
+  const same = all.filter((c) => c.title === cand.title).length > 1
+  return same && cand.summary ? cand.summary : cand.title
 }
 
 /** 설정 변경 명령의 값(문자열)을 설정 필드 타입에 맞춘다 */
@@ -313,7 +370,10 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
           setPending({ chatLogId, utterance, videoTimeMs, candidates })
           c.showHistory()
           const list = candidates
-            .map((cand, i) => `${i + 1}번, ${formatPositionSpoken(cand.startMs)}`)
+            .map(
+              (cand, i) =>
+                `${i + 1}번, ${candidateLabel(cand, candidates)}, ${formatPositionSpoken(cand.startMs)}`,
+            )
             .join('. ')
           c.announce(`비슷한 장면이 ${candidates.length}곳 있어요. ${list}. 번호를 고르세요.`)
           return
@@ -339,11 +399,11 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
             kind: 'command',
             chatLogId,
             videoTimeMs,
-            text: `"${utterance}" → ${message || `${settingSpoken(settingKey, settingValue)}로 바꿨어요`}`,
+            text: `"${utterance}" → ${message || `${withRo(settingSpoken(settingKey, settingValue))} 바꿨어요`}`,
             targetMs: null,
           })
           await c.updateSettings(patch)
-          c.announce(message || `${settingSpoken(settingKey, settingValue)}로 바꿨어요.`)
+          c.announce(message || `${withRo(settingSpoken(settingKey, settingValue))} 바꿨어요.`)
           return
         }
         case 'ACTION': {
@@ -390,10 +450,59 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
     [push, listenAnswer],
   )
 
+  /** 후보 중 하나로 이동 */
+  const chooseCandidate = useCallback(
+    (cand: SceneCandidate) => {
+      if (!pending) return
+      const c = ctxRef.current
+      push({
+        key: `cmd-${pending.chatLogId}`,
+        kind: 'command',
+        chatLogId: pending.chatLogId,
+        videoTimeMs: pending.videoTimeMs,
+        text: commandText('SEEK_SCENE', pending.utterance, cand.startMs),
+        targetMs: cand.startMs,
+      })
+      setPending(null)
+      c.seekTo(
+        cand.startMs,
+        `${cand.title}, ${withRo(formatPositionSpoken(cand.startMs))} 옮겼어요.`,
+      )
+    },
+    [pending, push],
+  )
+
+  const dismissCandidates = useCallback(() => {
+    if (!pending) return
+    const c = ctxRef.current
+    push({
+      key: `cmd-${pending.chatLogId}`,
+      kind: 'command',
+      chatLogId: pending.chatLogId,
+      videoTimeMs: pending.videoTimeMs,
+      text: commandText('SEEK_SCENE', pending.utterance, null),
+      targetMs: null,
+    })
+    setPending(null)
+    c.focusInput()
+    c.announce('다시 말씀해 주세요. 입력칸에 있어요.')
+  }, [pending, push])
+
   const send = useCallback(
     async (utterance: string, inputMode: 'TEXT' | 'VOICE') => {
       const c = ctxRef.current
       if (busy) return
+      // 장면 후보를 읽어 준 뒤 "2번"·"두 번째"라고 말하거나 적으면 그 후보로 옮긴다 (서버로 보내지 않는다)
+      const picked = pending ? candidateNumber(utterance) : null
+      if (pending && picked !== null) {
+        const cand = pending.candidates[picked - 1]
+        if (cand) chooseCandidate(cand)
+        else
+          c.announce(
+            `${picked}번 후보는 없어요. 1번부터 ${pending.candidates.length}번 중에서 골라 주세요.`,
+          )
+        return
+      }
       // 바로 앞 답변이 "들으시겠어요?"를 물었으면 이 말이 그 대답인지 먼저 본다
       const asked = offer
       setOffer(null)
@@ -449,43 +558,8 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
         setBusy(false)
       }
     },
-    [busy, offer, handle, listenAnswer, push],
+    [busy, offer, pending, chooseCandidate, handle, listenAnswer, push],
   )
-
-  /** 후보 중 하나로 이동 */
-  const chooseCandidate = useCallback(
-    (cand: SceneCandidate) => {
-      if (!pending) return
-      const c = ctxRef.current
-      push({
-        key: `cmd-${pending.chatLogId}`,
-        kind: 'command',
-        chatLogId: pending.chatLogId,
-        videoTimeMs: pending.videoTimeMs,
-        text: commandText('SEEK_SCENE', pending.utterance, cand.startMs),
-        targetMs: cand.startMs,
-      })
-      setPending(null)
-      c.seekTo(cand.startMs, `${cand.title}, ${formatPositionSpoken(cand.startMs)}으로 옮겼어요.`)
-    },
-    [pending, push],
-  )
-
-  const dismissCandidates = useCallback(() => {
-    if (!pending) return
-    const c = ctxRef.current
-    push({
-      key: `cmd-${pending.chatLogId}`,
-      kind: 'command',
-      chatLogId: pending.chatLogId,
-      videoTimeMs: pending.videoTimeMs,
-      text: commandText('SEEK_SCENE', pending.utterance, null),
-      targetMs: null,
-    })
-    setPending(null)
-    c.focusInput()
-    c.announce('다시 말씀해 주세요. 입력칸에 있어요.')
-  }, [pending, push])
 
   /** 기록의 답을 다시 듣기 (음성이 있으면 그걸, 없으면 브라우저 음성) */
   const replay = useCallback((entry: Extract<HistoryEntry, { kind: 'answer' }>) => {

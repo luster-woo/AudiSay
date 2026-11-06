@@ -1,5 +1,6 @@
 package com.audisay.domain.chat.answer;
 
+import com.audisay.domain.chat.search.ChapterTitle;
 import com.audisay.domain.chat.search.VectorLine;
 import com.audisay.domain.description.service.AnswerContext;
 import com.audisay.domain.description.service.AnswerContext.Dialogue;
@@ -27,15 +28,34 @@ import java.util.regex.Pattern;
 public class AnswerPrompt {
     static final int MAX_OUTPUT_TOKENS = 300;
     public static final String UNANSWERABLE = "그건 해설 자료에 없어요.";
+    /**
+     * "골 장면이 몇 개야?"처럼 수를 물으면 영상 전체 수를 몰라 '자료에 없어요' → '이후에 나와요'로 가던 것을,
+     * 질문한 시각까지 나온 것만 세어 답하게 한다(하나도 없을 때만 뒤 확인으로)
+     */
+    static final String COUNT_RULE = "몇 개·몇 번·몇 골처럼 수를 물으면 자료에 나온 것만 세어 '지금까지는 ~예요'처럼 답하세요. "
+            + "자료에 하나도 없을 때만 '그건 해설 자료에 없어요.'라고 답하세요. ";
+    /**
+     * "지금 스코어 어떻게 돼?"에 "1-1 동점이던 8회초"가 자료에 있는데도 뒤에 바뀌었을까 봐 '자료에 없어요'로 가던 것을,
+     * 가장 최근에 나온 상태로 답하게 한다
+     */
+    static final String STATE_RULE = "지금 점수·상황·누가 앞서는지처럼 지금 상태를 물으면 자료에 가장 최근에 나온 상태로 "
+            + "'지금은 ~예요'처럼 답하세요. 그 뒤에 바뀌었다는 내용이 자료에 없으면 그 상태 그대로입니다. ";
+    /** 묻는 것(방법·수·이름·때)이 자료에 없는데 같은 주제의 다른 내용으로 대신 답하던 것을 막는다(그래야 뒤 확인으로 간다) */
+    static final String SAME_ASK_RULE = "주제가 같아도 묻는 것과 다른 내용(예: 몇 분 끓이는지 물었는데 재료 양)으로 대신 답하지 말고 "
+            + "'그건 해설 자료에 없어요.'라고 답하세요. ";
     static final String QUESTION_SYSTEM = "당신은 시각장애인이 영상을 보다가 한 질문에 답하는 도우미입니다. "
             + "아래 '해설 자료'(현재 시각 근처의 장면·대사)만 근거로 한국어로 1~2문장, 짧게 말하듯 답하세요. "
             + "자료에 답이 없으면 지어내거나 설명을 붙이지 말고 '그건 해설 자료에 없어요.' 한 문장만 답하세요. "
+            + SAME_ASK_RULE + COUNT_RULE + STATE_RULE
             + "사람이나 캐릭터 이름은 자료에 이름이 있을 때만 말하세요. 시각 숫자나 MM:SS는 읽지 마세요.";
     static final String QUESTION_EARLIER_SYSTEM = "당신은 시각장애인이 영상을 보다가 한 질문에 답하는 도우미입니다. "
             + "아래 '해설 자료'(현재 시각 근처의 장면·대사)와 '앞에서 나온 관련 내용'(질문한 시각 전에 나온 줄 중 질문과 비슷한 줄)만 "
             + "근거로 한국어로 1~2문장, 짧게 말하듯 답하세요. "
             + "자료에 답이 없으면 지어내거나 설명을 붙이지 말고 '그건 해설 자료에 없어요.' 한 문장만 답하세요. "
             + "어떤 일이 일어나는지 묻는데 자료에 그 일이 없으면 '아니요'로 짐작하지 말고 '그건 해설 자료에 없어요.'라고 답하세요. "
+            + "'지금까지 장면 순서'는 질문한 시각 전에 끝난 장면 제목입니다. 몇 회·몇 번째·언제처럼 때나 순서를 물으면 "
+            + "앞에서 나온 줄의 시각을 이 장면 순서에 맞춰 답하세요. "
+            + SAME_ASK_RULE + COUNT_RULE + STATE_RULE
             + "사람이나 캐릭터 이름은 자료에 이름이 있을 때만 말하세요. 시각 숫자나 MM:SS는 읽지 마세요.";
     static final String SCENE_NOW_SYSTEM = "당신은 시각장애인에게 지금 영상 화면을 설명하는 도우미입니다. "
             + "아래 '해설 자료'만 근거로 지금 화면에 무엇이 보이고 무슨 일이 일어나는지 한국어로 1~2문장, 짧게 말하듯 설명하세요. "
@@ -89,11 +109,22 @@ public class AnswerPrompt {
 
     /** 바로 하는 답 + 앞에서 나온 관련 내용(질문 답변 RAG). 앞 줄이 없으면 questionUser와 같다 */
     public String questionUser(AnswerContext context, List<VectorLine> earlier, String question) {
+        return questionUser(context, earlier, List.of(), question);
+    }
+
+    /** 앞 줄이 있으면 끝난 장면 제목(시간순)도 함께. 앞 줄이 없으면 questionUser와 같다 */
+    public String questionUser(AnswerContext context, List<VectorLine> earlier, List<ChapterTitle> titles, String question) {
         if (earlier.isEmpty()) {
             return questionUser(context, question);
         }
-        return "해설 자료:\n" + json(context) + "\n\n앞에서 나온 관련 내용:\n" + objectMapper.writeValueAsString(lineMaps(earlier))
-                + "\n\n질문: " + question;
+        String order = titles.isEmpty() ? "" : "\n\n지금까지 장면 순서:\n" + objectMapper.writeValueAsString(titles.stream().map(t -> {
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("시작", clock(t.startMs()));
+            map.put("제목", t.title());
+            return map;
+        }).toList());
+        return "해설 자료:\n" + json(context) + order + "\n\n앞에서 나온 관련 내용:\n"
+                + objectMapper.writeValueAsString(lineMaps(earlier)) + "\n\n질문: " + question;
     }
 
     /** 뒤 확인(질문 답변 RAG): 뒤 내용 전체 대신 질문과 비슷한 뒤 줄 + 영상 요약 */

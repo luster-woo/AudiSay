@@ -117,6 +117,11 @@ public class SceneSeeker {
                 outcome = new Outcome(List.of(), null, true);
             }
         }
+        // "두 번째 골"처럼 순서를 말했으면 찾은 곳 중 시간순으로 그 번째 하나만
+        List<Hit> ordered = KeywordSceneScorer.pickOrdinal(query, outcome.hits());
+        if (ordered != outcome.hits()) {
+            outcome = new Outcome(ordered, outcome.source(), outcome.timedOut());
+        }
         meterRegistry.counter("audisay.chat.seek",
                 "source", outcome.source() == null ? "NONE" : outcome.source().name(),
                 "result", outcome.hits().isEmpty() ? "none" : outcome.hits().size() == 1 ? "single" : "multiple",
@@ -154,6 +159,14 @@ public class SceneSeeker {
         List<Hit> checked = verifier.check(query, fused, chatLogId, deadlineNanos);
         // 확인이 실패하면(LLM 장애·읽을 수 없는 응답) 후보를 다 주지 않고 RRF 1등 하나만
         List<Hit> hits = checked == null ? List.of(fused.get(0)) : KeywordSceneScorer.sortByTime(checked, nowMs);
+        if (hits.isEmpty() && keyword != null) {
+            // LLM이 하나도 고르지 않아도 목차 제목이 검색어를 다 담은 곳은 준다 — 같은 질문에 LLM 판단이 흔들려 못 찾는 일을 막는다
+            // ("9회 말 수비 장면"이 3번 중 1번 못 찾음, 11-06)
+            java.util.Map<SceneText, Hit> byScene = new java.util.LinkedHashMap<>();
+            keyword.hits().stream().filter(h -> KeywordSceneScorer.titleCovers(keyword.terms(), h.scene()))
+                    .forEach(h -> byScene.putIfAbsent(h.scene(), h));
+            hits = KeywordSceneScorer.sortByTime(List.copyOf(byScene.values()), nowMs);
+        }
         return new Outcome(hits, hits.isEmpty() ? null : SeekSource.RAG);
     }
 

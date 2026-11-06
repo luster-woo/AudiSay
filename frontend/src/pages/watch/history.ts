@@ -1,4 +1,5 @@
 import type { ChatHistoryItem, ChatIntent } from '@/api/types'
+import { withRo } from '@/utils/korean'
 import { formatClock } from '@/utils/time'
 
 /** 질문 기록 패널의 항목 하나. 질문은 '나'와 'AudiSay 답' 두 줄, 명령은 한 줄로 보인다 */
@@ -30,7 +31,7 @@ export const ANSWER_CUT = '답을 다 받지 못했어요'
 export function commandText(intent: ChatIntent, utterance: string, targetMs: number | null) {
   const q = `"${utterance}"`
   if ((intent === 'SEEK_TIME' || intent === 'SEEK_SCENE') && targetMs != null) {
-    return `${q} → ${targetMs === 0 ? '처음' : formatClock(targetMs)}으로 옮겼어요`
+    return `${q} → ${targetMs === 0 ? '처음으로' : withRo(formatClock(targetMs))} 옮겼어요`
   }
   if (intent === 'SEEK_TIME' || intent === 'SEEK_SCENE') return `${q} → 장면을 찾지 못했어요`
   if (intent === 'SETTING') return `${q} → 설정을 바꿨어요`

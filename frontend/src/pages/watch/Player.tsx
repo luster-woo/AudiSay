@@ -19,6 +19,7 @@ import { sceneAtMs, useNarration } from '@/features/player/useNarration'
 import { usePlayerSource } from '@/features/player/usePlayerSource'
 import { useSettings } from '@/features/settings/context'
 import { useShortcutEntry, useShortcuts } from '@/features/shortcuts/context'
+import { withRo } from '@/utils/korean'
 import { formatDurationSpoken, formatPositionSpoken } from '@/utils/time'
 import { AskPanel } from './AskPanel'
 import { NarrationBox } from './NarrationBox'
@@ -169,7 +170,9 @@ export function Player({ video }: { video: VideoDetail }) {
       // 다음 tick 이 큰 이동으로 보고 소리를 끊지 않게, 옮긴 자리부터 세게 한다 (옮긴 지점의 문장도 읽는다)
       markSeek(ms)
       const at = sceneAtMs(description?.scenes, ms)
-      announce(said ?? `${formatPositionSpoken(ms)}로 옮겼어요.${at ? ` ${at.title} 장면.` : ''}`)
+      announce(
+        said ?? `${withRo(formatPositionSpoken(ms))} 옮겼어요.${at ? ` ${at.title} 장면.` : ''}`,
+      )
     },
     [state.currentMs, interrupt, controls, markSeek, description, announce],
   )
@@ -481,7 +484,7 @@ export function Player({ video }: { video: VideoDetail }) {
         case 'UNDO_SEEK': {
           const back = beforeSeekRef.current
           if (back == null) announce('되돌릴 이동이 없어요.')
-          else seekTo(back, `이동하기 전 위치, ${formatPositionSpoken(back)}로 돌아왔어요.`)
+          else seekTo(back, `이동하기 전 위치, ${withRo(formatPositionSpoken(back))} 돌아왔어요.`)
           return true
         }
         case 'STOP_SPEAKING':
@@ -790,7 +793,7 @@ export function Player({ video }: { video: VideoDetail }) {
                   seekBurstRef.current = false
                   const at = sceneAtMs(description?.scenes, ms)
                   announce(
-                    `${formatPositionSpoken(ms)}로 옮겼어요.${at ? ` ${at.title} 장면.` : ''}`,
+                    `${withRo(formatPositionSpoken(ms))} 옮겼어요.${at ? ` ${at.title} 장면.` : ''}`,
                   )
                 }}
                 tone={fullscreen ? 'dark' : 'light'}

@@ -20,6 +20,7 @@ H200 호출도 ai_call_logs에 남긴다(크레딧 0, 모델 이름 앞에 h200:
 """
 import base64
 import json
+import os
 import time
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -69,8 +70,11 @@ class MockInference:
             "scenes": [{"start": "00:00", "end": "00:02", "title": "시험용 장면", "people": [], "screen_text": []}],
             "lines": [{"at": "00:00", "level": 1, "text": "시험용 해설입니다. 영상 보기 경로입니다."}]}}
 
-    async def generate_json(self, prompt: str, schema: dict, max_tokens: int = 2000) -> dict:
+    async def generate_json(self, prompt: str, schema: dict, max_tokens: int = 2000, images: list[str] | None = None) -> dict:
         return {"model": "mock", "result": {"chapters": [{"start": "00:00", "title": "시험용 장면"}], "items": []}}
+
+    async def faces(self, mp4: Path) -> dict:
+        return {"persons": [], "frames": [], "width": 960, "model": "mock"}
 
     async def sounds(self, wav: Path | None) -> dict:
         return {"events": [], "model": "mock"}
@@ -111,7 +115,8 @@ class RemoteInference:
         except httpx.HTTPError as e:
             raise InferenceError("INFER_UNREACHABLE", f"추론 서버에 연결하지 못했어요: {type(e).__name__}") from None
         if r.status_code != 200:
-            raise InferenceError("INFER_FAILED", f"추론 서버 오류 {r.status_code}")
+            # 서버가 알려 준 까닭(깨진 JSON의 finish_reason·끝부분 등)을 붙인다. 502만으로는 왜 실패했는지 몰랐다
+            raise InferenceError("INFER_FAILED", f"추론 서버 오류 {r.status_code} {r.text[:400]}")
         try:
             return r.json()
         except ValueError:
@@ -145,9 +150,16 @@ class RemoteInference:
         return await self._post("/describe_video", timeout=1300, files={"video": (mp4.name, mp4.read_bytes(), "video/mp4")},
                                 data={"prompt": prompt, "schema": json.dumps(schema, ensure_ascii=False)})
 
-    async def generate_json(self, prompt: str, schema: dict, max_tokens: int = 2000) -> dict:
-        """글만으로 32B에 JSON 하나(장면 목차 고르기·지어낸 이름 호칭 등)."""
-        return await self._post("/generate_json", timeout=300, json={"prompt": prompt, "json_schema": schema, "max_tokens": max_tokens})
+    async def generate_json(self, prompt: str, schema: dict, max_tokens: int = 2000, images: list[str] | None = None) -> dict:
+        """글(과 사진 몇 장)으로 32B에 JSON 하나(장면 목차·호칭·상황 흐름 등). 사진은 서버 버전 23(얼굴 사진 모음)."""
+        body = {"prompt": prompt, "json_schema": schema, "max_tokens": max_tokens}
+        if images:
+            body["images"] = images
+        return await self._post("/generate_json", timeout=600, json=body)
+
+    async def faces(self, mp4: Path) -> dict:
+        """960px·초당 2장 사본 → 얼굴로 묶은 사람(P1…)과 장마다 얼굴 위치(서버 버전 23). 옛 서버면 실패."""
+        return await self._post("/faces", timeout=900, files={"video": (mp4.name, mp4.read_bytes(), "video/mp4")})
 
     async def sounds(self, wav: Path | None) -> dict:
         """효과음·음악 구간. 소리가 없거나 옛 서버면 빈 목록(해설은 계속 만든다)."""
@@ -163,8 +175,10 @@ class RemoteInference:
         if not wav or not segs:
             return {"speakers": [], "model": None}
         try:
+            # WeSpeaker(서버 버전 23). wavlm은 짧은 한국어 대사에서 남녀를 한 화자로 묶었다. 잘게 나눠도 상황 파악이 다시 묶는다
             r = await self._post("/speakers", files={"audio": (wav.name, wav.read_bytes(), "audio/wav")},
-                                 data={"segments": json.dumps([{"startMs": x["startMs"], "endMs": x["endMs"]} for x in segs])})
+                                 data={"segments": json.dumps([{"startMs": x["startMs"], "endMs": x["endMs"]} for x in segs]),
+                                       "model": os.getenv("SPEAKER_MODEL", "wespeaker"), "same": os.getenv("SPEAKER_SAME", "0.5")})
             return r if len(r.get("speakers", [])) == len(segs) else {"speakers": [], "model": None}
         except InferenceError:
             return {"speakers": [], "model": None}

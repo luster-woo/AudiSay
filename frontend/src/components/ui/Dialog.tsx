@@ -122,8 +122,10 @@ export function Dialog({
     >
       <div
         className={cn(
-          'flex items-start justify-between gap-6',
-          longForm && 'sticky top-0 z-10 border-b-2 border-line bg-paper px-8 pt-6 pb-5',
+          'flex justify-between gap-6',
+          // 제목 한 줄뿐이면 닫기 버튼과 세로 가운데를 맞춘다. 설명·머리표가 있으면 위쪽 정렬
+          kicker || description ? 'items-start' : 'items-center',
+          longForm && 'sticky top-0 z-10 border-b-2 border-line bg-paper px-8 py-5',
         )}
       >
         <div>

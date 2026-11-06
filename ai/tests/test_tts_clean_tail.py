@@ -1,7 +1,8 @@
-"""TTS 끝 잡음 자르기(clean_tail)와 길이 계산. ffmpeg·GMS는 부르지 않는다."""
+"""TTS 끝 잡음 자르기(clean_tail)·앞 WAV 헤더 떼기(strip_wav_header)와 길이 계산. ffmpeg·GMS는 부르지 않는다."""
+import struct
 from array import array
 
-from app.pipeline.tts import SR, clean_tail, duration_ms, line_key, progress_step, summary_key
+from app.pipeline.tts import SR, clean_tail, duration_ms, line_key, progress_step, strip_wav_header, summary_key
 
 
 def pcm(*parts: tuple[float, int]) -> bytes:
@@ -44,3 +45,22 @@ def test_progress_in_ten_percent_steps():
     assert [progress_step(n, 10) for n in range(11)] == [80, 80, 80, 80, 80, 90, 90, 90, 90, 90, 100]
     assert progress_step(1, 3) == 80 and progress_step(2, 3) == 90
     assert progress_step(0, 0) == 100
+
+
+def wav(data: bytes, extra: bytes = b"") -> bytes:
+    """PCM 앞에 WAV 헤더(fmt, 있으면 다른 덩어리)를 붙인다."""
+    fmt = b"fmt " + struct.pack("<IHHIIHH", 16, 1, 1, SR, SR * 2, 2, 16)
+    body = b"WAVE" + fmt + extra + b"data" + struct.pack("<I", len(data)) + data
+    return b"RIFF" + struct.pack("<I", len(body)) + body
+
+
+def test_wav_header_is_stripped():
+    """헤더를 PCM으로 읽으면 해설 맨 앞에 "딱" 소리가 난다(2026-11-06)."""
+    data = pcm((0.1, 0), (0.2, 6000))
+    assert strip_wav_header(wav(data)) == data
+    assert strip_wav_header(wav(data, b"LIST" + struct.pack("<I", 3) + b"abc" + bytes(1))) == data  # 홀수 크기 덩어리도 건너뜀
+
+
+def test_raw_pcm_is_untouched():
+    data = pcm((0.2, 6000))
+    assert strip_wav_header(data) == data

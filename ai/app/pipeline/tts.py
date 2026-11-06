@@ -10,6 +10,7 @@
 - 한 문장이 실패하면 그 문장만 비워 둔다(FE가 브라우저 음성으로 읽음). 모델은 gemini-3.8-flash-tts → 실패하면 lite.
 - 문장만 보낸다(지시문을 붙이면 그것까지 읽음). PCM 24kHz 16bit mono → ffmpeg로 mp3(64k). Dockerfile에 ffmpeg 필요.
 - clean_tail: SDK 응답 끝에 붙는 0.1~0.3초 최대 음량 잡음("칙")을 잘라 낸다(데모 troubleshooting 6번).
+- strip_wav_header: 응답 앞의 WAV 헤더를 떼어 낸다(그대로 두면 해설 맨 앞에 "딱" 소리).
 
 데모 backend/app/pipeline/tts.py(synthesize_many·clean_tail)를 비동기·S3로 옮겼다. voice_code 칼럼은 V3에서 지워져 쓰지 않는다.
 
@@ -114,11 +115,28 @@ def _config() -> types.GenerateContentConfig:
             prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=VOICE_NAME))))
 
 
+def strip_wav_header(data: bytes) -> bytes:
+    """Gemini TTS 응답이 WAV(RIFF 헤더 44바이트 + PCM)면 PCM만 남긴다.
+
+    헤더를 PCM으로 보고 mp3를 만들면 헤더 22샘플이 최대 음량에 가까운 "딱" 소리로 해설 맨 앞(첫 1ms)에 들어간다
+    (2026-11-06 해설 시작 전 잡음, 레포 음성 345개 모두). 헤더가 없으면 그대로 돌려준다.
+    """
+    if data[:4] != b"RIFF" or data[8:12] != b"WAVE":
+        return data
+    i = 12
+    while i + 8 <= len(data):  # fmt·LIST 같은 덩어리를 건너뛰고 data 덩어리를 찾는다
+        size = int.from_bytes(data[i + 4:i + 8], "little")
+        if data[i:i + 4] == b"data":
+            return data[i + 8:]
+        i += 8 + size + (size & 1)
+    return data[44:]
+
+
 def _pcm(r: types.GenerateContentResponse) -> bytes:
     for c in r.candidates or []:
         for p in (c.content.parts if c.content else None) or []:
             if p.inline_data and p.inline_data.data:
-                return p.inline_data.data
+                return strip_wav_header(p.inline_data.data)
     return b""
 
 

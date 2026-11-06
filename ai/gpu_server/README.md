@@ -207,3 +207,23 @@ GPU0을 우리 몫만 113GB 쓰고 있어서(32B vLLM 61.5GB + 8B vLLM 24.4GB + 
 
 8B를 다시 쓰려면 `start_vllm.sh`로 켜고 이 서버를 `VLLM_URL=http://127.0.0.1:8200/v1 VLLM_MODEL=Qwen/Qwen3-VL-8B-Instruct`로 띄운다.
 이전 파일은 `server_v19_backup.py`.
+
+## 서버 버전 23 (2026-11-06) — 업로드 영상 파이프라인(상황 먼저)용
+
+| 바뀐 것 | 내용 |
+|---|---|
+| `/faces` 새로 | 960px·초당 2장 MP4 → 얼굴로 같은 사람끼리 P1, P2…(OpenCV YuNet 얼굴 찾기 + SFace 특징, **CPU**, 10분 영상 약 40초). 비슷한 무리 합치기(0.55), 3초 미만 얼굴은 버림 |
+| `/generate_json` | `images`(base64 jpg, 8장까지)를 받으면 글 앞에 붙인다(호칭 정하기 때 얼굴 사진 모음). 깨진 JSON이면 반복 벌점으로 한 번 더, 실패하면 `finish_reason`·끝부분을 응답에 |
+| `/speakers` | `model=wespeaker`(WeSpeaker ResNet34 ONNX, onnxruntime)·`same`(같은 사람 기준) 추가. wavlm은 짧은 한국어 대사에서 남녀를 한 화자로 묶었다(기본값은 그대로 wavlm, 워커가 wespeaker·0.5를 보낸다) |
+| `/describe` | 32B vLLM이 쓴 장면 해설은 모델 이름도 32B로(8B로 잘못 적혔다) |
+
+새 모델 파일(서버 폴더 `~/gpu_server/models/`, 설치 없이 이미 있는 opencv·onnxruntime으로 돈다):
+
+```bash
+mkdir -p ~/gpu_server/models && cd ~/gpu_server/models
+curl -sL -o face_detection_yunet_2023mar.onnx https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx
+curl -sL -o face_recognition_sface_2021dec.onnx https://github.com/opencv/opencv_zoo/raw/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx
+curl -sL -o voxceleb_resnet34_LM.onnx https://huggingface.co/Wespeaker/wespeaker-voxceleb-resnet34-LM/resolve/main/voxceleb_resnet34_LM.onnx
+sha256sum voxceleb_resnet34_LM.onnx   # 7bb2f06e9df17cdf1ef14ee8a15ab08ed28e8d0ef5054ee135741560df2ec068
+```
+이전 파일은 `server_v22_backup.py`.

@@ -7,7 +7,8 @@
 
 실행: uvicorn server:app --host 127.0.0.1 --port 8100   (밖으로 열지 않는다. 노트북은 SSH 터널로, 요청마다 .secret 비밀값 확인)
 약속(노트북 backend/app/pipeline/inference.py와 같아야 함):
-  /health, /warmup, /stt, /ocr, /describe, /summarize, /chat/answer, /chat/answer/stream, /chat/intent, /tts(버전 12), /generate_json(버전 21), /speakers(버전 22)
+  /health, /warmup, /stt, /ocr, /describe, /summarize, /chat/answer, /chat/answer/stream, /chat/intent, /tts(버전 12), /generate_json(버전 21), /speakers(버전 22),
+  /faces(버전 23)
 
 버전 2(2026-10-28): 해설을 완결 문장으로, 장면 여러 개를 한 번에 묶어 생성(DESCRIBE_BATCH), 질문 답변 스트리밍
 """
@@ -27,7 +28,7 @@ from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-VERSION = 22
+VERSION = 23
 VLM_REPO = os.getenv("VLM_REPO", "Qwen/Qwen3-VL-8B-Instruct")
 WHISPER_REPO = os.getenv("WHISPER_REPO", "deepdml/faster-whisper-large-v3-turbo-ct2")
 DEVICE = os.getenv("DEVICE", "cuda:0")
@@ -525,19 +526,71 @@ def speaker_model():
     return _models["speaker"]
 
 
-def _speakers(samples, segs: list[dict]) -> list[int]:
+# 버전 23: WeSpeaker ResNet34(VoxCeleb, ONNX). wavlm-base-plus-sv는 짧은 한국어 대사에서 남녀를 한 화자로 묶었다
+# (2026-11-05 100일의 거짓말, 같은 사람 기준을 0.86까지 올려도 화자1에 남녀가 섞임). onnxruntime GPU로 돈다(설치 없음)
+WESPEAKER = Path(__file__).with_name("models") / "voxceleb_resnet34_LM.onnx"
+WESPEAKER_SAME = float(os.getenv("WESPEAKER_SAME", "0.55"))
+_wespeaker = None
+
+
+def _kaldi_fbank(x, sr: int = 16000):
+    """torchaudio.compliance.kaldi.fbank 기본값(25ms·10ms, povey 창, 80 멜, 512 FFT)을 torch로. 입력은 -1~1 float."""
+    import math
+    import torch
+    w = torch.as_tensor(x, dtype=torch.float32) * 32768.0
+    flen, fshift, nfft = 400, 160, 512
+    if len(w) < flen:
+        w = torch.nn.functional.pad(w, (0, flen - len(w)))
+    frames = w.unfold(0, flen, fshift)
+    frames = frames - frames.mean(dim=1, keepdim=True)
+    frames = torch.cat([frames[:, :1], frames[:, 1:] - 0.97 * frames[:, :-1]], dim=1)
+    win = torch.hann_window(flen, periodic=False).pow(0.85)
+    spec = torch.fft.rfft(frames * win, n=nfft).abs().pow(2)
+    mel = lambda f: 1127.0 * math.log(1.0 + f / 700.0)  # noqa: E731
+    lo, hi = mel(20.0), mel(sr / 2)
+    pts = torch.linspace(lo, hi, 82)
+    fft_mel = 1127.0 * torch.log1p(torch.arange(nfft // 2 + 1) * (sr / nfft) / 700.0)
+    banks = torch.zeros(80, nfft // 2 + 1)
+    for m in range(80):
+        l, c, r = pts[m], pts[m + 1], pts[m + 2]
+        up, down = (fft_mel - l) / (c - l), (r - fft_mel) / (r - c)
+        banks[m] = torch.clamp(torch.minimum(up, down), min=0)
+    feats = torch.log(torch.clamp(spec @ banks.T, min=1.1920929e-07))
+    return (feats - feats.mean(dim=0, keepdim=True)).numpy()
+
+
+def _embed_wespeaker(clips: list) -> list:
+    import numpy as np
+    import onnxruntime as ort
+    global _wespeaker
+    if _wespeaker is None:
+        _wespeaker = ort.InferenceSession(str(WESPEAKER), providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
+    out = []
+    for x in clips:
+        e = _wespeaker.run(None, {"feats": _kaldi_fbank(x)[None].astype(np.float32)})[0][0]
+        out.append(e / (np.linalg.norm(e) + 1e-9))
+    return out
+
+
+def _speakers(samples, segs: list[dict], same: float = 0.0, model: str = "wavlm") -> list[int]:
     import numpy as np
     import torch
-    fe, model = speaker_model()
-    sr, embs = 16000, []
+    sr, embs, clips = 16000, [], []
     for s in segs:
         a, b = int(s["startMs"] * sr / 1000), int(s["endMs"] * sr / 1000)
         x = samples[a:b] if b - a >= sr // 2 else samples[max(0, a - sr // 4):b + sr // 4]  # 0.5초보다 짧으면 앞뒤를 조금 더
         if len(x) < sr // 10:
             x = np.zeros(sr // 2, dtype=np.float32)
-        inp = fe(x, sampling_rate=sr, return_tensors="pt").to(DEVICE)
-        with torch.no_grad():
-            embs.append(torch.nn.functional.normalize(model(**inp).embeddings[0], dim=-1).cpu().numpy())
+        clips.append(x)
+    if model == "wespeaker":
+        embs = _embed_wespeaker(clips)
+        same = same or WESPEAKER_SAME
+    else:
+        fe, wavlm = speaker_model()
+        for x in clips:
+            inp = fe(x, sampling_rate=sr, return_tensors="pt").to(DEVICE)
+            with torch.no_grad():
+                embs.append(torch.nn.functional.normalize(wavlm(**inp).embeddings[0], dim=-1).cpu().numpy())
     if not embs:
         return []
     E = np.stack(embs)
@@ -550,7 +603,7 @@ def _speakers(samples, segs: list[dict]) -> list[int]:
                 v = float(S[np.ix_(clusters[i], clusters[j])].mean())
                 if v > best:
                     best, pair = v, (i, j)
-        if best < SPEAKER_SAME:
+        if best < (same or SPEAKER_SAME):
             break
         i, j = pair
         clusters[i] += clusters.pop(j)
@@ -562,15 +615,16 @@ def _speakers(samples, segs: list[dict]) -> list[int]:
 
 
 @app.post("/speakers")
-def speakers(audio: UploadFile = File(...), segments: str = Form(...)):
-    """16kHz mono wav + [{startMs, endMs}] → {"speakers": [1, 2, 1, …]}(줄마다 화자 번호, 많이 말한 순)."""
+def speakers(audio: UploadFile = File(...), segments: str = Form(...), same: float = Form(0.0), model: str = Form("wavlm")):
+    """16kHz mono wav + [{startMs, endMs}] → {"speakers": [1, 2, 1, …]}(줄마다 화자 번호, 많이 말한 순).
+    same: 같은 사람으로 묶는 유사도(버전 23, 없으면 SPEAKER_SAME)."""
     t0 = time.time()
     samples = wav_16k(audio.file.read())
     segs = json.loads(segments)
     with _lock:
-        labels = on_gpu(_speakers, samples, segs)
+        labels = on_gpu(_speakers, samples, segs, same, model)
     _count("speakers", t0)
-    return {"speakers": labels, "model": SPEAKER_REPO}
+    return {"speakers": labels, "model": "Wespeaker/wespeaker-voxceleb-resnet34-LM" if model == "wespeaker" else SPEAKER_REPO}
 
 
 # ---------- 버전 16: 영상 전체 줄거리(핵심 사건) 먼저 ----------
@@ -701,6 +755,7 @@ class JsonBody(BaseModel):
     prompt: str
     json_schema: dict
     max_tokens: int = 2000
+    images: list[str] = []  # 버전 23: base64 jpg(얼굴 사진 모음 등), 글 앞에 붙인다
 
 
 @app.post("/generate_json")
@@ -708,15 +763,114 @@ def generate_json(b: JsonBody):
     t0 = time.time()
     if not (STORY_VLLM_URL and vllm_ok(STORY_VLLM_URL)):
         return JSONResponse({"error": "story model off"}, status_code=503)
+    content = [{"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{x}"}} for x in b.images[:8]]
     body = {"model": STORY_MODEL, "temperature": 0.2, "max_tokens": b.max_tokens,
-            "messages": [{"role": "user", "content": b.prompt}],
+            "messages": [{"role": "user", "content": content + [{"type": "text", "text": b.prompt}] if content else b.prompt}],
             "response_format": {"type": "json_schema", "json_schema": {"name": "Result", "schema": b.json_schema}}}
-    d = _post_json(STORY_VLLM_URL + "/chat/completions", body, timeout=300)
+    # 깨진 JSON(출력 한도에 걸려 끊김·같은 말 되풀이)이면 반복 벌점을 주고 한 번 더(describe_video와 같게, 버전 23).
+    # 끊긴 까닭(finish_reason)과 끝부분을 로그와 응답에 남긴다(2026-11-05 상황 파악이 이유 없이 502)
+    last = None
+    for penalty in (1.0, REPEAT_PENALTY):
+        if penalty != 1.0:
+            body["repetition_penalty"] = penalty
+        d = _post_json(STORY_VLLM_URL + "/chat/completions", body, timeout=600)
+        content = d["choices"][0]["message"]["content"]
+        try:
+            _count("generate_json", t0)
+            return {"result": json.loads(content), "model": STORY_MODEL, "usage": d.get("usage")}
+        except json.JSONDecodeError:
+            last = {"finish_reason": d["choices"][0].get("finish_reason"), "usage": d.get("usage"), "tail": content[-300:]}
+            print("generate_json: broken JSON", last["finish_reason"], last["usage"], flush=True)
     _count("generate_json", t0)
-    try:
-        return {"result": json.loads(d["choices"][0]["message"]["content"]), "model": STORY_MODEL, "usage": d.get("usage")}
-    except json.JSONDecodeError:
-        return JSONResponse({"error": "broken JSON"}, status_code=502)
+    return JSONResponse({"error": "broken JSON", **last}, status_code=502)
+
+
+# ---------- 버전 23: 얼굴로 같은 사람 묶기 ----------
+# 32B가 조각마다 겉모습으로 인물을 짐작해 히데오(남자)를 단발머리 여성(금서희)에게 붙였다(2026-11-05 100일의 거짓말).
+# 얼굴을 찾아(YuNet) 특징(SFace)으로 영상 전체에서 같은 사람끼리 묶어 P1, P2…를 준다. OpenCV 모델이라 CPU로 돌고 GPU를 안 쓴다
+# (10분 영상 960px 초당 2장 약 35초). 모델: ~/gpu_server/models (opencv_zoo)
+FACE_MODELS = Path(__file__).with_name("models")
+FACE_SAME = 0.40      # 얼굴 하나를 무리에 넣는 코사인 유사도(SFace 안내 0.363)
+FACE_MERGE = 0.55     # 무리 중심끼리 이만큼 비슷하면 한 사람(같은 여성이 0.72로 두 무리가 됐다)
+FACE_MIN_PX = 36      # 이보다 작은 얼굴은 버린다
+FACE_MIN_SEC = 3      # 서로 다른 초에 3번 넘게 나와야 사람으로 친다
+
+
+def _faces(path: str) -> dict:
+    import cv2
+    import numpy as np
+    cap = cv2.VideoCapture(path)
+    fps = cap.get(cv2.CAP_PROP_FPS) or 2.0
+    rec = cv2.FaceRecognizerSF.create(str(FACE_MODELS / "face_recognition_sface_2021dec.onnx"), "")
+    det, found_all, k, width = None, [], 0, 0
+    while True:
+        ok, img = cap.read()
+        if not ok:
+            break
+        if det is None:
+            width = img.shape[1]
+            det = cv2.FaceDetectorYN.create(str(FACE_MODELS / "face_detection_yunet_2023mar.onnx"), "", (img.shape[1], img.shape[0]), 0.8)
+        _, found = det.detect(img)
+        for f in found if found is not None else []:
+            if min(f[2], f[3]) < FACE_MIN_PX:
+                continue
+            crop = rec.alignCrop(img, f)
+            feat = rec.feature(crop).flatten()
+            found_all.append({"t": round(k / fps, 2), "box": [int(v) for v in f[:4]], "feat": feat / np.linalg.norm(feat),
+                              "size": int(f[2] * f[3]), "crop": crop})
+        k += 1
+    groups = []
+    for f in sorted(found_all, key=lambda f: -f["size"]):  # 큰(또렷한) 얼굴부터 무리를 만든다
+        best, sim = None, FACE_SAME
+        for g in groups:
+            s = float(g["center"] @ f["feat"])
+            if s > sim:
+                best, sim = g, s
+        if best is None:
+            groups.append({"members": [f], "center": f["feat"].copy()})
+        else:
+            best["members"].append(f)
+            c = np.mean([m["feat"] for m in best["members"]], axis=0)
+            best["center"] = c / np.linalg.norm(c)
+    merged = True
+    while merged:  # 중심이 가까운 무리를 합친다
+        merged = False
+        for a in range(len(groups)):
+            for b in range(a + 1, len(groups)):
+                if float(groups[a]["center"] @ groups[b]["center"]) >= FACE_MERGE:
+                    groups[a]["members"] += groups.pop(b)["members"]
+                    c = np.mean([m["feat"] for m in groups[a]["members"]], axis=0)
+                    groups[a]["center"] = c / np.linalg.norm(c)
+                    merged = True
+                    break
+            if merged:
+                break
+    groups = [g for g in groups if len({int(m["t"]) for m in g["members"]}) >= FACE_MIN_SEC]
+    groups.sort(key=lambda g: -len(g["members"]))
+    persons, frames = [], {}
+    for i, g in enumerate(groups, 1):
+        pid = f"P{i}"
+        ts = sorted({m["t"] for m in g["members"]})
+        big = max(g["members"], key=lambda m: m["size"])
+        ok, jpg = cv2.imencode(".jpg", big["crop"], [cv2.IMWRITE_JPEG_QUALITY, 85])
+        persons.append({"id": pid, "count": len(ts), "first": ts[0], "last": ts[-1],
+                        "crop": base64.b64encode(jpg.tobytes()).decode()})
+        for m in g["members"]:
+            frames.setdefault(m["t"], []).append({"id": pid, "box": m["box"]})
+    return {"persons": persons, "frames": [{"t": t, "faces": v} for t, v in sorted(frames.items())],
+            "width": width, "faces": len(found_all)}
+
+
+@app.post("/faces")
+def faces(video: UploadFile = File(...)):
+    """저해상도 MP4(960px·초당 2장 권장) → 사람(P1…, 화면에 많이 나온 순)과 장마다 얼굴 위치."""
+    t0 = time.time()
+    with tempfile.NamedTemporaryFile(suffix=".mp4") as tmp:
+        tmp.write(video.file.read())
+        tmp.flush()
+        r = _faces(tmp.name)
+    _count("faces", t0)
+    return {**r, "model": "OpenCV YuNet 2023mar + SFace 2021dec · CPU"}
 
 
 class DescribeScene(BaseModel):
@@ -821,6 +975,10 @@ def describe(body: DescribeBody):
             for i, r in zip(todo, ex.map(lambda i: vllm_generate(DESCRIBE_SYSTEM, _scene_prompt(body, i, body.scenes[i]),
                                                                  body.scenes[i].frames, max_new=DESCRIBE_MAX_NEW), todo)):
                 raws[i] = r
+        # 실제로 쓴 모델 이름을 돌려준다. 버전 20부터 VLLM_URL에는 32B가 떠 있는데 VLM_REPO(8B)라고 적어
+        # 재생 화면 모델 목록에 8B로 보였다(2026-11-05 watch/159). HF로 넘어간 장면이 있으면 아래에서 둘 다 적는다
+        if all(r is not None for r in raws):
+            model = VLLM_MODEL if model == VLM_REPO else model
     if DESCRIBE_BATCH > 1 and len(body.scenes) > 1 and all(r is None for r in raws):
         try:
             for k in range(0, len(body.scenes), DESCRIBE_BATCH):

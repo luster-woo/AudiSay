@@ -1,7 +1,8 @@
-"""TTS 끝 잡음 자르기(clean_tail)와 길이 계산. ffmpeg·GMS는 부르지 않는다."""
+"""TTS 끝 잡음 자르기(clean_tail)·앞 WAV 헤더 떼기(strip_wav_header)와 길이 계산. ffmpeg·GMS는 부르지 않는다."""
+import struct
 from array import array
 
-from app.pipeline.tts import SR, clean_tail, duration_ms, line_key, progress_step, summary_key
+from app.pipeline.tts import SR, clean_tail, duration_ms, line_key, mute_head_click, progress_step, strip_wav_header, summary_key
 
 
 def pcm(*parts: tuple[float, int]) -> bytes:
@@ -44,3 +45,38 @@ def test_progress_in_ten_percent_steps():
     assert [progress_step(n, 10) for n in range(11)] == [80, 80, 80, 80, 80, 90, 90, 90, 90, 90, 100]
     assert progress_step(1, 3) == 80 and progress_step(2, 3) == 90
     assert progress_step(0, 0) == 100
+
+
+def wav(data: bytes, extra: bytes = b"") -> bytes:
+    """PCM 앞에 WAV 헤더(fmt, 있으면 다른 덩어리)를 붙인다."""
+    fmt = b"fmt " + struct.pack("<IHHIIHH", 16, 1, 1, SR, SR * 2, 2, 16)
+    body = b"WAVE" + fmt + extra + b"data" + struct.pack("<I", len(data)) + data
+    return b"RIFF" + struct.pack("<I", len(body)) + body
+
+
+def test_wav_header_is_stripped():
+    """헤더를 PCM으로 읽으면 해설 맨 앞에 "딱" 소리가 난다(2026-11-06)."""
+    data = pcm((0.1, 0), (0.2, 6000))
+    assert strip_wav_header(wav(data)) == data
+    assert strip_wav_header(wav(data, b"LIST" + struct.pack("<I", 3) + b"abc" + bytes(1))) == data  # 홀수 크기 덩어리도 건너뜀
+
+
+def test_raw_pcm_is_untouched():
+    data = pcm((0.2, 6000))
+    assert strip_wav_header(data) == data
+
+
+def test_head_click_is_muted_without_changing_length():
+    """이미 만든 mp3: 맨 앞 1ms 큰 잡음 → 조용 → 말. 잡음만 지우고 길이·말은 그대로."""
+    data = pcm((0.001, 25000), (0.1, 50), (0.3, 6000))
+    out = mute_head_click(data)
+    assert out is not None and len(out) == len(data)
+    s = array("h")
+    s.frombytes(out)
+    assert max(map(abs, s[:SR // 10])) < 100  # 잡음 자리
+    assert s[-1] == 6000  # 말 부분
+
+
+def test_speech_start_is_not_a_click():
+    assert mute_head_click(pcm((0.05, 0), (0.3, 9000))) is None  # 처음부터 큰 소리가 이어지면 말
+    assert mute_head_click(pcm((0.3, 6000))) is None  # 큰 소리가 없으면 그대로

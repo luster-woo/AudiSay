@@ -17,6 +17,13 @@ import {
 } from '@/api/types'
 import type { PlayerControls, PlayerState } from '@/features/player/usePlayerSource'
 import { renderRoute } from '@/test/renderWithProviders'
+import { afterScreenChangeMs } from '@/features/search/speechLead'
+
+// 낭독기가 다 읽을 때까지 기다리는 시간은 테스트에서 0 (기다림 자체는 '요약 창 닫힘' 테스트에서 따로 본다)
+vi.mock('@/features/search/speechLead', () => ({
+  screenReaderLeadMs: vi.fn(() => 0),
+  afterScreenChangeMs: vi.fn(() => 0),
+}))
 
 /* ── 소리·영상은 jsdom 에 없으므로 흉내 낸다 ── */
 let lastSaid: unknown = null
@@ -217,7 +224,7 @@ beforeEach(() => {
   mockAll()
 })
 
-test('요약 묻기: 창이 열리고 요약 듣고 시작에 포커스, 바로 재생(Esc)으로 시작한다', async () => {
+test('요약 묻기: 창이 열리고 요약 듣고 시작에 포커스. 건너뛰기(Esc)는 창을 닫고 재생 버튼에서 기다린다(재생 안 함)', async () => {
   const user = userEvent.setup()
   mockAll({ summaryMode: 'ASK' })
   const { container } = renderRoute('/watch/15')
@@ -230,33 +237,70 @@ test('요약 묻기: 창이 열리고 요약 듣고 시작에 포커스, 바로 
     expect(within(dialog).getByRole('button', { name: '요약 듣고 시작' })).toHaveFocus(),
   )
   await waitFor(() =>
-    expect(band()).toHaveTextContent('30초 요약을 들을까요? Enter는 듣기, Esc는 바로 재생.'),
+    expect(band()).toHaveTextContent('30초 요약을 들을까요? Enter는 듣기, Esc는 건너뛰기.'),
   )
   expect(screen.getByRole('heading', { level: 1, name: '그래프를 읽는 방법' })).toBeInTheDocument()
   expect(await axe(container)).toHaveNoViolations()
 
-  // jsdom 은 Esc 로 cancel 이벤트를 내지 않으므로 같은 동작인 '바로 재생' 버튼을 누른다
-  await user.click(within(dialog).getByRole('button', { name: '바로 재생' }))
+  // jsdom 은 Esc 로 cancel 이벤트를 내지 않으므로 같은 동작인 '건너뛰기' 버튼을 누른다
+  await user.click(within(dialog).getByRole('button', { name: '건너뛰기' }))
   await waitFor(() => expect(dialog).not.toHaveAttribute('open'))
-  expect(controls.play).toHaveBeenCalled()
+  // 닫히는 즉시 재생 버튼으로 (본문을 거치지 않게)
+  expect(screen.getByRole('button', { name: '재생' })).toHaveFocus()
+  await waitFor(() => expect(band()).toHaveTextContent('Space를 누르면 재생해요.'))
+  expect(controls.play).not.toHaveBeenCalled()
   expect(say).not.toHaveBeenCalled()
-  await waitFor(() => expect(band()).toHaveTextContent('바로 재생해요.'))
 })
 
-test('요약 듣고 시작: 요약을 읽은 뒤 재생한다', async () => {
+test('요약 듣고 시작: 창과 버튼은 그대로 두고 요약을 들려준다. 다 들은 뒤에도 창은 남고, 건너뛰기로 닫으면 재생 버튼에서 기다린다', async () => {
   const user = userEvent.setup()
+  vi.mocked(afterScreenChangeMs).mockReturnValue(300)
+  mockAll({ summaryMode: 'ASK' })
+  renderRoute('/watch/15')
+  const dialog = await screen.findByRole('dialog', { name: '30초 요약을 먼저 들을까요?' })
+  await waitFor(() => expect(band()).toHaveTextContent('30초 요약을 들을까요?'))
+  const listen = within(dialog).getByRole('button', { name: '요약 듣고 시작' })
+  await user.click(listen)
+
+  // 화면은 그대로: 같은 창, 같은 버튼, 포커스도 그대로
+  expect(dialog).toHaveAttribute('open')
+  expect(listen).toHaveFocus()
+  expect(within(dialog).getByRole('button', { name: '건너뛰기' })).toBeInTheDocument()
+  // 안내를 읽는 동안에는 요약 소리를 내지 않는다
+  expect(say).not.toHaveBeenCalled()
+  await waitFor(() =>
+    expect(say).toHaveBeenCalledWith(expect.objectContaining({ text: '그래프 수업 요약이에요.' })),
+  )
+  // 다 들어도 창은 그대로
+  await waitFor(() =>
+    expect(band()).toHaveTextContent('요약이 끝났어요. 다시 들으려면 Enter, 닫으려면 Esc.'),
+  )
+  expect(dialog).toHaveAttribute('open')
+  expect(within(dialog).getByRole('button', { name: '요약 듣고 시작' })).toBeInTheDocument()
+
+  await user.click(within(dialog).getByRole('button', { name: '건너뛰기' }))
+  await waitFor(() => expect(dialog).not.toHaveAttribute('open'))
+  expect(screen.getByRole('button', { name: '재생' })).toHaveFocus()
+  await waitFor(() => expect(band()).toHaveTextContent('Space를 누르면 재생해요.'))
+  expect(controls.play).not.toHaveBeenCalled()
+  vi.mocked(afterScreenChangeMs).mockReturnValue(0)
+})
+
+test('요약을 듣는 중 건너뛰기: 요약을 멈추고 창을 닫는다. 재생은 하지 않는다', async () => {
+  const user = userEvent.setup()
+  vi.mocked(afterScreenChangeMs).mockReturnValue(300)
   mockAll({ summaryMode: 'ASK' })
   renderRoute('/watch/15')
   const dialog = await screen.findByRole('dialog', { name: '30초 요약을 먼저 들을까요?' })
   await waitFor(() => expect(band()).toHaveTextContent('30초 요약을 들을까요?'))
   await user.click(within(dialog).getByRole('button', { name: '요약 듣고 시작' }))
-  // 요약을 듣는 동안 포커스는 재생 버튼 (창이 닫히며 본문으로 빠지지 않게)
-  await waitFor(() => expect(screen.getByRole('button', { name: '재생' })).toHaveFocus())
-  await waitFor(() =>
-    expect(say).toHaveBeenCalledWith(expect.objectContaining({ text: '그래프 수업 요약이에요.' })),
-  )
-  await waitFor(() => expect(controls.play).toHaveBeenCalled())
-  await waitFor(() => expect(band()).toHaveTextContent('요약이 끝났어요. 재생해요.'))
+  await user.click(within(dialog).getByRole('button', { name: '건너뛰기' }))
+  await waitFor(() => expect(dialog).not.toHaveAttribute('open'))
+  expect(screen.getByRole('button', { name: '재생' })).toHaveFocus()
+  await waitFor(() => expect(band()).toHaveTextContent('Space를 누르면 재생해요.'))
+  expect(say).not.toHaveBeenCalled()
+  expect(controls.play).not.toHaveBeenCalled()
+  vi.mocked(afterScreenChangeMs).mockReturnValue(0)
 })
 
 test('재생바: 포커스가 있는 동안 재생으로는 낭독 값이 바뀌지 않고, 직접 옮길 때만 바뀐다', async () => {

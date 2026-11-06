@@ -34,6 +34,7 @@ STT_TIMEOUT = 4  # 질문 녹음 받아쓰기. H200 실측 1~2초. 늦으면 GMS
 INTENT_TIMEOUT = 2  # 발화 분석. 늦으면 GMS lite로 → Spring 제한 5초 안(명세)
 JOB_TIMEOUT = 600
 TTS_TIMEOUT = 5  # 안내 목소리 한 문장(H200 실측 0.04초). 이보다 늦으면 브라우저 음성으로 읽는 편이 빠르다
+HEALTH_TIMEOUT = 5  # 일을 맡기기 전에 서버가 살아 있는지(/health). 터널·서버가 끊겼으면 바로 Gemini로 넘긴다
 CHAT_FEATURES = ("stt", "intent", "answer", "tts")
 
 
@@ -46,6 +47,9 @@ class InferenceError(Exception):
 class MockInference:
     name = "mock"
     last_model = "mock"
+
+    async def healthy(self) -> bool:
+        return True
 
     async def transcribe(self, wav: Path | None) -> dict:
         return {"segments": [], "model": "mock"}
@@ -107,6 +111,15 @@ class RemoteInference:
         self.headers = {"Authorization": f"token {token}"} if token else {}  # 토큰은 로그·응답에 남기지 않는다
         self.stream_answer = stream_answer
         self.last_model = ""
+
+    async def healthy(self) -> bool:
+        """/health가 ok면 True. 연결이 안 되거나 늦거나 오류면 False(예외를 내지 않는다)."""
+        try:
+            async with httpx.AsyncClient(timeout=HEALTH_TIMEOUT) as c:
+                r = await c.get(f"{self.base}/health", headers=self.headers)
+            return r.status_code == 200 and bool(r.json().get("ok"))
+        except (httpx.HTTPError, ValueError):
+            return False
 
     async def _post(self, path: str, timeout: float = JOB_TIMEOUT, **kw) -> dict:
         try:

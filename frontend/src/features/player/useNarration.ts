@@ -89,9 +89,12 @@ export function useNarration({
     playingRef.current = state.playing
   }, [state.playing])
 
-  /** 영상을 멈추고 fn 을 끝낸 뒤 원래 재생 중이었으면 이어서 재생한다 (원칙 1장) */
+  /**
+   * 영상을 멈추고 fn 을 끝낸 뒤 원래 재생 중이었으면 이어서 재생한다 (원칙 1장).
+   * resume:false 면 이어서 재생하지 않고, 원래 재생 중이었는지만 돌려준다 (부르는 쪽이 안내를 마친 뒤 재생할 때)
+   */
   const holdWhile = useCallback(
-    async (fn: () => Promise<unknown>) => {
+    async (fn: () => Promise<unknown>, { resume = true }: { resume?: boolean } = {}) => {
       const wasPlaying = playingRef.current
       if (holdRef.current) narrator.stop()
       holdRef.current = true
@@ -101,9 +104,10 @@ export function useNarration({
       } finally {
         if (holdRef.current) {
           holdRef.current = false
-          if (wasPlaying) controls.play()
+          if (wasPlaying && resume) controls.play()
         }
       }
+      return wasPlaying
     },
     [controls, narrator],
   )

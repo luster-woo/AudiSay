@@ -56,10 +56,12 @@ export function Player({ video }: { video: VideoDetail }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { settings, update } = useSettings()
-  const { announce } = useAnnouncer()
+  const { announce, bindVoice } = useAnnouncer()
   const { setHelpOpen } = useShortcuts()
   const [narrator] = useState(() => new Narrator())
   useEffect(() => () => narrator.stop(), [narrator])
+  // 낭독기 안내와 우리 음성이 겹치지 않게 순서를 맞춘다
+  useEffect(() => bindVoice(narrator), [bindVoice, narrator])
 
   /* ── 데이터 ── */
   const playbackQ = useQuery({

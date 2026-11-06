@@ -106,3 +106,32 @@ test('같은 문장은 안내 목소리를 다시 요청하지 않는다', async
   expect(synthesize).toHaveBeenCalledTimes(1)
   expect(played).toEqual(['https://s3/guide/b.mp3', 'https://s3/guide/b.mp3'])
 })
+
+test('말하기 시작·끝을 알리고, 줄에 이어지는 소리 사이에는 끝을 알리지 않는다', async () => {
+  const n = new Narrator()
+  const events: boolean[] = []
+  n.onBusyChange((b) => events.push(b))
+  const a = n.say({ text: '첫 문장', audioUrl: 'https://s3/a.mp3' })
+  const b = n.say({ text: '둘째 문장', audioUrl: 'https://s3/b.mp3' })
+  await Promise.all([a, b])
+  expect(events).toEqual([true, false])
+
+  void n.say({ text: '셋째 문장', audioUrl: 'https://s3/c.mp3' })
+  n.stop()
+  expect(events).toEqual([true, false, true, false])
+})
+
+test('낭독기가 안내를 읽는 중이면 그만큼 기다렸다가 소리를 내고, 기다리는 동안 멈추면 내지 않는다', async () => {
+  const n = new Narrator()
+  n.setQuietWait(() => 40)
+  const t0 = Date.now()
+  expect(await n.say({ text: '해설', audioUrl: 'https://s3/a.mp3' })).toBe(true)
+  expect(Date.now() - t0).toBeGreaterThanOrEqual(30)
+  expect(played).toEqual(['https://s3/a.mp3'])
+
+  const p = n.say({ text: '해설', audioUrl: 'https://s3/b.mp3' })
+  n.stop()
+  expect(await p).toBe(false)
+  await new Promise((r) => setTimeout(r, 60))
+  expect(played).toEqual(['https://s3/a.mp3'])
+})

@@ -1,6 +1,10 @@
 server:
   port: 8080
   forward-headers-strategy: framework
+  compression:                        # API JSON 응답 gzip(해설 조회 35~67KB). SSE(text/event-stream)는 넣지 않음 — 압축하면 이벤트가 몰려 옴
+    enabled: true
+    mime-types: application/json
+    min-response-size: 2KB
   servlet:
     context-path: /api
 

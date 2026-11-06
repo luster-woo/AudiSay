@@ -17,6 +17,10 @@ import {
   type YoutubeSearchItem,
 } from '@/api/types'
 import { renderRoute } from '@/test/renderWithProviders'
+import { screenReaderLeadMs } from '@/features/search/speechLead'
+
+// '띠' 전 기다림은 테스트에서 0 (기다림 자체는 아래 '안내 → 띠 → 녹음' 테스트에서 따로 본다)
+vi.mock('@/features/search/speechLead', () => ({ screenReaderLeadMs: vi.fn(() => 0) }))
 
 vi.mock('@/api/client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/api/client')>()
@@ -287,6 +291,24 @@ describe('음성 검색', () => {
       value: { getUserMedia: vi.fn().mockRejectedValue(new DOMException('x', name)) },
     })
 
+  test('안내 → 낭독기가 읽는 동안 기다림 → 띠 → 녹음 순서로 시작한다', async () => {
+    vi.mocked(screenReaderLeadMs).mockReturnValueOnce(300)
+    const startSpy = vi.spyOn(FakeRecorder.prototype, 'start')
+    renderRoute('/')
+    await userEvent.click(await screen.findByRole('button', { name: '음성 검색' }))
+    // 기다리는 동안: 포커스는 말 끝내기(아직 못 누름), 녹음 전
+    const finish = await screen.findByRole('button', { name: '말 끝내기' })
+    expect(finish).toHaveFocus()
+    expect(finish).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByText("곧 '띠' 소리가 나요")).toBeInTheDocument()
+    expect(startSpy).not.toHaveBeenCalled()
+    // 기다림이 끝나면 녹음 시작
+    expect(await screen.findByText('듣고 있어요')).toBeInTheDocument()
+    expect(startSpy).toHaveBeenCalledTimes(1)
+    expect(finish).not.toHaveAttribute('aria-disabled')
+    startSpy.mockRestore()
+  })
+
   test('듣는 중 → 말 끝내기 → 알아들은 말로 검색한다', async () => {
     vi.mocked(sttApi.transcribe).mockResolvedValue({ text: '그래프 읽는 법', latencyMs: 1 })
     const { router } = renderRoute('/')
@@ -449,7 +471,7 @@ describe('검색 결과', () => {
     return r
   }
 
-  test('카드는 링크 하나: 해설 있으면 시청 화면, 없으면 주소 확인 화면. 버튼은 없다', async () => {
+  test('홈과 같은 한 열 목록. 줄은 링크 하나: 해설 있으면 시청 화면, 없으면 주소 확인 화면. 버튼은 없다', async () => {
     threeResults()
     const { container } = await openResults()
     expect(
@@ -459,18 +481,30 @@ describe('검색 결과', () => {
         )
       ).length,
     ).toBeGreaterThan(0)
-    expect(
-      screen.getByRole('link', { name: '그래프를 읽는 방법 채널 4분 42초 해설 있음' }),
-    ).toHaveAttribute('href', '/watch/7')
-    expect(
-      screen.getByRole('link', { name: '엑셀 차트 기초 채널 4분 42초 해설 만들 수 있어요' }),
-    ).toHaveAttribute('href', `/search/youtube?url=${encodeURIComponent('https://youtu.be/b2')}`)
-    // 너무 긴 영상도 링크다 (확인 화면에서 이유와 다른 영상 찾기를 듣는다). 이름에 이유를 미리 넣는다
-    expect(
-      screen.getByRole('link', {
-        name: '통계 입문 전체 강의 채널 72분 03초 해설 만들 수 없음, 60분 넘음',
-      }),
-    ).toHaveAttribute('href', `/search/youtube?url=${encodeURIComponent('https://youtu.be/c3')}`)
+    // 홈처럼 ol 한 열. 링크 이름은 제목만, 출처·길이·상태는 설명으로 이어 읽는다
+    const section = screen.getByRole('region', { name: '검색 결과' })
+    const list = within(section).getByRole('list')
+    expect(list.tagName).toBe('OL')
+    expect(within(list).getAllByRole('listitem')).toHaveLength(3)
+    const ready = screen.getByRole('link', { name: '그래프를 읽는 방법' })
+    expect(ready).toHaveAttribute('href', '/watch/7')
+    expect(ready).toHaveAccessibleDescription('유튜브 · 채널 · 4분 42초 해설 있음')
+    expect(within(ready).getByRole('heading', { level: 3 })).toHaveTextContent('그래프를 읽는 방법')
+    const creatable = screen.getByRole('link', { name: '엑셀 차트 기초' })
+    expect(creatable).toHaveAttribute(
+      'href',
+      `/search/youtube?url=${encodeURIComponent('https://youtu.be/b2')}`,
+    )
+    expect(creatable).toHaveAccessibleDescription('유튜브 · 채널 · 4분 42초 해설 만들 수 있어요')
+    // 너무 긴 영상도 링크다 (확인 화면에서 이유와 다른 영상 찾기를 듣는다). 설명에 이유를 미리 넣는다
+    const tooLong = screen.getByRole('link', { name: '통계 입문 전체 강의' })
+    expect(tooLong).toHaveAttribute(
+      'href',
+      `/search/youtube?url=${encodeURIComponent('https://youtu.be/c3')}`,
+    )
+    expect(tooLong).toHaveAccessibleDescription(
+      '유튜브 · 채널 · 72분 03초 해설 만들 수 없음, 60분 넘음',
+    )
     expect(
       screen.queryByRole('button', { name: /재생|즐겨찾기|만들 수 없음/ }),
     ).not.toBeInTheDocument()
@@ -494,7 +528,7 @@ describe('검색 결과', () => {
       remaining: 3,
     })
     const { router } = await openResults()
-    await userEvent.click(screen.getByRole('link', { name: /^엑셀 차트 기초/ }))
+    await userEvent.click(screen.getByRole('link', { name: '엑셀 차트 기초' }))
     await waitFor(() => expect(router.state.location.pathname).toBe('/search/youtube'))
     await screen.findByRole('heading', { level: 1, name: '해설을 만들 수 있어요' })
     expect(videosApi.youtubeCheck).toHaveBeenCalledWith('https://youtu.be/b2')
@@ -502,6 +536,35 @@ describe('검색 결과', () => {
     await userEvent.click(screen.getByRole('button', { name: '해설 만들기' }))
     await waitFor(() => expect(router.state.location.pathname).toBe('/jobs/77'))
     expect(videosApi.youtubeRequest).toHaveBeenCalledWith('https://youtu.be/b2')
+  })
+
+  test('더 보기: 다음 쪽을 받아 10개씩 이어 붙이고 새 첫 영상으로 포커스, 다 받으면 버튼을 없앤다', async () => {
+    const page = (prefix: string, n: number) =>
+      Array.from({ length: n }, (_, i) =>
+        searchItem({ youtubeVideoId: `${prefix}${i + 1}`, title: `${prefix} ${i + 1}` }),
+      )
+    vi.mocked(videosApi.youtubeSearch).mockImplementation(async (_q, token) =>
+      token === 'p2'
+        ? { items: page('둘째', 5), nextPageToken: null }
+        : { items: page('첫째', 10), nextPageToken: 'p2' },
+    )
+    const { router } = await openResults()
+    expect(screen.getByText('전체 10개 넘게')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '첫째 10' })).toBeInTheDocument()
+    expect(screen.queryByRole('navigation', { name: '페이지' })).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: '더 보기' }))
+    const eleventh = await screen.findByRole('link', { name: '둘째 1' })
+    await waitFor(() => expect(eleventh).toHaveFocus())
+    expect(videosApi.youtubeSearch).toHaveBeenLastCalledWith('그래프 읽는 법', 'p2')
+    expect(
+      (await screen.findAllByText('5개 더 불러왔어요. 15개까지 보여 줘요. 모든 영상을 불러왔어요.'))
+        .length,
+    ).toBeGreaterThan(0)
+    expect(screen.getByText('전체 15개')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /더 보기/ })).not.toBeInTheDocument()
+    // 보여 준 개수를 주소에 남겨, 영상을 보고 돌아오면 그대로
+    expect(new URLSearchParams(router.state.location.search).get('shown')).toBe('20')
   })
 
   test('결과가 없으면 짧은 검색어 예시를 보여 주고 검색 칸으로 옮긴다', async () => {

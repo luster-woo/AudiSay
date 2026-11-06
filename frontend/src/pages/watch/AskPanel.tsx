@@ -11,7 +11,8 @@ import { Button } from '@/components/ui/Button'
 import { cn } from '@/components/ui/cn'
 import { useAnnouncer } from '@/features/announcer/context'
 import { MIC_MESSAGES } from '@/features/search/micPermission'
-import { MAX_RECORD_SEC, useVoiceRecorder } from '@/features/search/useVoiceRecorder'
+import { screenReaderLeadMs } from '@/features/search/speechLead'
+import { MAX_RECORD_SEC, VOICE_LABEL, useVoiceRecorder } from '@/features/search/useVoiceRecorder'
 import { useShortcutEntry } from '@/features/shortcuts/context'
 import { formatClock } from '@/utils/time'
 
@@ -64,16 +65,22 @@ export function AskPanel({
       return
     }
     inputRef.current?.focus()
-    if (await voice.start()) {
-      onListenStart()
-      announce("영상을 멈췄어요. '띠' 소리 뒤에 질문하세요. 다 말했으면 '말 끝내기'를 누르세요.")
-    }
+    // 안내 → 낭독기가 읽는 동안 기다림 → '띠' → 녹음 (녹음 중에 낭독기 음성이 겹치거나 녹음되지 않게)
+    const intro = "영상을 멈췄어요. '띠' 소리 뒤에 질문하세요."
+    await voice.start({
+      prepare: () => {
+        onListenStart()
+        announce(intro)
+        return screenReaderLeadMs(intro)
+      },
+    })
   }, [busy, voice, inputRef, onListenStart, announce])
 
   useShortcutEntry('ask', () => void startVoice(), { scope: 'user' })
 
   useEffect(() => {
-    if (voice.state === 'listening') finishRef.current?.focus()
+    // 기다림이 없으면 preparing 을 건너뛰고 바로 listening 으로 그려질 수 있다
+    if (voice.state === 'preparing' || voice.state === 'listening') finishRef.current?.focus()
     if (voice.state === 'processing') announce('알아듣는 중이에요.')
     if (voice.state === 'error') {
       retryRef.current?.focus()
@@ -96,7 +103,7 @@ export function AskPanel({
     backToText('질문을 취소했어요. 영상을 이어서 재생해요.')
   }, [voice, backToText])
 
-  const listening = voice.state === 'listening'
+  const listening = voice.state === 'preparing' || voice.state === 'listening'
   useEffect(() => {
     if (!listening) return
     const onKey = (e: KeyboardEvent) => {
@@ -165,7 +172,7 @@ export function AskPanel({
         </form>
       )}
 
-      {(voice.state === 'listening' || voice.state === 'processing') && (
+      {voice.state !== 'idle' && voice.state !== 'error' && (
         <div className="mt-4">
           {/* 낭독은 Announcer 가 맡으므로 role 을 두지 않는다 (두 번 읽힘 방지) */}
           <div className={cn(bar, 'border-navy bg-yellow-soft')}>
@@ -173,7 +180,7 @@ export function AskPanel({
               ●
             </span>
             <span className="font-bold">
-              {voice.state === 'listening' ? '듣고 있어요' : '알아듣는 중이에요'}
+              {VOICE_LABEL[voice.state]}
             </span>
             {/* 남은 시간은 매초 읽지 않는다 (원칙 9장) */}
             <span aria-hidden="true" className="ml-auto font-mono tabular-nums">
@@ -185,7 +192,7 @@ export function AskPanel({
               ref={finishRef}
               variant="accent"
               size="xl"
-              disabled={voice.state === 'processing'}
+              disabled={voice.state !== 'listening'}
               onClick={voice.stop}
             >
               말 끝내기

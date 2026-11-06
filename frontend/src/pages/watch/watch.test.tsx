@@ -259,6 +259,26 @@ test('요약 듣고 시작: 요약을 읽은 뒤 재생한다', async () => {
   await waitFor(() => expect(band()).toHaveTextContent('요약이 끝났어요. 재생해요.'))
 })
 
+test('재생바: 포커스가 있는 동안 재생으로는 낭독 값이 바뀌지 않고, 직접 옮길 때만 바뀐다', async () => {
+  const user = userEvent.setup()
+  renderRoute('/watch/15')
+  const slider = await screen.findByRole('slider', { name: '재생 위치' })
+  act(() => setPlayerState?.({ playing: true, currentMs: T(10) }))
+  act(() => slider.focus())
+  expect(slider).toHaveAttribute('aria-valuetext', '10초, 전체 4분 42초')
+  // 재생으로 시각이 흘러도 그대로 (NVDA 가 매초 읽지 않게)
+  act(() => setPlayerState?.({ currentMs: T(13) }))
+  expect(slider).toHaveAttribute('aria-valuetext', '10초, 전체 4분 42초')
+  // 화살표로 옮기면 바뀐다 (지금 위치 13초 + 10초)
+  await user.keyboard('{ArrowRight}')
+  expect(slider).toHaveAttribute('aria-valuetext', '23초, 전체 4분 42초')
+  // 포커스가 빠지면 다시 따라간다
+  act(() => slider.blur())
+  act(() => setPlayerState?.({ currentMs: T(40) }))
+  // 옮긴 직후 잠깐(키를 뗀 뒤 0.4초)은 옮긴 위치를 보여 주고, 그다음 재생 시각을 따라간다
+  await waitFor(() => expect(slider).toHaveAttribute('aria-valuetext', '40초, 전체 4분 42초'))
+})
+
 test('안 듣기: 재생 버튼에 포커스. 목차를 고르면 그 시각으로 옮기고 장면을 읽어 준다', async () => {
   const user = userEvent.setup()
   renderRoute('/watch/15')
@@ -676,6 +696,27 @@ test('"들으시겠어요?" 뒤에 아니요라고 하면 다시 받지 않고, 
   await waitFor(() => expect(chatApi.send).toHaveBeenCalledTimes(2))
 })
 
+test('다른 탭을 보고 있어도 입력을 마치면(명령 포함) 질문 기록 탭을 보여 주고 포커스는 입력칸에 둔다', async () => {
+  const user = userEvent.setup()
+  vi.mocked(chatApi.send).mockResolvedValueOnce({
+    chatLogId: 95,
+    inputMode: 'TEXT',
+    utterance: '이동 되돌려 줘',
+    intent: 'ACTION',
+    result: { actionCode: 'UNDO_SEEK' as never },
+  })
+  renderRoute('/watch/15')
+  await screen.findByRole('button', { name: '재생' })
+  await user.click(screen.getByRole('tab', { name: '대본' }))
+  expect(screen.getByRole('tab', { name: '대본' })).toHaveAttribute('aria-selected', 'true')
+
+  const input = screen.getByRole('textbox', { name: '질문하거나 명령하기' })
+  await user.type(input, '이동 되돌려 줘{Enter}')
+  expect(screen.getByRole('tab', { name: '질문 기록' })).toHaveAttribute('aria-selected', 'true')
+  expect(input).toHaveFocus()
+  await waitFor(() => expect(chatApi.send).toHaveBeenCalled())
+})
+
 test('새 명령: 방금 거 다시 듣기 / 이동 되돌리기 / 읽기 멈추기', async () => {
   const user = userEvent.setup()
   const action = (chatLogId: number, actionCode: string) => ({
@@ -695,6 +736,8 @@ test('새 명령: 방금 거 다시 듣기 / 이동 되돌리기 / 읽기 멈추
 
   // 목차로 2분 30초에 갔다가 되돌리면 이동 전(0초)으로
   act(() => setPlayerState?.({ currentMs: T(20) }))
+  // 명령을 보내면 질문 기록 탭으로 바뀌므로 목차 탭으로 돌아가서 고른다
+  await user.click(screen.getByRole('tab', { name: '목차' }))
   await user.click(
     screen.getByRole('button', { name: /3번, 선그래프로 보기|2번, 막대그래프 비교/ }),
   )

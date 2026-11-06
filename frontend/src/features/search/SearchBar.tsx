@@ -18,7 +18,8 @@ import { coerceSetting, settingSpoken } from '@/pages/watch/useAsk'
 import { formatClock } from '@/utils/time'
 import { isYoutubeUrl } from '@/utils/youtube'
 import { MIC_MESSAGES } from './micPermission'
-import { MAX_RECORD_SEC, useVoiceRecorder } from './useVoiceRecorder'
+import { screenReaderLeadMs } from './speechLead'
+import { MAX_RECORD_SEC, VOICE_LABEL, useVoiceRecorder } from './useVoiceRecorder'
 
 /** 듣는 중 파형. 장식이라 숨기고, 움직임 줄이기 설정이면 멈춘다 */
 /** 음성 검색 부가 기능 안내는 처음 3번만 읽는다. 저장소를 못 쓰면(사생활 보호 창 등) 매번 읽는다 */
@@ -134,18 +135,25 @@ export function SearchBar({
   })
 
   const startVoice = useCallback(async () => {
-    if (await voice.start()) {
-      // 처음 몇 번만 부가 기능을 함께 알린다 (매번 길게 읽지 않게)
-      const tip = takeVoiceTip() ? ' 영상 이름이나 "말 빠르게" 같은 설정을 말해도 돼요.' : ''
-      announce(`'띠' 소리 뒤에 말씀하세요.${tip} 듣고 있어요. 다 말했으면 Space를 누르세요.`)
-    }
+    // 안내 → 낭독기가 읽는 동안 기다림 → '띠' → 녹음 (녹음 중에 낭독기 음성이 겹치거나 녹음되지 않게).
+    // 다 말했을 때 누를 '말 끝내기'는 포커스가 먼저 가 있어 따로 말하지 않는다
+    await voice.start({
+      prepare: () => {
+        // 처음 몇 번만 부가 기능을 함께 알린다 (매번 길게 읽지 않게)
+        const tip = takeVoiceTip() ? ' 영상 이름이나 "말 빠르게" 같은 설정을 말해도 돼요.' : ''
+        const intro = `'띠' 소리 뒤에 말씀하세요.${tip}`
+        announce(intro)
+        return screenReaderLeadMs(intro)
+      },
+    })
   }, [voice, announce])
 
   useShortcutEntry('voiceSearch', () => void startVoice(), { scope: 'user' })
 
   // 상태가 바뀌면 다음에 누를 버튼으로 포커스를 옮긴다
   useEffect(() => {
-    if (voice.state === 'listening') finishRef.current?.focus()
+    // 기다림이 없으면 preparing 을 건너뛰고 바로 listening 으로 그려질 수 있다
+    if (voice.state === 'preparing' || voice.state === 'listening') finishRef.current?.focus()
     if (voice.state === 'processing') announce('알아듣는 중이에요.')
     if (voice.state === 'error') {
       retryRef.current?.focus()
@@ -168,7 +176,7 @@ export function SearchBar({
   }, [voice, backToText])
 
   // 듣는 중 Esc 는 취소
-  const listening = voice.state === 'listening'
+  const listening = voice.state === 'preparing' || voice.state === 'listening'
   useEffect(() => {
     if (!listening) return
     const onKey = (e: KeyboardEvent) => {
@@ -231,14 +239,14 @@ export function SearchBar({
           </>
         )}
 
-        {(voice.state === 'listening' || voice.state === 'processing') && (
+        {voice.state !== 'idle' && voice.state !== 'error' && (
           <>
             <div className={cn(box, 'border-navy bg-yellow-soft')}>
               <span aria-hidden="true" className="text-danger">
                 ●
               </span>
               <span className="font-bold">
-                {voice.state === 'listening' ? '듣고 있어요' : '알아듣는 중이에요'}
+                {VOICE_LABEL[voice.state]}
               </span>
               {voice.state === 'listening' && (
                 <span aria-hidden="true" className="flex h-8 items-center gap-0.5">
@@ -260,7 +268,7 @@ export function SearchBar({
               ref={finishRef}
               variant="accent"
               size="xl"
-              disabled={voice.state === 'processing'}
+              disabled={voice.state !== 'listening'}
               onClick={voice.stop}
             >
               말 끝내기

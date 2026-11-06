@@ -4,7 +4,25 @@ import { ApiError } from '@/api/errors'
 import { playBeep } from './beep'
 import { MIC_MESSAGES, micErrorMessage, queryMic, watchMic } from './micPermission'
 
-export type VoiceState = 'idle' | 'listening' | 'processing' | 'error'
+/** preparing: 마이크는 열었고 낭독기가 안내를 읽는 동안 기다린다 ('띠'·녹음 전) */
+export type VoiceState = 'idle' | 'preparing' | 'listening' | 'processing' | 'error'
+
+export interface StartOptions {
+  /**
+   * 마이크를 연 직후 한 번 (영상 멈추기·안내하기). '띠' 소리 전에 기다릴 시간(ms)을 돌려준다 —
+   * 낭독기가 안내를 다 읽도록 screenReaderLeadMs(안내 문구) 로 어림한다
+   */
+  prepare?: () => number
+}
+
+/** 화면에 보이는 상태 글자 */
+export const VOICE_LABEL: Record<VoiceState, string> = {
+  idle: '',
+  preparing: "곧 '띠' 소리가 나요",
+  listening: '듣고 있어요',
+  processing: '알아듣는 중이에요',
+  error: '알아듣지 못했어요',
+}
 export const MAX_RECORD_SEC = 60
 
 interface Options {
@@ -32,6 +50,15 @@ export function useVoiceRecorder({ onResult, onUnavailable, onAsking, onRecovere
   const cancelledRef = useRef(false)
   const timerRef = useRef<number | null>(null)
   const blockedRef = useRef(false) // 차단돼서 실패했는지 (풀리면 onRecovered)
+  // preparing 중 기다림을 끝내는 함수 (취소·화면 떠남 때 바로 풀어 준다)
+  const leadTimerRef = useRef<number | null>(null)
+  const leadDoneRef = useRef<(() => void) | null>(null)
+  const endLead = () => {
+    if (leadTimerRef.current != null) window.clearTimeout(leadTimerRef.current)
+    leadTimerRef.current = null
+    leadDoneRef.current?.()
+    leadDoneRef.current = null
+  }
   const onRecoveredRef = useRef(onRecovered)
   useEffect(() => {
     onRecoveredRef.current = onRecovered
@@ -82,12 +109,13 @@ export function useVoiceRecorder({ onResult, onUnavailable, onAsking, onRecovere
 
   const cancel = useCallback(() => {
     cancelledRef.current = true
+    endLead()
     stop()
     releaseMic()
     setState('idle')
   }, [stop])
 
-  const start = useCallback(async () => {
+  const start = useCallback(async ({ prepare }: StartOptions = {}) => {
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
       onUnavailable(MIC_MESSAGES.unsupported)
       return false
@@ -116,7 +144,20 @@ export function useVoiceRecorder({ onResult, onUnavailable, onAsking, onRecovere
       releaseMic()
       if (!cancelledRef.current) void transcribe(blob)
     }
+    // 순서: 안내 → (낭독기가 읽는 동안) 기다림 → '띠' → 녹음. 녹음 중에 낭독기가 말하지 않게 한다
     setElapsed(0)
+    setState('preparing')
+    const leadMs = prepare?.() ?? 0
+    if (leadMs > 0) {
+      await new Promise<void>((resolve) => {
+        leadDoneRef.current = resolve
+        leadTimerRef.current = window.setTimeout(endLead, leadMs)
+      })
+    }
+    if (cancelledRef.current) {
+      releaseMic()
+      return false
+    }
     setState('listening')
     playBeep()
     recorder.start()
@@ -133,6 +174,7 @@ export function useVoiceRecorder({ onResult, onUnavailable, onAsking, onRecovere
   useEffect(
     () => () => {
       cancelledRef.current = true
+      endLead()
       clearTimer()
       releaseMic()
     },

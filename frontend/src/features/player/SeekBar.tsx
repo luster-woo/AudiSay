@@ -36,6 +36,15 @@ export function SeekBar({
   const max = Math.max(1, durationMs)
   const percent = Math.min(100, Math.max(0, (shown / max) * 100))
 
+  /*
+   * 낭독기용 값: 포커스가 있는 동안에는 사용자가 옮길 때만 바꾼다.
+   * 재생 중 매초 바뀌면 낭독기(NVDA)가 포커스된 슬라이더 값 변화를 계속 읽어 영상 소리와 겹친다 (원칙 2장).
+   * 포커스가 들어올 때 지금 위치로 맞춰 읽게 하고, 포커스가 없을 때는 그대로 따라간다
+   */
+  const [focused, setFocused] = useState(false)
+  const [spokenMs, setSpokenMs] = useState(shown)
+  const ariaMs = focused ? spokenMs : shown
+
   const settle = (ms: number) => {
     if (settleTimer.current) window.clearTimeout(settleTimer.current)
     settleTimer.current = window.setTimeout(() => {
@@ -53,6 +62,7 @@ export function SeekBar({
   const go = (ms: number) => {
     const next = Math.min(max, Math.max(0, Math.round(ms)))
     setPending(next)
+    setSpokenMs(next)
     onSeek(next)
     settle(next)
   }
@@ -105,9 +115,14 @@ export function SeekBar({
           aria-label="재생 위치"
           aria-valuemin={0}
           aria-valuemax={durationMs}
-          aria-valuenow={shown}
-          aria-valuetext={`${formatPositionSpoken(shown)}, 전체 ${formatPositionSpoken(durationMs)}`}
+          aria-valuenow={ariaMs}
+          aria-valuetext={`${formatPositionSpoken(ariaMs)}, 전체 ${formatPositionSpoken(durationMs)}`}
           onKeyDown={onKeyDown}
+          onFocus={() => {
+            setSpokenMs(shown)
+            setFocused(true)
+          }}
+          onBlur={() => setFocused(false)}
           className={cn(
             'absolute top-1/2 h-9 w-4 -translate-x-1/2 -translate-y-1/2 rounded-sm border-2 bg-yellow outline-offset-4 focus-visible:bg-yellow',
             dark ? 'border-cream' : 'border-navy',

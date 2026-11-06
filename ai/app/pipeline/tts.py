@@ -8,8 +8,11 @@
 - line.tts: 사용자가 상세도 3을 처음 고를 때 BE가 보낸다. payload.lineIds가 있으면 그 문장만, 없으면 detailLevel(기본 3) 문장 중
   음성이 없는 것 전부.
 - 한 문장이 실패하면 그 문장만 비워 둔다(FE가 브라우저 음성으로 읽음). 모델은 gemini-3.8-flash-tts → 실패하면 lite.
+- 직접 올린 영상(UPLOAD)은 해설·요약 음성을 H200 Supertonic 3(F1 수아, 크레딧 0)으로 만든다(2026-11-06 사용자 결정, 데모와 같음).
+  유튜브 영상과, GPU 서버가 끊겼을 때의 업로드 영상은 Gemini TTS(Kore)를 쓴다.
 - 문장만 보낸다(지시문을 붙이면 그것까지 읽음). PCM 24kHz 16bit mono → ffmpeg로 mp3(64k). Dockerfile에 ffmpeg 필요.
 - clean_tail: SDK 응답 끝에 붙는 0.1~0.3초 최대 음량 잡음("칙")을 잘라 낸다(데모 troubleshooting 6번).
+- strip_wav_header: 응답 앞의 WAV 헤더를 떼어 낸다(그대로 두면 해설 맨 앞에 "딱" 소리).
 
 데모 backend/app/pipeline/tts.py(synthesize_many·clean_tail)를 비동기·S3로 옮겼다. voice_code 칼럼은 V3에서 지워져 쓰지 않는다.
 
@@ -20,23 +23,27 @@
 import asyncio
 import hashlib
 import logging
+import tempfile
 from array import array
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 from google.genai import types
 
+from app import inference
 from app.db import Db
 from app.errors import WorkerError
 from app.gms.client import CallContext, GmsClient
 from app.mq.envelope import Envelope
 from app.mq.worker import Events
 from app.storage import Storage
+from app.tts_text import normalize_ko
 
 log = logging.getLogger(__name__)
 
 MODELS = ("gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts")
 VOICE_NAME = "Kore"
+UPLOAD_VOICE = "F1"  # 직접 올린 영상의 해설 목소리: Supertonic 수아(안내 목소리 기본과 같음, 데모 2026-11-04 결정과 같음)
 # 음성 동시 요청 수. 데모 실측(2026-11-03): 5개씩 32개 18.5초(개당 0.58초) → 10개씩 47개 13.8초(개당 0.29초), 오류 0
 CONCURRENCY = 10
 PRE_TTS_LEVEL = 2  # job.tts가 미리 만드는 상세도. 3은 line.tts
@@ -91,6 +98,48 @@ def clean_tail(pcm: bytes) -> bytes:
     return s.tobytes()
 
 
+# 이미 만든 mp3의 맨 앞 "딱"(strip_wav_header 전에 만든 음성). 레포 음성 345개 측정: 잡음 번짐은 33ms 안에 끝나고 말은 87ms 뒤부터
+HEAD_SEARCH_MS = 120  # 잡음이 이 안에서 시작한다(파이프로 만든 mp3는 디코더 지연 46ms 뒤에 놓임)
+HEAD_MUTE_MS, HEAD_FADE_MS = 40, 10  # 잡음 시작부터 40ms를 지우고 10ms 페이드인
+HEAD_AFTER_MAX = 3000  # 잡음 뒤 5~35ms가 이보다 조용해야 잡음으로 본다(말이면 계속 크다)
+
+
+def mute_head_click(pcm: bytes) -> bytes | None:
+    """맨 앞 "딱" 소리를 지운 PCM. 잡음이 없으면 None. 길이는 그대로(audio_duration_ms를 바꾸지 않게)."""
+    s = array("h")
+    s.frombytes(pcm[: len(pcm) - len(pcm) % 2])
+    ms = SR // 1000
+    b = next((i for i in range(min(len(s), HEAD_SEARCH_MS * ms)) if abs(s[i]) >= LOUD), None)
+    if b is None or max(map(abs, s[b + 5 * ms:b + 35 * ms]), default=0) >= HEAD_AFTER_MAX:
+        return None
+    mute, fade = min(len(s), b + HEAD_MUTE_MS * ms), HEAD_FADE_MS * ms
+    for k in range(mute):
+        s[k] = 0
+    for k in range(min(fade, len(s) - mute)):
+        s[mute + k] = int(s[mute + k] * k / fade)
+    return s.tobytes()
+
+
+async def decode_mp3(mp3: bytes) -> bytes:
+    """mp3 → PCM(24kHz 16bit mono). 파일로 읽어야 인코더 지연 정보(LAME 헤더)를 써서 앞을 정확히 자른다."""
+    with tempfile.TemporaryDirectory() as d:
+        src = Path(d) / "in.mp3"
+        src.write_bytes(mp3)
+        proc = await asyncio.create_subprocess_exec(
+            "ffmpeg", "-loglevel", "error", "-i", str(src), "-f", "s16le", "-ar", str(SR), "-ac", "1", "pipe:1",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        out, err = await proc.communicate()
+    if proc.returncode != 0:
+        raise WorkerError("TRANSCODE_FAILED", f"ffmpeg mp3 읽기 실패: {err.decode(errors='replace')[:300]}")
+    return out
+
+
+async def remove_head_click(mp3: bytes) -> bytes | None:
+    """맨 앞 "딱" 소리를 지운 mp3. 잡음이 없으면 None."""
+    fixed = mute_head_click(await decode_mp3(mp3))
+    return None if fixed is None else await encode_mp3(fixed)
+
+
 def duration_ms(pcm: bytes) -> int:
     return int(len(pcm) / (SR * 2 / 1000))
 
@@ -114,11 +163,28 @@ def _config() -> types.GenerateContentConfig:
             prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=VOICE_NAME))))
 
 
+def strip_wav_header(data: bytes) -> bytes:
+    """Gemini TTS 응답이 WAV(RIFF 헤더 44바이트 + PCM)면 PCM만 남긴다.
+
+    헤더를 PCM으로 보고 mp3를 만들면 헤더 22샘플이 최대 음량에 가까운 "딱" 소리로 해설 맨 앞(첫 1ms)에 들어간다
+    (2026-11-06 해설 시작 전 잡음, 레포 음성 345개 모두). 헤더가 없으면 그대로 돌려준다.
+    """
+    if data[:4] != b"RIFF" or data[8:12] != b"WAVE":
+        return data
+    i = 12
+    while i + 8 <= len(data):  # fmt·LIST 같은 덩어리를 건너뛰고 data 덩어리를 찾는다
+        size = int.from_bytes(data[i + 4:i + 8], "little")
+        if data[i:i + 4] == b"data":
+            return data[i + 8:]
+        i += 8 + size + (size & 1)
+    return data[44:]
+
+
 def _pcm(r: types.GenerateContentResponse) -> bytes:
     for c in r.candidates or []:
         for p in (c.content.parts if c.content else None) or []:
             if p.inline_data and p.inline_data.data:
-                return p.inline_data.data
+                return strip_wav_header(p.inline_data.data)
     return b""
 
 
@@ -166,32 +232,60 @@ async def reuse(storage: Storage, text: str) -> tuple[bytes, int] | None:
     if await storage.exists(key):
         meta_key = key.removesuffix(".mp3") + ".json"
         meta = await storage.get_json(meta_key) if await storage.exists(meta_key) else {}
-        return await storage.get_bytes(key), int(meta.get("durationMs") or 0)
+        mp3, ms = await storage.get_bytes(key), int(meta.get("durationMs") or 0)
+        if not meta.get("headClean"):  # 헤더 잡음을 고치기 전에 캐시에 들어간 음성은 한 번 고쳐 다시 넣는다
+            try:
+                mp3 = await remove_head_click(mp3) or mp3
+                await remember(storage, text, mp3, ms)
+            except WorkerError as e:  # 못 고치면 그대로 쓴다(다음에 다시 시도)
+                log.warning("캐시 음성 앞 잡음 고치기 실패 %s: %s", key, e)
+        return mp3, ms
     return _seed(h)
 
 
 async def remember(storage: Storage, text: str, mp3: bytes, ms: int) -> None:
     key = tts_cache_key(text_hash(text))
     await storage.put_bytes(key, mp3, "audio/mpeg")
-    await storage.put_json(key.removesuffix(".mp3") + ".json", {"durationMs": ms})
+    await storage.put_json(key.removesuffix(".mp3") + ".json", {"durationMs": ms, "headClean": True})
+
+
+async def synthesize_supertonic(inf: inference.Inference, text: str) -> tuple[bytes, int] | None:
+    """문장 하나 → H200 Supertonic 3(안내 목소리와 같은 수아, 크레딧 0) → (mp3, 길이 ms). 실패하면 None(FE가 안내 목소리로 읽음).
+    긴 글(요약)은 안내 목소리처럼 120자 조각으로 나눠 합성하고 mp3를 잇는다."""
+    from app.internal_api import _join_mp3, tts_chunks
+
+    parts, ms = [], 0
+    try:
+        for chunk in tts_chunks(normalize_ko(text)):  # 차례로: H200 TTS는 한 번에 하나씩 처리한다
+            b, m = await inf.tts(chunk, UPLOAD_VOICE)
+            parts.append(b)
+            ms += m
+        return (await _join_mp3(parts), ms) if parts else None
+    except (inference.InferenceError, RuntimeError) as e:
+        log.warning("Supertonic 해설 음성 실패: %s", str(e)[:200])
+        return None
 
 
 OnDone = Callable[[int, int], Awaitable[None]]
 
 
 async def synthesize_many(gms: GmsClient, storage: Storage, items: list[tuple[str, str]], ctx: CallContext,
-                          on_done: OnDone | None = None) -> dict[str, int | None]:
-    """items: [(S3 키, 문장)]. 동시에 CONCURRENCY개씩. 반환 {키: 길이 ms 또는 None(실패)}."""
+                          on_done: OnDone | None = None, inf: inference.Inference | None = None) -> dict[str, int | None]:
+    """items: [(S3 키, 문장)]. 동시에 CONCURRENCY개씩. 반환 {키: 길이 ms 또는 None(실패)}.
+    inf가 있으면(직접 올린 영상) Supertonic으로 만들고 Gemini 음성 캐시는 쓰지 않는다(목소리가 다름)."""
     sem = asyncio.Semaphore(CONCURRENCY)
     out: dict[str, int | None] = {}
 
     async def one(key: str, text: str) -> None:
         async with sem:
-            made = await reuse(storage, text)  # 같은 문장이면 크레딧 0
-            if made is None:
-                made = await synthesize(gms, text, ctx)
-                if made:
-                    await remember(storage, text, *made)
+            if inf is not None:
+                made = await synthesize_supertonic(inf, text)
+            else:
+                made = await reuse(storage, text)  # 같은 문장이면 크레딧 0
+                if made is None:
+                    made = await synthesize(gms, text, ctx)
+                    if made:
+                        await remember(storage, text, *made)
             if made:
                 await storage.put_bytes(key, made[0], "audio/mpeg")
             out[key] = made[1] if made else None
@@ -205,8 +299,8 @@ async def synthesize_many(gms: GmsClient, storage: Storage, items: list[tuple[st
 class Tts:
     """job.tts: 상세도 1·2 문장 + 요약."""
 
-    def __init__(self, storage: Storage, gms: GmsClient, db: Db):
-        self.storage, self.gms, self.db = storage, gms, db
+    def __init__(self, storage: Storage, gms: GmsClient, db: Db, inf: inference.Inference | None = None):
+        self.storage, self.gms, self.db, self.inf = storage, gms, db, inf
 
     async def __call__(self, env: Envelope, events: Events) -> None:
         p, job_id = env.payload, env.jobId
@@ -229,7 +323,8 @@ class Tts:
                 sent = pct
                 await events.progress(pct)
 
-        done = await synthesize_many(self.gms, self.storage, items, CallContext("TTS", job_id=job_id), progress) if items else {}
+        inf = await _upload_inf(pool, desc_id, self.inf)
+        done = await synthesize_many(self.gms, self.storage, items, CallContext("TTS", job_id=job_id), progress, inf) if items else {}
         async with pool.acquire() as con, con.transaction():
             for r in rows:
                 key = line_key(desc_id, r["id"], r["text"])
@@ -250,8 +345,8 @@ class Tts:
 class LineTts:
     """line.tts: 상세도 3(또는 지정한 문장)의 음성을 나중에 만든다. 진행률 이벤트는 보내지 않고 완료만 보낸다."""
 
-    def __init__(self, storage: Storage, gms: GmsClient, db: Db):
-        self.storage, self.gms, self.db = storage, gms, db
+    def __init__(self, storage: Storage, gms: GmsClient, db: Db, inf: inference.Inference | None = None):
+        self.storage, self.gms, self.db, self.inf = storage, gms, db, inf
 
     async def __call__(self, env: Envelope, events: Events) -> None:
         p = env.payload
@@ -264,7 +359,8 @@ class LineTts:
             rows = await pool.fetch("SELECT id, text FROM description_lines WHERE description_id = $1 AND detail_level = $2"
                                     " AND audio_key IS NULL ORDER BY line_index", desc_id, int(p.get("detailLevel") or 3))
         items = [(line_key(desc_id, r["id"], r["text"]), r["text"]) for r in rows]
-        done = await synthesize_many(self.gms, self.storage, items, CallContext("TTS", job_id=env.jobId)) if items else {}
+        inf = await _upload_inf(pool, desc_id, self.inf)
+        done = await synthesize_many(self.gms, self.storage, items, CallContext("TTS", job_id=env.jobId), inf=inf) if items else {}
         async with pool.acquire() as con, con.transaction():
             for r in rows:
                 key = line_key(desc_id, r["id"], r["text"])
@@ -276,6 +372,21 @@ class LineTts:
         log.info("line.tts 완료 description=%s 음성 %s/%s", desc_id, ok, len(items))
         if env.jobId is not None:  # 작업에 묶인 메시지일 때만 job.events로 알린다
             await events.completed({"descriptionId": desc_id, "audioMade": ok, "audioTotal": len(items)})
+
+
+async def _upload_inf(pool, desc_id: int, inf: inference.Inference | None) -> inference.Inference | None:
+    """직접 올린 영상(videos.source_type = UPLOAD)이면 Supertonic으로 읽을 추론 클라이언트, 유튜브면 None(Gemini TTS).
+    GPU 서버(터널)가 끊겼으면 업로드 영상도 None → 유튜브처럼 Gemini TTS로 만든다(문장이 비지 않게, 2026-11-06)."""
+    if inf is None:
+        return None
+    source = await pool.fetchval("SELECT v.source_type FROM descriptions d JOIN videos v ON v.id = d.video_id WHERE d.id = $1",
+                                 desc_id)
+    if source != "UPLOAD":
+        return None
+    if not await inf.healthy():
+        log.warning("H200이 응답하지 않아 업로드 영상 해설 음성을 Gemini TTS로 description=%s", desc_id)
+        return None
+    return inf
 
 
 def _pool(db: Db):

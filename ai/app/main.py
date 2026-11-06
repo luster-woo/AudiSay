@@ -41,12 +41,13 @@ async def lifespan(app: FastAPI):
     await db.start()
     storage = make_storage(cfg)
     gms = GmsClient(cfg, RateLimiter(redis, cfg.gms_rpm), db)
+    inf = inference.make(cfg)
     handlers = {
-        "job.prepare": Prepare(storage, gms, inference.make(cfg), db),
+        "job.prepare": Prepare(storage, gms, inf, db),
         "job.describe": Describe(storage),
         "job.merge": Merge(storage, db),
-        "job.tts": Tts(storage, gms, db),
-        "line.tts": LineTts(storage, gms, db),
+        "job.tts": Tts(storage, gms, db, inf),  # 직접 올린 영상의 해설 음성은 H200 Supertonic
+        "line.tts": LineTts(storage, gms, db, inf),
     }
     worker = Worker(cfg, redis, handlers)
     if cfg.worker_queues.strip():

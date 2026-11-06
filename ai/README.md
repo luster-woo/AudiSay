@@ -8,7 +8,7 @@ RabbitMQ로 해설 생성 단계를 처리하는 워커와, Spring이 부르는 
 | job.prepare | 유튜브: Gemini 1회로 영상 전체 해설 → `jobs/{jobId}/full.json`, 조각 구간·앞 내용 요약 → `prepare.json` | 구현 |
 | job.describe | `full.json`에서 조각 구간을 읽어 누적형 문장 배치·검증 → `chunks/{n}.json` (Gemini 재호출 없음) | 구현 |
 | job.merge | `full.json` + `chunks/*.json`(성공한 조각만) → 해설 표 저장(인물 이름은 근거 있을 때만, 목차 키워드) | 구현 |
-| job.tts | 상세도 1·2 문장 + 요약 → Gemini TTS → mp3 → S3 `audio/lines/{descriptionId}/{lineId}.mp3` | 구현 |
+| job.tts | 상세도 1·2 문장 + 요약 → 유튜브는 Gemini TTS(Kore), 직접 올린 영상은 H200 Supertonic(F1) → mp3 → S3 `audio/lines/{descriptionId}/{lineId}.mp3` | 구현 |
 | line.tts | 상세도 3 문장 음성(사용자가 처음 고를 때) | 구현 |
 
 내부 API(`/internal/stt`, `/internal/chat/intent·seek·answer`)는 "AI 서버 내부 명세서"를 따른다. 답변은 SSE(`delta`·`sentence`·`done`·`error`)로 바로 흘려보내고, 문장 음성은 S3 `tts/chat/{chatLogId}/{n}.mp3`(presigned 6시간). 형식은 `app/internal_api.py` 맨 위 주석 참고.

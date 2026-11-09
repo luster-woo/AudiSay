@@ -47,6 +47,7 @@ const job = (over: Partial<Job> = {}): Job => ({
   currentStage: 'DESCRIBE',
   progress: 50,
   estimatedRemainingSec: 80,
+  estimatedTotalSec: null,
   descriptionId: null,
   coveredUntilMs: null,
   errorCode: null,
@@ -290,6 +291,45 @@ test('남은 시간은 1초마다 줄고, 조금 늘어난 값이 와도 되올�
     await act(() => vi.advanceTimersByTimeAsync(1_000))
     // 화면은 21~22초 — 서버 24초로 되올라가지 않는다
     expect(screen.getByText(/약 2[12]초 남았어요/)).toBeInTheDocument()
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+test('서버 예상 시간이 오면 진행률을 남은 시간과 같은 예측으로 그리고, 예상이 늘어도 뒤로 가지 않는다', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+  try {
+    vi.mocked(jobsApi.get).mockResolvedValue(
+      job({
+        currentStage: 'PREPARE',
+        progress: 10,
+        estimatedTotalSec: 100,
+        estimatedRemainingSec: 40,
+      }),
+    )
+    renderRoute('/jobs/51')
+    expect(await screen.findByText('약 40초 남았어요')).toBeInTheDocument()
+    // 서버 진행률(10, 분석 중)이 아니라 남은 시간 기준 60% (화면에서 1초씩 세므로 조금 더 클 수 있음)
+    const now = () => Number(screen.getByRole('progressbar').getAttribute('aria-valuenow'))
+    expect(now()).toBeGreaterThanOrEqual(60)
+    expect(now()).toBeLessThan(75)
+    await waitFor(() => expect(subscribeSse).toHaveBeenCalled())
+
+    // 분석이 길어져 서버 예상이 200초로 늘어도 막대는 60 아래로 가지 않는다
+    act(() =>
+      sse().onMessage({
+        event: 'progress',
+        data: JSON.stringify({
+          status: 'RUNNING',
+          currentStage: 'PREPARE',
+          progress: 10,
+          estimatedRemainingSec: 150,
+          estimatedTotalSec: 200,
+        }),
+      }),
+    )
+    await act(() => vi.advanceTimersByTimeAsync(100))
+    expect(now()).toBeGreaterThanOrEqual(60)
   } finally {
     vi.useRealTimers()
   }

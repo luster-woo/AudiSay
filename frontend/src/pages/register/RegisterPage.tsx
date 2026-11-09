@@ -49,6 +49,7 @@ export default function RegisterPage() {
       currentStage: null,
       progress: 0,
       estimatedRemainingSec: null,
+      estimatedTotalSec: null,
       descriptionId: null,
       coveredUntilMs: null,
       errorCode: null,

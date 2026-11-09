@@ -6,7 +6,7 @@ import { usersApi } from '@/api/users'
 import { queryKeys } from '@/api/queryKeys'
 import type { MyVideo } from '@/api/types'
 import { useAnnouncer } from '@/features/announcer/context'
-import { jobOverallPercent, toDisplayProgress } from '@/features/job/stages'
+import { jobOverallPercent, timeProgress, toDisplayProgress } from '@/features/job/stages'
 import { Thumbnail } from '@/features/video/Thumbnail'
 
 const DONE = ['SUCCEEDED', 'PARTIAL', 'FAILED'] as const
@@ -70,7 +70,15 @@ function ProgressLink({ video }: { video: MyVideo & { jobId: number } }) {
   }, [job, video.title, announce, queryClient])
 
   // 해설 만들기 화면과 같은 숫자를 보이도록 업로드 영상은 업로드 몫(15%)을 더해 계산한다
-  const percent = jobOverallPercent(video.sourceType, toDisplayProgress(job?.progress ?? 0))
+  // 서버 예상 시간이 있으면 남은 시간과 같은 예측으로(해설 만들기 화면과 같은 계산)
+  const byTime =
+    job?.status === 'RUNNING'
+      ? timeProgress(job.estimatedTotalSec, job.estimatedRemainingSec)
+      : null
+  const percent = jobOverallPercent(
+    video.sourceType,
+    byTime ?? toDisplayProgress(job?.progress ?? 0),
+  )
   const remain = remainingText(job?.estimatedRemainingSec ?? null)
 
   return (

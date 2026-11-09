@@ -1,5 +1,5 @@
 import { tokenStore } from './token'
-import { reissueAccessToken } from './client'
+import { expireSession, reissueAccessToken } from './client'
 import { ApiError, NetworkError } from './errors'
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api/v1'
@@ -57,15 +57,21 @@ export async function subscribeSse(path: string, opts: SseOptions, retried = fal
       logDev(`본문 파싱 실패 (HTTP ${res.status})`, e)
     }
 
-    // AccessToken 만료 → 재발급 후 딱 한 번 다시 연결
-    if (res.status === 401 && code === 'AUTH_003' && !retried) {
+    // AccessToken 만료(AUTH_003), 또는 토큰을 실어 보냈는데 잘못됐다(COMMON_002) → 재발급 후 딱 한 번 다시 연결.
+    // client.ts 의 axios 인터셉터와 같은 규칙
+    const sentToken = !!tokenStore.get()
+    if (
+      res.status === 401 &&
+      !retried &&
+      (code === 'AUTH_003' || (code === 'COMMON_002' && sentToken))
+    ) {
       try {
         await reissueAccessToken()
         return subscribeSse(path, opts, true)
       } catch (e) {
-        // RefreshToken 도 만료. client.ts 의 reissue 가 tokenStore 를 비우고
-        // 세션 리스너를 호출하므로 여기서는 호출부에 이유만 전달한다
+        // RefreshToken 도 만료 → 세션을 끝낸다 (axios 쪽과 같게)
         logDev('재발급 실패', e)
+        expireSession()
         opts.onClose('error', new ApiError('AUTH_002', 401, '로그인이 만료되었습니다.'))
         return
       }

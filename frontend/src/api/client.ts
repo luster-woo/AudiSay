@@ -12,6 +12,12 @@ export function onSessionEvent(listener: SessionListener | null) {
   sessionListener = listener
 }
 
+/** 재발급까지 실패해 세션이 끝났을 때 (SSE 처럼 axios 를 거치지 않는 요청에서 쓴다) */
+export function expireSession() {
+  tokenStore.clear()
+  sessionListener?.('expired')
+}
+
 export const api = axios.create({
   baseURL: BASE_URL,
   withCredentials: true,

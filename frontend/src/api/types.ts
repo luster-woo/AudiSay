@@ -59,7 +59,6 @@ export interface UserSettings {
   soundMix: 'DIALOGUE_ONLY' | 'DIALOGUE_AND_NARRATION'
   subtitleReading: 'ALL' | 'DIFFERENT_ONLY' | 'OFF'
   originalVolume: number // 0 ~ 100
-  voiceCode: string | null
   seekStepSec: 5 | 10 | 30
   summaryMode: 'ASK' | 'ALWAYS' | 'NEVER'
   highContrast: boolean
@@ -75,7 +74,6 @@ export const DEFAULT_SETTINGS: UserSettings = {
   soundMix: 'DIALOGUE_AND_NARRATION',
   subtitleReading: 'DIFFERENT_ONLY',
   originalVolume: 100,
-  voiceCode: null,
   seekStepSec: 10,
   summaryMode: 'ASK',
   highContrast: false,
@@ -138,6 +136,8 @@ export interface Job {
   currentStage: JobStage | null
   progress: number
   estimatedRemainingSec: number | null
+  /** 서버 예상 전체 시간(지난 시간 + 남은 시간). 진행 막대를 남은 시간과 같은 예측으로 그린다 */
+  estimatedTotalSec: number | null
   descriptionId: number | null
   coveredUntilMs: number | null
   errorCode: JobErrorCode | null
@@ -151,7 +151,10 @@ export interface Job {
 export type JobEvent =
   | {
       event: 'progress'
-      data: Pick<Job, 'status' | 'currentStage' | 'progress' | 'estimatedRemainingSec'>
+      data: Pick<
+        Job,
+        'status' | 'currentStage' | 'progress' | 'estimatedRemainingSec' | 'estimatedTotalSec'
+      >
     }
   | { event: 'completed'; data: Pick<Job, 'status' | 'descriptionId' | 'coveredUntilMs'> }
   | { event: 'failed'; data: Pick<Job, 'status' | 'errorCode' | 'retryable'> & { message: string } }
@@ -585,7 +588,6 @@ export type ChatActionCode =
   | 'OPEN_HISTORY'
   | 'FAVORITE_ADD'
   | 'FAVORITE_REMOVE'
-  | 'REPORT'
   | 'REPLAY_TUTORIAL'
   /** 방금 읽은 해설·답변 다시 */
   | 'REPEAT_LAST'

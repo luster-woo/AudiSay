@@ -103,7 +103,12 @@ test('단축키는 분류 탭 없이 어디서나 4개, 영상 찾을 때 1개, 
     within(anywhere)
       .getAllByRole('listitem')
       .map((li) => li.querySelector('.shortcut-dialog-desc')?.textContent),
-  ).toEqual(['홈으로 가기', '방금 안내 스크린리더로 다시 듣기', '지금 화면의 단축키 보기', '사용법 보기'])
+  ).toEqual([
+    '홈으로 가기',
+    '방금 안내 스크린리더로 다시 듣기',
+    '지금 화면의 단축키 보기',
+    '사용법 보기',
+  ])
   fireEvent(dialog, new Event('cancel', { bubbles: true, cancelable: true }))
   expect(await axe(container)).toHaveNoViolations()
 })
@@ -142,7 +147,10 @@ test('사용법 링크를 키보드로 열면 기존 튜토리얼로 이동한�
   const link = await screen.findByRole('link', { name: '튜토리얼 이동' })
   link.focus()
   await userEvent.keyboard('{Enter}')
-  await waitFor(() => expect(router.state.location.pathname).toBe('/tutorial/1'))
+  // 사용법 화면은 캡처 이미지 9장을 불러오는 모듈이라 전체 테스트를 함께 돌릴 때 1초를 넘길 수 있다
+  await waitFor(() => expect(router.state.location.pathname).toBe('/tutorial/1'), {
+    timeout: 4000,
+  })
 })
 
 test('표시는 유지하면서 단축키와 안내를 기호 대신 한국어 문장으로 제공한다', async () => {

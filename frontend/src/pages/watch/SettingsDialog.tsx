@@ -59,6 +59,8 @@ export interface SettingsDialogProps {
   onClose: () => void
   /** '미리 듣기' — 지금 속도로 한 문장 읽기 */
   onPreview: () => void
+  /** 연 곳. 시청 화면은 '재생 설정'(보던 영상에 바로 적용), 내 정보는 '설정' (여는 버튼 이름 '설정 바꾸기'와 맞춘다) */
+  context?: 'watch' | 'me'
 }
 
 /**
@@ -66,7 +68,12 @@ export interface SettingsDialogProps {
  * 바꾸면 바로 저장되고 보던 영상에도 바로 적용된다. 바뀐 결과는 전광판으로 한 줄만 알린다.
  * 처음 포커스는 오른쪽 위 닫기 버튼 (입장 안내 "닫기 버튼에 있어요" 와 맞춘다).
  */
-export function SettingsDialog({ open, onClose, onPreview }: SettingsDialogProps) {
+export function SettingsDialog({
+  open,
+  onClose,
+  onPreview,
+  context = 'watch',
+}: SettingsDialogProps) {
   const { settings, update } = useSettings()
   const { announce } = useAnnouncer()
 
@@ -83,8 +90,12 @@ export function SettingsDialog({ open, onClose, onPreview }: SettingsDialogProps
     <Dialog
       open={open}
       onClose={onClose}
-      title="재생 설정"
-      description="바꾸면 바로 저장되고, 보던 영상에도 바로 적용돼요. 닫기는 Esc."
+      title={context === 'me' ? '설정' : '재생 설정'}
+      description={
+        context === 'me'
+          ? '바꾸면 바로 저장되고, 영상을 볼 때 적용돼요. 닫기는 Esc.'
+          : '바꾸면 바로 저장되고, 보던 영상에도 바로 적용돼요. 닫기는 Esc.'
+      }
       className="overflow-y-auto p-10"
     >
       <div className="space-y-6">

@@ -195,7 +195,12 @@ export default function MyInfoPage() {
 
       <PasswordChangeDialog open={dialog === 'password'} onClose={closeDialog} />
       <WithdrawDialog open={dialog === 'withdraw'} onClose={closeDialog} />
-      <SettingsDialog open={dialog === 'settings'} onClose={closeDialog} onPreview={preview} />
+      <SettingsDialog
+        open={dialog === 'settings'}
+        onClose={closeDialog}
+        onPreview={preview}
+        context="me"
+      />
     </div>
   )
 }

@@ -141,7 +141,8 @@ export function SearchBar({
     await voice.start({
       prepare: () => {
         // 처음 몇 번만 부가 기능을 함께 알린다 (매번 길게 읽지 않게)
-        const tip = takeVoiceTip() ? ' 영상 이름이나 "말 빠르게" 같은 설정을 말해도 돼요.' : ''
+        // 화면 아래 안내 문구와 같은 예시를 쓴다 (원칙 2장: 낭독 문구 = 화면 문구)
+        const tip = takeVoiceTip() ? ' "고양이 영상 찾아 줘"처럼 문장으로 말해도 돼요.' : ''
         const intro = `'띠' 소리 뒤에 말씀하세요.${tip}`
         announce(intro)
         return screenReaderLeadMs(intro)

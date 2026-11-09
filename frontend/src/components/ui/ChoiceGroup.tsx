@@ -16,6 +16,11 @@ export interface ChoiceGroupProps<T extends string | number> {
   className?: string
   /** 보기 하나하나의 폭·여백 (옆 버튼들과 크기를 맞출 때). 없으면 글자 길이만큼 */
   optionClassName?: string
+  /**
+   * buttons: 테두리 버튼이 하나씩 떨어져 있다 (기본) ·
+   * segmented: 테두리 하나 안에 보기들이 붙어 있는 한 덩어리 (영상 화면 해설 상세도)
+   */
+  appearance?: 'buttons' | 'segmented'
 }
 
 /**
@@ -30,22 +35,33 @@ export function ChoiceGroup<T extends string | number>({
   onChange,
   className,
   optionClassName,
+  appearance = 'buttons',
 }: ChoiceGroupProps<T>) {
   const name = useId()
+  const segmented = appearance === 'segmented'
 
   return (
     <fieldset className={cn('flex flex-wrap items-center gap-x-4 gap-y-2', className)}>
       <legend className={hideLegend ? 'sr-only' : 'float-left mr-4 font-bold text-ink'}>
         {legend}
       </legend>
-      <div className="flex flex-wrap gap-2">
+      <div
+        className={cn(
+          segmented
+            ? 'inline-flex flex-wrap gap-1 rounded-lg border-2 border-navy bg-paper p-1'
+            : 'flex flex-wrap gap-2',
+        )}
+      >
         {options.map((o) => (
           <label
             key={String(o.value)}
             className={cn(
-              'flex min-h-touch cursor-pointer items-center justify-center rounded-md border-2 border-navy bg-paper font-bold whitespace-nowrap text-navy',
+              'flex cursor-pointer items-center justify-center font-bold whitespace-nowrap text-navy',
+              segmented
+                ? 'min-h-11 rounded-md hover:bg-cream'
+                : 'min-h-touch rounded-md border-2 border-navy bg-paper has-[:checked]:border-4',
               optionClassName ?? 'px-4',
-              'has-[:checked]:border-4 has-[:checked]:bg-navy has-[:checked]:text-cream',
+              'has-[:checked]:bg-navy has-[:checked]:text-cream',
               'has-[:focus-visible]:outline-[3px] has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-navy has-[:focus-visible]:outline-solid',
             )}
           >

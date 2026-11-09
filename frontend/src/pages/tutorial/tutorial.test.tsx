@@ -39,6 +39,12 @@ test('1단계: 제목에 포커스, 현재 단계 표시, 예시 화면은 낭�
   const h1 = await screen.findByRole('heading', { level: 1, name: '영상 불러오기' })
   await waitFor(() => expect(h1).toHaveFocus())
   expect(screen.getByText(`${TUTORIAL_STEPS.length}단계 중 1단계, 홈 화면`)).toBeInTheDocument()
+  // 방금 안내 띠에는 단계와 제목만 (띠 높이가 단계마다 바뀌지 않게)
+  await waitFor(() =>
+    expect(screen.getByRole('region', { name: '방금 안내', hidden: true })).toHaveTextContent(
+      `사용법 ${TUTORIAL_STEPS.length}단계 중 1단계, 홈 화면, 영상 불러오기.`,
+    ),
+  )
   // 단계 목록 링크는 없다 (이전·다음으로만 오간다)
   expect(screen.queryByRole('link', { name: /^1 / })).toBeNull()
   expect(

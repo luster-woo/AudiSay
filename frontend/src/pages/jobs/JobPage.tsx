@@ -11,6 +11,7 @@ import { ButtonLink } from '@/components/ui/ButtonLink'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { useAnnouncer } from '@/features/announcer/context'
 import { STAGE_NAME, useProgressAnnounce } from '@/features/announcer/useProgressAnnounce'
+import { JobMascot } from '@/features/job/JobMascot'
 import { STEP_LABEL, type SourceType } from '@/features/job/stages'
 import { useDisplayProgress } from '@/features/job/useDisplayProgress'
 import { useRemainingCountdown } from '@/features/job/useRemainingCountdown'
@@ -238,9 +239,12 @@ function JobPage({ jobId }: { jobId: number }) {
           {video.title} · {formatDurationSpoken(video.durationSec)}
         </p>
       )}
-      <p aria-hidden="true" className="mt-8 text-[8rem] leading-none font-bold tracking-tight">
-        {progress}%
-      </p>
+      <div className="mt-8 flex flex-wrap items-end justify-between gap-6">
+        <p aria-hidden="true" className="text-[8rem] leading-none font-bold tracking-tight">
+          {progress}%
+        </p>
+        <JobMascot phase={phaseOf(job)} />
+      </div>
       <ProgressBar
         value={progress}
         label="해설 만들기 진행률"

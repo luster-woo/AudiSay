@@ -38,9 +38,9 @@ export function JobMascot({ phase }: { phase: Phase }) {
     setPaused(!paused)
   }
 
-  // 자동 재생 영상처럼 그림 모서리에 작은 둥근 ⏸/▶ 버튼을 둔다. 이름은 낭독기용으로 바뀐다
+  // 자동 재생 영상처럼 작은 둥근 ⏸/▶ 버튼을 그림 오른쪽 아래에 오디와 떨어뜨려 둔다. 이름은 낭독기용으로 바뀐다
   return (
-    <div className="relative shrink-0">
+    <div className="flex shrink-0 flex-col items-end gap-3">
       <picture>
         <source srcSet={analyzingStillImg} media="(prefers-reduced-motion: reduce)" />
         <img
@@ -56,7 +56,7 @@ export function JobMascot({ phase }: { phase: Phase }) {
         type="button"
         onClick={toggle}
         aria-label={paused ? '캐릭터 움직임 켜기' : '캐릭터 움직임 멈추기'}
-        className="absolute top-0 right-0 flex size-touch items-center justify-center rounded-full border-2 border-navy bg-paper text-navy motion-reduce:hidden"
+        className="flex size-touch items-center justify-center rounded-full border-2 border-navy bg-paper text-navy motion-reduce:hidden"
       >
         <svg aria-hidden="true" viewBox="0 0 24 24" className="size-6" fill="currentColor">
           {paused ? (

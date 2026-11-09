@@ -3,7 +3,6 @@ import analyzingImg from '@/assets/job/odi-analyzing.webp'
 import analyzingStillImg from '@/assets/job/odi-analyzing-still.webp'
 import askImg from '@/assets/tour/ask.webp'
 import playImg from '@/assets/tour/play.webp'
-import { Button } from '@/components/ui/Button'
 
 type Phase = 'waiting' | 'running' | 'done' | 'failed'
 
@@ -15,7 +14,7 @@ const PAUSED_KEY = 'jobMascotPaused'
 /**
  * 해설 만들기 화면의 마스코트 오디. 장식이라 낭독기에 숨긴다.
  * 대기·진행 중엔 태블릿으로 영상을 보며 움직인다(움직이는 WebP).
- * 5초 넘게 저절로 움직이므로 멈추기 버튼을 두고 고른 값을 기억한다 (WCAG 2.2.2).
+ * 5초 넘게 저절로 움직이므로 멈춤 버튼(⏸/▶)을 두고 고른 값을 기억한다 (WCAG 2.2.2).
  * 기기의 '동작 줄이기'가 켜져 있으면 처음부터 멈춘 그림을 보여 주고 버튼도 숨긴다.
  */
 export function JobMascot({ phase }: { phase: Phase }) {
@@ -39,8 +38,9 @@ export function JobMascot({ phase }: { phase: Phase }) {
     setPaused(!paused)
   }
 
+  // 자동 재생 영상처럼 그림 모서리에 작은 둥근 ⏸/▶ 버튼을 둔다. 이름은 낭독기용으로 바뀐다
   return (
-    <div className="flex shrink-0 flex-col items-center gap-3">
+    <div className="relative shrink-0">
       <picture>
         <source srcSet={analyzingStillImg} media="(prefers-reduced-motion: reduce)" />
         <img
@@ -52,9 +52,20 @@ export function JobMascot({ phase }: { phase: Phase }) {
           className="h-48 w-auto"
         />
       </picture>
-      <Button variant="secondary" onClick={toggle} className="motion-reduce:hidden">
-        {paused ? '캐릭터 움직임 켜기' : '캐릭터 움직임 멈추기'}
-      </Button>
+      <button
+        type="button"
+        onClick={toggle}
+        aria-label={paused ? '캐릭터 움직임 켜기' : '캐릭터 움직임 멈추기'}
+        className="absolute top-0 right-0 flex size-touch items-center justify-center rounded-full border-2 border-navy bg-paper text-navy motion-reduce:hidden"
+      >
+        <svg aria-hidden="true" viewBox="0 0 24 24" className="size-6" fill="currentColor">
+          {paused ? (
+            <path d="M8 5.5v13l10.5-6.5z" />
+          ) : (
+            <path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z" />
+          )}
+        </svg>
+      </button>
     </div>
   )
 }

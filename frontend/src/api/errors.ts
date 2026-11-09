@@ -73,15 +73,45 @@ export const ERROR_MESSAGES: Record<string, string> = {
 /** 작업 실패 원인 코드 */
 export const JOB_ERROR_MESSAGES: Record<JobErrorCode, { message: string; retryable: boolean }> = {
   VIDEO_UNAVAILABLE: { message: '영상이 비공개로 바뀌어 해설을 만들 수 없어요.', retryable: false },
-  DURATION_MISMATCH: { message: '영상 길이가 올릴 때와 달라요.', retryable: false },
+  // AI는 길이가 다를 때뿐 아니라 60분 초과·길이를 읽지 못할 때도 이 코드를 쓴다 (BE 문구와 같게)
+  DURATION_MISMATCH: {
+    message: '영상 길이를 확인할 수 없거나 올릴 수 있는 길이를 넘었어요.',
+    retryable: false,
+  },
   TRANSCODE_FAILED: { message: '영상 파일을 읽을 수 없어요.', retryable: false },
   AI_LIMIT: { message: '지금 요청이 많아요. 잠시 뒤에 다시 시도해 주세요.', retryable: true },
   AI_TIMEOUT: { message: '시간이 오래 걸려 멈췄어요. 다시 시도해 주세요.', retryable: true },
   UNKNOWN: { message: '알 수 없는 오류가 났어요.', retryable: true },
 }
 
+/**
+ * 서버가 이유를 담아 다른 문구를 주기도 하는 코드와 그 코드의 서버 기본 문구.
+ * 서버 문구가 기본 문구와 다르면(이유가 들어 있으면) 위 고정 문구 대신 서버 문구를 읽는다.
+ * 예: COMMON_001 "입력 문장은 1~500자여야 합니다." · "인증 서류를 첨부해 주세요.", DESC_001 "아직 해설이 없습니다.",
+ * LIMIT_001 "오늘 유튜브 해설 요청 횟수를 모두 사용했습니다." — 고정 문구로는 왜 안 되는지 알 수 없다
+ */
+const SERVER_DEFAULT: Record<string, string> = {
+  COMMON_001: '유효하지 않은 요청입니다.',
+  COMMON_003: '권한이 없습니다.',
+  DESC_001: '존재하지 않는 해설입니다.',
+  LIMIT_001: '오늘 이용 횟수를 모두 사용했습니다.',
+  JOB_003: '다시 요청할 수 없는 상태입니다.',
+  UPLOAD_004: '이미 완료되었거나 중단된 업로드입니다.',
+  CHAT_001: '말을 알아듣지 못했어요. 다시 말씀해 주세요.',
+  CHAT_002: '음성 파일 형식·길이가 맞지 않습니다.',
+}
+
+/** 작업 실패 원인 → 문구·다시 요청 가능 여부. 모르는 코드면 UNKNOWN (화면이 깨지지 않게) */
+export function jobError(code: string | null | undefined) {
+  return JOB_ERROR_MESSAGES[(code ?? 'UNKNOWN') as JobErrorCode] ?? JOB_ERROR_MESSAGES.UNKNOWN
+}
+
 export function toUserMessage(err: unknown): string {
-  if (err instanceof ApiError) return ERROR_MESSAGES[err.code] ?? err.message
+  if (err instanceof ApiError) {
+    const base = SERVER_DEFAULT[err.code]
+    if (base && err.message && err.message !== base) return err.message
+    return ERROR_MESSAGES[err.code] ?? err.message
+  }
   if (err instanceof NetworkError) return err.message
   return ERROR_MESSAGES.COMMON_004
 }

@@ -5,7 +5,7 @@ import { jobsApi } from '@/api/jobs'
 import { videosApi } from '@/api/videos'
 import { queryKeys } from '@/api/queryKeys'
 import { subscribeSse } from '@/api/sse'
-import { JOB_ERROR_MESSAGES, toUserMessage } from '@/api/errors'
+import { jobError, toUserMessage } from '@/api/errors'
 import type { Job, JobEvent } from '@/api/types'
 import { ButtonLink } from '@/components/ui/ButtonLink'
 import { ProgressBar } from '@/components/ui/ProgressBar'
@@ -119,11 +119,8 @@ function JobPage({ jobId }: { jobId: number }) {
   // 영상 정보를 못 받으면 업로드 몫 없이 4단계로 보여 준다
   const fromState = (useLocation().state as { sourceType?: SourceType } | null)?.sourceType
   const source = video?.sourceType ?? fromState ?? (videoQuery.isError ? 'YOUTUBE' : undefined)
-  const progress = useDisplayProgress(source, job, video?.durationSec)
-  const remainingSec = useRemainingCountdown(
-    job?.estimatedRemainingSec,
-    job?.status === 'RUNNING',
-  )
+  const remainingSec = useRemainingCountdown(job?.estimatedRemainingSec, job?.status === 'RUNNING')
+  const progress = useDisplayProgress(source, job, video?.durationSec, remainingSec)
 
   // ── 실시간 진행률 (SSE) ──
   useEffect(() => {
@@ -169,8 +166,7 @@ function JobPage({ jobId }: { jobId: number }) {
 
   // ── 읽어 주기: 진행 중엔 단계·10% 단위로, 상태가 바뀌면 한 번 ──
   useProgressAnnounce(phase === 'running' && source ? (job?.currentStage ?? null) : null, progress)
-  const retryable =
-    !!job?.errorCode && (job.retryable ?? JOB_ERROR_MESSAGES[job.errorCode].retryable)
+  const retryable = !!job?.errorCode && (job.retryable ?? jobError(job.errorCode).retryable)
   useEffect(() => {
     if (phase === 'waiting') announce('해설 만들기 차례를 기다리고 있어요. 곧 시작해요.')
     if (phase === 'done') announce('해설이 준비됐어요. 지금 보기 버튼에 있어요.')
@@ -309,7 +305,7 @@ function JobPage({ jobId }: { jobId: number }) {
           {retryable
             ? '다시 요청해도 오늘 횟수는 줄지 않아요.'
             : job.errorCode
-              ? JOB_ERROR_MESSAGES[job.errorCode].message
+              ? jobError(job.errorCode).message
               : '알 수 없는 오류가 났어요.'}
         </p>
       </StatusDialog>

@@ -50,6 +50,20 @@ export function jobOverallPercent(source: SourceType, jobProgress: number): numb
 }
 
 /**
+ * 서버 예상 시간으로 본 해설 만들기 진행률(0~99). 남은 시간과 같은 예측(서버 단계별 예상)이라
+ * "41퍼센트, 남은 17초"처럼 두 숫자가 어긋나지 않는다. 끝나기 전에는 99를 넘지 않는다.
+ * totalSec: 서버 estimatedTotalSec(지난 시간 + 남은 시간), remainingSec: 남은 시간(화면에서 센 값).
+ * 둘 중 하나라도 없으면 null (예전 방식으로 그린다)
+ */
+export function timeProgress(
+  totalSec: number | null | undefined,
+  remainingSec: number | null | undefined,
+): number | null {
+  if (totalSec == null || remainingSec == null || totalSec <= 0) return null
+  return Math.min(99, clamp((100 * (totalSec - remainingSec)) / totalSec))
+}
+
+/**
  * 서버 progress 는 단계마다 고정 구간(PREPARE 0~20, DESCRIBE 20~70, MERGE 70~80, TTS 80~100)이라
  * 실제 걸리는 시간과 맞지 않는다. 영상 분석(PREPARE)이 대부분의 시간을 쓰고, 장면 해설·합치기는 AI 를 부르지 않아
  * 몇 초면 끝난다(2026-11-04 실측: 5초 업로드 영상 PREPARE 약 8초 → DESCRIBE·MERGE 1초 안 → TTS 약 5초).

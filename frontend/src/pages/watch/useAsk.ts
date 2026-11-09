@@ -192,7 +192,6 @@ export function coerceSetting(key: keyof UserSettings, raw: string): Partial<Use
     case 'soundMix':
     case 'subtitleReading':
     case 'summaryMode':
-    case 'voiceCode':
       return { [key]: raw } as Partial<UserSettings>
     default:
       return null

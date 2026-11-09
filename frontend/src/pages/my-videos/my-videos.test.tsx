@@ -246,6 +246,7 @@ test('실패한 해설을 다시 요청하면 반환된 작업 화면으로 이�
     currentStage: null,
     progress: 0,
     estimatedRemainingSec: null,
+    estimatedTotalSec: null,
     descriptionId: null,
     coveredUntilMs: null,
     errorCode: null,

@@ -8,6 +8,7 @@ export type ShortcutEntryId =
   | 'home'
   | 'repeat'
   | 'help'
+  | 'tutorial'
   | 'voiceSearch'
   | 'play'
   | 'seek'
@@ -68,6 +69,16 @@ export const shortcutCatalog: ShortcutEntry[] = [
     description: '지금 화면의 단축키 보기',
     hint: '물음표와 같은 키예요',
     spokenKeys: '슬래시',
+  },
+  {
+    // 크롬은 Alt+Shift+T 를 '도구 모음으로 포커스'에 쓰지만 예약 키가 아니라 페이지가 preventDefault 로 가져온다.
+    // NVDA·센스리더 기본 명령에는 Alt+Shift+글자 조합이 없다
+    id: 'tutorial',
+    group: 'everywhere',
+    keys: ['T'],
+    description: '사용법 보기',
+    hint: 'Tutorial의 T',
+    spokenKeys: '티',
   },
   {
     id: 'voiceSearch',

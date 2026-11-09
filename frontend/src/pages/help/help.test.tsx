@@ -73,15 +73,15 @@ test('상위 탭을 화살표로 바꾸어도 초점이 제목으로 튀지 않�
   expect(screen.getByRole('tab', { name: '단축키' })).toHaveFocus()
 })
 
-test('단축키는 분류 탭 없이 어디서나 3개, 영상 찾을 때 1개, 영상 볼 때 8개를 한 화면에 보여 준다 (axe)', async () => {
+test('단축키는 분류 탭 없이 어디서나 4개, 영상 찾을 때 1개, 영상 볼 때 8개를 한 화면에 보여 준다 (axe)', async () => {
   const { container } = renderRoute('/help')
   await openTab('단축키')
   expect(screen.queryByRole('tab', { name: '어디서나' })).not.toBeInTheDocument()
   const everywhere = screen.getByRole('list', { name: '어디서나' })
   const watch = screen.getByRole('list', { name: '영상 볼 때' })
-  expect(within(everywhere).getAllByRole('listitem')).toHaveLength(3)
+  expect(within(everywhere).getAllByRole('listitem')).toHaveLength(4)
   expect(within(watch).getAllByRole('listitem')).toHaveLength(8)
-  for (const key of ['H', 'R', '/']) expect(within(everywhere).getByText(key)).toBeVisible()
+  for (const key of ['H', 'R', '/', 'T']) expect(within(everywhere).getByText(key)).toBeVisible()
   for (const key of ['K', 'J', 'L', 'P', 'D', '1', '2', '3', 'Q', 'S', 'X']) {
     expect(within(watch).getByText(key)).toBeVisible()
   }
@@ -94,7 +94,7 @@ test('단축키는 분류 탭 없이 어디서나 3개, 영상 찾을 때 1개, 
   expect(
     within(screen.getByRole('list', { name: '영상 찾을 때' })).getAllByRole('listitem'),
   ).toHaveLength(1)
-  // 도움말 화면의 안내 창에는 어디서나 쓰는 3개만 나온다
+  // 도움말 화면의 안내 창에는 어디서나 쓰는 4개만 나온다
   await userEvent.keyboard('{Alt>}{Shift>}/{/Shift}{/Alt}')
   const dialog = screen.getByRole('dialog', { name: '단축키 안내' })
   expect(within(dialog).queryByRole('list', { name: '이 화면에서' })).not.toBeInTheDocument()
@@ -103,7 +103,7 @@ test('단축키는 분류 탭 없이 어디서나 3개, 영상 찾을 때 1개, 
     within(anywhere)
       .getAllByRole('listitem')
       .map((li) => li.querySelector('.shortcut-dialog-desc')?.textContent),
-  ).toEqual(['홈으로 가기', '방금 안내 스크린리더로 다시 듣기', '지금 화면의 단축키 보기'])
+  ).toEqual(['홈으로 가기', '방금 안내 스크린리더로 다시 듣기', '지금 화면의 단축키 보기', '사용법 보기'])
   fireEvent(dialog, new Event('cancel', { bubbles: true, cancelable: true }))
   expect(await axe(container)).toHaveNoViolations()
 })

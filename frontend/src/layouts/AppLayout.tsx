@@ -14,6 +14,7 @@ export function AppLayout() {
 
   useShortcutScope('user')
   useShortcutEntry('home', () => navigate('/'), { scope: 'user' })
+  useShortcutEntry('tutorial', () => navigate('/tutorial/1'), { scope: 'user' })
 
   return (
     <>

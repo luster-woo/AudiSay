@@ -1247,6 +1247,7 @@ test('Alt+Shift+/ 안내 창은 시청 화면에서 쓰는 키 8줄과 어디서
     '홈으로 가기',
     '방금 안내 스크린리더로 다시 듣기',
     '지금 화면의 단축키 보기',
+    '사용법 보기',
   ])
-  expect(dialog).toHaveAccessibleDescription(/단축키 11개예요/)
+  expect(dialog).toHaveAccessibleDescription(/단축키 12개예요/)
 })

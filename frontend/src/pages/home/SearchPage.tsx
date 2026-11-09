@@ -142,7 +142,7 @@ function SearchResults({ q }: { q: string }) {
       announce('더 불러올 영상이 없어요.')
       return
     }
-    listRef.current?.querySelectorAll<HTMLAnchorElement>(':scope > li > a')[from]?.focus()
+    listRef.current?.querySelectorAll<HTMLAnchorElement>(':scope > li a')[from]?.focus()
     const done = visibleCount >= loadedCount && !hasNextPage
     announce(
       `${added}개 더 불러왔어요. ${visibleCount}개까지 보여 줘요.${done ? ' 모든 영상을 불러왔어요.' : ''}`,

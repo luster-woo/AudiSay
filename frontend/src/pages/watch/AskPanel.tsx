@@ -151,6 +151,7 @@ export function AskPanel({
             ref={inputRef}
             type="text"
             aria-labelledby="ask-title"
+            maxLength={500}
             value={text}
             onChange={(e) => setText(e.target.value)}
             // 답을 듣는 동안에도 막지 않는다 (보내기는 submit 이 막는다).

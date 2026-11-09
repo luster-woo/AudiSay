@@ -108,7 +108,7 @@ test('단축키는 분류 탭 없이 어디서나 3개, 영상 찾을 때 1개, 
   expect(await axe(container)).toHaveNoViolations()
 })
 
-test('음성 안내는 와이어프레임의 3단계 설명과 명령 16개(홈 음성 검색 포함)를 제공한다 (axe)', async () => {
+test('음성 안내는 와이어프레임의 3단계 설명과 음성 명령 표(홈 음성 검색 포함)를 제공한다 (axe)', async () => {
   const { container } = renderRoute('/help')
   await openTab('말로 하는 명령')
   expect(
@@ -119,10 +119,12 @@ test('음성 안내는 와이어프레임의 3단계 설명과 명령 16개(홈 
   expect(screen.getByText('원하는 요청을 말해 주세요.')).toBeVisible()
   expect(screen.getByText('내용이 틀리면 ‘아니’라고 말해 주세요.')).toBeVisible()
   expect(screen.queryByRole('button', { name: '말을 알아듣지 못할 때' })).not.toBeInTheDocument()
-  for (const category of ['재생 조절', '장면 찾기', '질문과 해설', '홈 음성 검색']) {
+  // 머리글 1줄 + 명령 수 ('여기 신고'는 뺐다)
+  const rowCounts = { '재생 조절': 5, '장면 찾기': 5, '질문과 해설': 4, '홈 음성 검색': 3 }
+  for (const [category, rows] of Object.entries(rowCounts)) {
     await openTab(category)
     const table = screen.getByRole('table', { name: `${category} 음성 명령 예시` })
-    expect(within(table).getAllByRole('row')).toHaveLength(5)
+    expect(within(table).getAllByRole('row')).toHaveLength(rows)
     expect(
       within(table)
         .getAllByRole('columnheader')
@@ -131,7 +133,7 @@ test('음성 안내는 와이어프레임의 3단계 설명과 명령 16개(홈 
     expect(await axe(container)).toHaveNoViolations()
   }
   await openTab('질문과 해설')
-  expect(screen.getByRole('table')).toHaveTextContent('‘여기 신고’')
+  expect(screen.getByRole('table')).not.toHaveTextContent('‘여기 신고’')
   expect(screen.getByRole('table')).toHaveTextContent('현재 재생 위치와 남은 시간')
 })
 

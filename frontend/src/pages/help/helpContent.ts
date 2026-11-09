@@ -82,11 +82,6 @@ export const voiceCategories: { value: VoiceCategory; label: string; rows: HelpR
         description: '해설 상세도 한 단계 조절',
         spokenCommand: '더 자세히 또는 짧게라고 말하세요.',
       },
-      {
-        command: '‘여기 신고’',
-        description: '현재 해설 문장 신고',
-        spokenCommand: '여기 신고라고 말하세요.',
-      },
     ],
   },
   {

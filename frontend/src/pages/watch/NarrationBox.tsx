@@ -20,6 +20,12 @@ export function NarrationBox({
   fullscreen?: boolean
 }) {
   const waiting = !started || !line
+  // 해설 시각은 문장과 같은 크기로, 색은 흰색으로 구분한다 (작은 회색 글자는 저시력 사용자가 읽기 어렵다)
+  const size = fullscreen
+    ? 'text-[clamp(1.5rem,min(2.5vw,4.5vh),3.5rem)]'
+    : enlarged
+      ? 'text-[1.75rem]'
+      : 'text-[1.625rem]'
   return (
     <div
       className={cn(
@@ -27,24 +33,23 @@ export function NarrationBox({
         waiting ? 'bg-stage/75' : 'bg-stage',
       )}
     >
+      {/* '해설 0:18'을 한 줄로. 숫자 폭을 고정해 시각이 바뀌어도 문장 위치가 흔들리지 않는다 */}
       <p
         aria-hidden="true"
-        className="shrink-0 pt-1 font-mono text-sm leading-tight text-on-stage/70"
+        className={cn(
+          'shrink-0 leading-snug font-bold whitespace-nowrap text-white tabular-nums',
+          size,
+        )}
       >
-        {waiting ? '안내' : '해설'}
-        <br />
-        {formatClock(line && started ? line.startMs : 0)}
+        {waiting ? '안내' : '해설'} {formatClock(line && started ? line.startMs : 0)}
       </p>
       <p
         className={cn(
           // 한국어는 단어 중간에서 끊지 않는다. 띄어쓰기 없는 아주 긴 글자(주소 등)만 어디서든 끊는다
           'leading-snug font-bold break-keep text-yellow [overflow-wrap:anywhere]',
-          fullscreen
-            ? // 화면 폭·높이 중 작은 쪽에 맞춘 크기. 2줄 자리를 늘 잡아 두어 1~2줄 해설에서는 영상 크기가 출렁이지 않는다
-              'min-h-[2.75em] text-[clamp(1.5rem,min(2.5vw,4.5vh),3.5rem)]'
-            : enlarged
-              ? 'text-[1.75rem]'
-              : 'text-[1.625rem]',
+          size,
+          // 전체 화면: 2줄 자리를 늘 잡아 두어 1~2줄 해설에서는 영상 크기가 출렁이지 않는다
+          fullscreen && 'min-h-[2.75em]',
         )}
       >
         {line && started ? line.text : '재생을 시작하면 지금 읽는 해설이 여기에 크게 보여요.'}

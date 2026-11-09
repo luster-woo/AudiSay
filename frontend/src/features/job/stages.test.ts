@@ -2,6 +2,7 @@ import {
   estimateDisplayProgress,
   jobOverallPercent,
   jobSteps,
+  timeProgress,
   toDisplayProgress,
   uploadOverallPercent,
   uploadSteps,
@@ -101,4 +102,14 @@ test('단계 안에서는 예상 시간에 맞춰 구간의 95%까지만 채우�
   expect(estimateDisplayProgress('PREPARE', 0, 1000, 100)).toBeCloseTo(71.25)
   expect(estimateDisplayProgress('PREPARE', 15, 0, 100)).toBe(56.25)
   expect(estimateDisplayProgress('TTS', 80, 5, 10)).toBe(91.5)
+})
+
+test('서버 예상 시간이 있으면 진행률은 (전체 − 남은) ÷ 전체, 끝나기 전엔 99까지', () => {
+  expect(timeProgress(100, 100)).toBe(0)
+  expect(timeProgress(68, 17)).toBe(75)
+  expect(timeProgress(60, 0)).toBe(99)
+  expect(timeProgress(60, 90)).toBe(0)
+  expect(timeProgress(null, 10)).toBeNull()
+  expect(timeProgress(60, null)).toBeNull()
+  expect(timeProgress(0, 0)).toBeNull()
 })

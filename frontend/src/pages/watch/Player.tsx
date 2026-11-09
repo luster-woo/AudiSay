@@ -465,9 +465,6 @@ export function Player({ video }: { video: VideoDetail }) {
           if (video.isFavorite) favorite.mutate()
           else announce('즐겨찾기에 없는 영상이에요.')
           return true
-        case 'REPORT':
-          openReport()
-          return true
         case 'REPLAY_TUTORIAL':
           navigate('/tutorial/1')
           return true
@@ -508,7 +505,6 @@ export function Player({ video }: { video: VideoDetail }) {
       setHelpOpen,
       video.isFavorite,
       favorite,
-      openReport,
       navigate,
       announce,
     ],

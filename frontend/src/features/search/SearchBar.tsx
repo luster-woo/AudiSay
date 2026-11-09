@@ -235,7 +235,7 @@ export function SearchBar({
             </Button>
             {/* 음성으로만 되는 부가 기능 안내. 버튼에 이어 읽힌다 (예시는 둘만: 버튼에 올 때마다 길게 읽히지 않게) */}
             <p id={voiceHintId} className="basis-full text-lg text-ink">
-              음성으로는 "고양이 영상 찾아 줘", "말 빠르게"처럼 말해도 돼요.
+              음성으로는 "고양이 영상 찾아 줘"처럼 말해도 돼요.
             </p>
           </>
         )}

@@ -141,14 +141,14 @@ export default function LandingPage() {
               지금 시작하기
             </Link>
           </div>
-          {/* 마스코트는 장식이라 낭독기에 숨긴다 */}
+          {/* 마스코트(손 흔드는 강아지)는 장식이라 낭독기에 숨긴다 */}
           <img
             src={mascot}
             alt=""
             aria-hidden="true"
-            width={820}
-            height={630}
-            className="hidden h-auto w-[26rem] shrink-0 lg:block"
+            width={584}
+            height={728}
+            className="hidden h-auto w-[21rem] shrink-0 lg:block"
           />
         </div>
 

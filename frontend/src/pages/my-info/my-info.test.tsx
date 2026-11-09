@@ -86,8 +86,8 @@ test('계정 정보(재생 설정 포함)·이용 횟수를 표시하고 제목�
   expect(screen.queryByRole('heading', { name: '설정' })).not.toBeInTheDocument()
   expect(screen.queryByRole('link', { name: '사용법 다시 듣기' })).not.toBeInTheDocument()
   const account = within(screen.getByRole('region', { name: '계정 정보' }))
-  expect(account.getByText('재생 설정')).toBeInTheDocument()
-  expect(await account.findByRole('button', { name: '재생 설정 바꾸기' })).not.toHaveAttribute(
+  expect(account.getByText('설정')).toBeInTheDocument()
+  expect(await account.findByRole('button', { name: '설정 바꾸기' })).not.toHaveAttribute(
     'aria-disabled',
   )
   expect(await axe(container)).toHaveNoViolations()
@@ -336,7 +336,7 @@ test.each([false, true])(
 test('공통 재생 설정을 열어 고대비 변경을 저장하고 닫으면 버튼으로 돌아온다', async () => {
   vi.mocked(usersApi.updateSettings).mockResolvedValue({ ...DEFAULT_SETTINGS, highContrast: true })
   renderRoute('/me')
-  const open = await screen.findByRole('button', { name: '재생 설정 바꾸기' })
+  const open = await screen.findByRole('button', { name: '설정 바꾸기' })
   await waitFor(() => expect(open).not.toHaveAttribute('aria-disabled'))
   await userEvent.click(open)
   const dialog = within(screen.getByRole('dialog', { name: '재생 설정' }))
@@ -350,7 +350,7 @@ test('공통 재생 설정을 열어 고대비 변경을 저장하고 닫으면 
 test('재생 설정 저장 실패 시 이전 값으로 원복하고 성공 안내를 하지 않는다', async () => {
   vi.mocked(usersApi.updateSettings).mockRejectedValue(new Error('offline'))
   const { queryClient } = renderRoute('/me')
-  const open = await screen.findByRole('button', { name: '재생 설정 바꾸기' })
+  const open = await screen.findByRole('button', { name: '설정 바꾸기' })
   await waitFor(() => expect(open).not.toHaveAttribute('aria-disabled'))
   await userEvent.click(open)
   const dialog = within(screen.getByRole('dialog', { name: '재생 설정' }))
@@ -368,7 +368,7 @@ test('설정·횟수 조회 실패를 표시하고 각각 다시 불러올 수 �
   renderRoute('/me')
   const settingsRetry = await screen.findByRole('button', { name: '설정 다시 불러오기' })
   const quotaRetry = await screen.findByRole('button', { name: '횟수 다시 불러오기' })
-  expect(screen.getByRole('button', { name: '재생 설정 바꾸기' })).toHaveAttribute(
+  expect(screen.getByRole('button', { name: '설정 바꾸기' })).toHaveAttribute(
     'aria-disabled',
     'true',
   )
@@ -382,7 +382,7 @@ test('설정·횟수 조회 실패를 표시하고 각각 다시 불러올 수 �
   await userEvent.click(settingsRetry)
   await userEvent.click(quotaRetry)
   await waitFor(() =>
-    expect(screen.getByRole('button', { name: '재생 설정 바꾸기' })).not.toHaveAttribute(
+    expect(screen.getByRole('button', { name: '설정 바꾸기' })).not.toHaveAttribute(
       'aria-disabled',
     ),
   )

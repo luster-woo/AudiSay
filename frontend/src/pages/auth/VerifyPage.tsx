@@ -277,7 +277,7 @@ export default function VerifyPage() {
         </h2>
         <div className="mt-6 space-y-6">
           {BENEFITS.map((b) => (
-            <BenefitTable key={b.title} {...b} />
+            <BenefitChange key={b.title} {...b} />
           ))}
         </div>
       </aside>
@@ -291,77 +291,85 @@ const BENEFITS: { title: string; rows: { label: string; now: string; after: stri
     title: '유튜브 해설',
     rows: [
       { label: '영상 길이', now: '10분 이하', after: '60분 이하' },
-      { label: '하루', now: '5개', after: '10개' },
+      { label: '일일 해설 요청', now: '5개', after: '10개' },
     ],
   },
   {
     title: '내 영상 해설',
     rows: [
       { label: '영상 길이', now: '5분 · 0.5GB 이하', after: '60분 · 2GB 이하' },
-      { label: '하루', now: '1개', after: '3개' },
+      { label: '일일 해설 요청', now: '1개', after: '3개' },
     ],
   },
 ]
 
 /**
- * 항목 하나의 '지금 → 인증 후' 비교 표.
- * 낭독기에는 "유튜브 해설 표, 영상 길이, 지금 10분 이하, 인증 후 60분 이하"처럼 칸 제목과 함께 읽힌다.
+ * 항목 하나의 '지금 → 인증 후' 변화. 표 대신 화살표로 바뀌는 방향을 보여 준다.
+ * 지금 값은 흐리게, 인증 후 값은 진한 글자(text-ink, 고대비에서는 흰색)로 굵게 보인다.
+ * 화살표는 장식이라 숨기고, 낭독기에는 "영상 길이, 지금 10분 이하, 인증하면 60분 이하"처럼 읽힌다.
  */
-function BenefitTable({ title, rows }: (typeof BENEFITS)[number]) {
+function BenefitChange({ title, rows }: (typeof BENEFITS)[number]) {
+  const headingId = useId()
   return (
-    <table className="w-full table-fixed border-separate border-spacing-0 overflow-hidden rounded-md border-2 border-line bg-paper text-left">
-      <caption className="mb-2 text-left text-xl font-bold">{title}</caption>
-      <colgroup>
-        {/* '지금'과 '인증 후'는 같은 폭: 둘 다 '○분 · ○GB 이하' 가 한 줄에 들어가게 */}
-        <col className="w-[5.25rem]" />
-        <col />
-        <col />
-      </colgroup>
-      <thead>
-        <tr className="text-base">
-          <td className="border-r-2 border-b-2 border-line" />
-          <th scope="col" className="border-b-2 border-line px-3 py-2 font-bold text-ink-muted">
-            지금
-          </th>
-          <th scope="col" className="border-b-2 border-navy bg-navy px-3 py-2 font-bold text-paper">
-            인증 후
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((r, i) => (
-          <tr key={r.label}>
-            <th
-              scope="row"
-              className={`border-r-2 border-line px-3 py-3 text-base font-bold whitespace-nowrap ${i > 0 ? 'border-t border-line' : ''}`}
-            >
-              {r.label}
-            </th>
-            <td
-              className={`px-2.5 py-3 text-lg whitespace-nowrap text-ink-muted ${i > 0 ? 'border-t border-line' : ''}`}
-            >
-              <EmphasizeNumbers text={r.now} />
-            </td>
-            <td
-              // 고대비: 노랑(#ffd600)을 85%로 깔면 검정 위에 섞여 어두워지므로, 더 밝은 연노랑으로 검정 글자와 대비를 키운다
-              className={`bg-navy/85 px-2.5 py-3 text-lg font-bold whitespace-nowrap text-paper hc:bg-[#fff3a6] ${i > 0 ? 'border-t border-paper/25' : ''}`}
-            >
-              <EmphasizeNumbers text={r.after} />
-            </td>
-          </tr>
+    <section aria-labelledby={headingId}>
+      <h3 id={headingId} className="text-xl font-bold">
+        {title}
+      </h3>
+      <ul className="mt-2 divide-y divide-line rounded-md border-2 border-line bg-paper">
+        {rows.map((r) => (
+          <li key={r.label} className="px-4 py-3">
+            <p className="text-base font-bold">{r.label}</p>
+            {/* 좁은 화면·큰 글자에서는 인증 후 값이 다음 줄로 내려가도 화살표가 앞에 붙어 간다 */}
+            <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="text-lg whitespace-nowrap text-ink-muted">
+                <span className="sr-only">지금 </span>
+                <EmphasizeNumbers text={r.now} />
+              </span>
+              <span className="flex items-center gap-3 whitespace-nowrap">
+                <ChangeArrow />
+                <span className="text-lg font-bold text-ink">
+                  <span className="sr-only">, 인증하면 </span>
+                  <EmphasizeNumbers text={r.after} />
+                </span>
+              </span>
+            </p>
+          </li>
         ))}
-      </tbody>
-    </table>
+      </ul>
+    </section>
   )
 }
 
-/** "60분 · 2GB 이하" 의 숫자만 크게·굵게. 낭독은 글자 그대로 이어서 읽힌다 */
+/** 오른쪽 화살표 (장식). 글자 크기 설정을 따라 커진다 */
+function ChangeArrow() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-[1.5em] w-[1.5em] shrink-0 text-navy"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M4 12h15M13 6l6 6-6 6" />
+    </svg>
+  )
+}
+
+/**
+ * "60분 · 2GB 이하" 의 숫자만 조금 크게·굵게. 낭독은 글자 그대로 이어서 읽힌다.
+ * 크기는 글자의 1.3배 (글자 크기 설정에 따라 함께 커진다).
+ * Pretendard 한글은 기준선 아래로 약 0.08em 내려오고 숫자는 기준선에 붙어 있어, 숫자를 키우면 아랫선이 숫자 쪽이 더 높아 보인다.
+ * 숫자를 0.05em 내려(relative, 줄 높이에는 영향 없음) 한글과 아랫선을 맞춘다 (실측 차이 1.25px → 0.5px 이하)
+ */
 function EmphasizeNumbers({ text }: { text: string }) {
   return (
     <>
       {text.split(/(\d+(?:\.\d+)?)/).map((part, i) =>
         /^\d+(?:\.\d+)?$/.test(part) ? (
-          <span key={i} className="text-xl font-extrabold tabular-nums">
+          <span key={i} className="relative top-[0.05em] text-[1.3em] font-extrabold tabular-nums">
             {part}
           </span>
         ) : (

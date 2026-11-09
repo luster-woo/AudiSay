@@ -57,7 +57,7 @@ export function MainNav() {
                 to={item.to}
                 aria-current={active ? 'page' : undefined}
                 onClick={() => setOpen(false)}
-                className={`flex min-h-touch items-center border-b-4 px-4 text-lg font-bold ${
+                className={`flex min-h-touch items-center border-b-4 px-4 text-lg font-bold fs5:px-2.5 ${
                   active ? 'border-navy text-navy' : 'border-transparent text-ink'
                 }`}
               >

@@ -140,7 +140,7 @@ export default function MyInfoPage() {
               </div>
               {/* 재생 설정도 계정 정보 목록 안에서 같은 크기의 버튼으로 바꾼다 */}
               <div className={`${row} pt-2`}>
-                <dt className="font-bold">재생 설정</dt>
+                <dt className="font-bold">설정</dt>
                 <dd className="flex min-w-0 flex-wrap items-center justify-between gap-4">
                   <span className="flex min-w-0 flex-wrap items-center gap-3 text-xl text-ink-muted">
                     {settingsQuery.isPending && '설정을 불러오는 중이에요.'}
@@ -160,7 +160,7 @@ export default function MyInfoPage() {
                     disabled={!settingsQuery.isSuccess}
                     onClick={() => setDialog('settings')}
                   >
-                    재생 설정 바꾸기
+                    설정 바꾸기
                   </Button>
                 </dd>
               </div>

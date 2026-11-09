@@ -11,10 +11,11 @@ import myInfoShot from '@/assets/tutorial/my-info.webp'
 import myVideosShot from '@/assets/tutorial/my-videos.webp'
 import registerShot from '@/assets/tutorial/register.webp'
 import watchShot from '@/assets/tutorial/watch.webp'
+import watchTabsShot from '@/assets/tutorial/watch-tabs.webp'
 import youtubeShot from '@/assets/tutorial/youtube.webp'
 
 /**
- * 예시 화면 = 실제 화면 캡처(1440×1000, 예시 데이터). 강조 영역은 캡처할 때 실제 요소에서 잰 위치(같은 1440×1000 좌표).
+ * 예시 화면 = 실제 화면 캡처(1440×1000, 예시 데이터). 영상 보기 9~12단계는 한 장을 같이 써서 강조만 옮겨 간다(캡처할 때 대화 칸 높이를 화면 안에 맞춤). 강조 영역은 캡처할 때 실제 요소에서 잰 위치(같은 1440×1000 좌표).
  * 강조 영역은 내용 덩어리 단위로 잡아 테두리가 글자나 버튼을 가로지르지 않게 한다 (홈 목록은 다 보이는 줄까지만).
  * 화면을 바꾸면 assets/tutorial 캡처와 아래 좌표를 함께 다시 만든다
  */
@@ -39,6 +40,8 @@ const SCREENS = {
   youtube: { name: '유튜브 영상 확인', image: youtubeShot },
   job: { name: '해설 만들기', image: jobShot },
   watch: { name: '영상 보기', image: watchShot },
+  /** 같은 영상 보기 화면을 아래로 내린 모습 (목차·대본 카드가 보이게) */
+  watchTabs: { name: '영상 보기', image: watchTabsShot },
   myVideos: { name: '내 영상', image: myVideosShot },
   myInfo: { name: '내 정보', image: myInfoShot },
   help: { name: '도움말', image: helpShot },
@@ -62,7 +65,7 @@ export const TUTORIAL_STEPS: TutorialStepData[] = [
     target: { x: 64, y: 212, w: 880, h: 140 },
     title: '영상 불러오기',
     body: '유튜브 링크를 입력하거나 영상을 직접 업로드해 보세요. AI가 영상 내용을 분석해 드립니다.',
-    keys: '검색 칸에 유튜브 주소나 영상 제목을 적고 검색을 눌러요. Alt+Shift+Q를 누르면 말로 찾을 수 있어요.',
+    keys: '주소나 제목을 적고 검색을 눌러요. Alt+Shift+Q로 말로도 찾아요.',
     mascot: pointImg,
   },
   {
@@ -107,23 +110,23 @@ export const TUTORIAL_STEPS: TutorialStepData[] = [
   },
   {
     screen: SCREENS.job,
-    target: { x: 64, y: 370, w: 960, h: 280 },
+    target: { x: 64, y: 370, w: 960, h: 344 },
     title: '해설 만들기 진행',
-    body: 'AI가 영상을 분석하는 동안 진행률과 남은 시간을 보여 드립니다. 다 만들면 바로 볼 수 있어요.',
-    keys: '화면을 떠나도 계속 만들어요. 홈 오른쪽 위 카드나 내 영상에서 진행 상황을 다시 볼 수 있어요.',
+    body: 'AI가 영상을 분석하는 동안 진행률과 지금 하는 단계, 남은 시간을 보여 드립니다.',
+    keys: '오디 그림을 누르면 움직임을 멈출 수 있어요.',
     mascot: smileImg,
   },
   {
     screen: SCREENS.job,
-    target: { x: 64, y: 690, w: 960, h: 288 },
-    title: '진행 단계',
-    body: '영상 분석, 장면 해설 만들기, 해설 합치고 다듬기, 해설 음성 만들기 순서로 진행됩니다.',
-    keys: '지금 하고 있는 단계는 굵은 글자로 표시돼요.',
+    target: { x: 64, y: 754, w: 960, h: 167 },
+    title: '기다리지 않아도 돼요',
+    body: '다른 화면으로 가도 해설은 계속 만들어지고, 다 되면 알려 드립니다.',
+    keys: '홈 오른쪽 위 카드나 내 영상에서 진행 상황을 다시 볼 수 있어요.',
     mascot: clapImg,
   },
   {
     screen: SCREENS.watch,
-    target: { x: 64, y: 219, w: 817, h: 599 },
+    target: { x: 64, y: 219, w: 777, h: 577 },
     title: '영상 재생 및 음성 해설',
     body: '영상의 내용을 AI가 분석하고, 화면에서 일어나는 상황을 음성으로 설명해 드립니다.',
     keys: 'Alt+Shift+K로 재생과 멈춤, Alt+Shift+J와 L로 뒤로·앞으로 움직여요.',
@@ -131,7 +134,7 @@ export const TUTORIAL_STEPS: TutorialStepData[] = [
   },
   {
     screen: SCREENS.watch,
-    target: { x: 64, y: 687, w: 817, h: 63 },
+    target: { x: 64, y: 664, w: 777, h: 60 },
     title: 'AI 해설 확인',
     body: '영상 속 인물의 행동과 주변 상황을 AI 해설을 통해 이해할 수 있습니다.',
     keys: '지금 읽는 해설이 이 상자에 크게 나와요. Alt+Shift+D로 지금 장면을 자세히 들어요.',
@@ -139,25 +142,25 @@ export const TUTORIAL_STEPS: TutorialStepData[] = [
   },
   {
     screen: SCREENS.watch,
-    target: { x: 64, y: 834, w: 817, h: 56 },
+    target: { x: 64, y: 816, w: 777, h: 56 },
     title: '상세도와 재생 설정',
-    body: '짧은 해설, 기본 해설, 자세한 해설 중에 고르고, 재생 설정에서 말하기 속도 등을 바꿀 수 있습니다.',
-    keys: '숫자 1, 2, 3으로 상세도를 바로 바꿀 수 있어요.',
+    body: '짧은 해설, 기본 해설, 자세한 해설 중에 고를 수 있습니다. 오른쪽 버튼으로 즐겨찾기, 이 문장 신고, 재생 설정을 할 수 있어요.',
+    keys: 'Alt+Shift+1, 2, 3으로 상세도를 바로 바꾸고, Alt+Shift+S로 재생 설정을 열어요.',
     mascot: pointImg,
   },
   {
     screen: SCREENS.watch,
-    target: { x: 921, y: 160, w: 440, h: 176 },
+    target: { x: 881, y: 215, w: 480, h: 760 },
     title: 'AI 챗봇 사용하기',
     body: '영상에 대해 궁금한 점을 자유롭게 질문해 보세요. AI가 영상의 맥락을 바탕으로 답변합니다.',
-    keys: 'Alt+Shift+Q로 질문 칸으로 가서 말하거나 적어요. 1분 뒤로, 다음 장면 같은 이동 명령도 할 수 있어요.',
+    keys: 'Alt+Shift+Q로 말하거나 적어서 물어요. 답을 듣다가 Esc를 누르면 멈춰요.',
     mascot: askImg,
   },
   {
-    screen: SCREENS.watch,
-    target: { x: 921, y: 360, w: 440, h: 284 },
-    title: '목차, 대본, 질문 기록',
-    body: '목차로 원하는 장면에 바로 가고, 대본에서 해설 문장을 다시 보고, 질문 기록에서 지난 답을 다시 들을 수 있습니다.',
+    screen: SCREENS.watchTabs,
+    target: { x: 64, y: 612, w: 777, h: 348 },
+    title: '목차와 대본',
+    body: '영상 아래에서 목차로 원하는 장면에 바로 가고, 대본에서 해설 문장을 다시 볼 수 있습니다.',
     keys: '목록에서 장면이나 문장을 고르면 그 시각으로 옮겨요.',
     mascot: pointImg,
   },
@@ -166,14 +169,14 @@ export const TUTORIAL_STEPS: TutorialStepData[] = [
     target: { x: 64, y: 160, w: 1297, h: 698 },
     title: '내 영상 모아 보기',
     body: '내가 요청하거나 올린 영상과 즐겨찾기한 영상을 한곳에서 볼 수 있습니다.',
-    keys: '위쪽 탭으로 요청·올린 영상과 즐겨찾기를 바꿔 봐요. 만드는 중인 영상은 진행 상황 보기로 확인해요.',
+    keys: '위쪽 탭으로 요청·올린 영상과 즐겨찾기를 바꿔 봐요.',
     mascot: smileImg,
   },
   {
     screen: SCREENS.myInfo,
-    target: { x: 64, y: 264, w: 880, h: 390 },
+    target: { x: 64, y: 232, w: 880, h: 384 },
     title: '내 정보와 재생 설정',
-    body: '계정 정보를 확인하고, 재생 설정을 바꾸고, 시각장애인 인증을 하면 더 긴 영상도 해설을 만들 수 있습니다.',
+    body: '계정 정보를 확인하고, 설정 바꾸기로 재생 설정을 바꿀 수 있습니다. 시각장애인 인증을 하면 더 긴 영상도 해설을 만들 수 있어요.',
     keys: '재생 설정은 영상 화면의 재생 설정 버튼에서도 바꿀 수 있어요.',
     mascot: pointImg,
   },
@@ -182,7 +185,7 @@ export const TUTORIAL_STEPS: TutorialStepData[] = [
     target: { x: 64, y: 286, w: 704, h: 56 },
     title: '자유롭게 영상 즐기기',
     body: '이제 준비가 끝났습니다. AI 해설과 챗봇을 활용해 원하는 영상을 자유롭게 감상해 보세요.',
-    keys: '단축키, 말로 하는 명령, 이 사용법은 도움말에서 다시 볼 수 있어요. 다음을 누르면 홈으로 가요.',
+    keys: '이 사용법은 Alt+Shift+T로 언제든 다시 볼 수 있어요. 다음을 누르면 홈으로 가요.',
     mascot: waveImg,
   },
 ]

@@ -60,7 +60,7 @@ export function VideoCard(props: VideoCardProps) {
 
   if (props.row) {
     return (
-      <article className="flex flex-col gap-4 rounded-lg border-2 border-line bg-paper px-5 py-4 sm:flex-row sm:items-center sm:gap-5">
+      <div className="flex flex-col gap-4 rounded-lg border-2 border-line bg-paper px-5 py-4 sm:flex-row sm:items-center sm:gap-5">
         <Thumbnail src={thumbnailUrl} className="hidden w-40 shrink-0 rounded-md sm:block" />
         <div className="min-w-0 flex-1">
           <h3
@@ -75,12 +75,12 @@ export function VideoCard(props: VideoCardProps) {
         <div className="flex w-full shrink-0 flex-col gap-2 sm:w-[12rem] [&>*]:w-full [&>*]:flex-none">
           {props.actions}
         </div>
-      </article>
+      </div>
     )
   }
 
   return (
-    <article className="flex h-full flex-col overflow-hidden rounded-lg border-2 border-line bg-paper">
+    <div className="flex h-full flex-col overflow-hidden rounded-lg border-2 border-line bg-paper">
       <Thumbnail src={thumbnailUrl} className="border-8 border-ink" />
       <div className={cn('flex flex-1 flex-col', centerDetails ? 'px-4 pb-4' : 'px-5 pt-3 pb-5')}>
         <div
@@ -98,6 +98,6 @@ export function VideoCard(props: VideoCardProps) {
           {props.actions}
         </div>
       </div>
-    </article>
+    </div>
   )
 }

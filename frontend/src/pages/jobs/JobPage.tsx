@@ -11,8 +11,8 @@ import { ButtonLink } from '@/components/ui/ButtonLink'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { useAnnouncer } from '@/features/announcer/context'
 import { STAGE_NAME, useProgressAnnounce } from '@/features/announcer/useProgressAnnounce'
-import { JobSteps } from '@/features/job/JobSteps'
-import { jobSteps, type SourceType } from '@/features/job/stages'
+import { JobMascot } from '@/features/job/JobMascot'
+import { STEP_LABEL, type SourceType } from '@/features/job/stages'
 import { useDisplayProgress } from '@/features/job/useDisplayProgress'
 import { useRemainingCountdown } from '@/features/job/useRemainingCountdown'
 import { StatusDialog } from '@/features/upload/StatusDialog'
@@ -80,6 +80,7 @@ function elapsedText(job: Job) {
  * 해설 만들기 진행 화면 (/jobs/:jobId).
  * 처음엔 GET /jobs/{id} 로 상태를 받고, 이어서 SSE 로 진행률을 받는다.
  * 유튜브는 4단계(영상 분석 → 장면 해설 → 합치고 다듬기 → 음성), 업로드 영상은 앞에 '영상 업로드'(늘 완료)를 더한 5단계.
+ * 화면에는 단계 목록 대신 지금 단계와 남은 시간 한 줄만 보인다 (진행률 계산에만 단계를 쓴다).
  * 업로드 영상의 진행률은 업로드 몫 15% 뒤에 서버 진행률을 85%로 줄여 이어 붙인다(features/job/stages).
  * SSE 가 끊기면(heartbeat 없음·네트워크 오류) 5초마다 GET 으로 바꿔 끝까지 따라간다.
  */
@@ -207,6 +208,7 @@ function JobPage({ jobId }: { jobId: number }) {
   }
   if (!job || !source) return <p className="text-2xl">불러오는 중이에요.</p>
 
+  // 단계 목록 대신 지금 하는 일 한 줄만 보여 준다: "영상 분석 진행 중 · 약 28초 남았어요"
   const statusLine =
     phase === 'done'
       ? elapsedText(job)
@@ -214,7 +216,9 @@ function JobPage({ jobId }: { jobId: number }) {
         ? job.currentStage
           ? `${STAGE_NAME[job.currentStage]} 중에 멈췄어요`
           : '시작하기 전에 멈췄어요'
-        : remainingText(job, remainingSec)
+        : phase === 'running' && job.currentStage
+          ? `${STEP_LABEL[job.currentStage]} 진행 중 · ${remainingText(job, remainingSec)}`
+          : remainingText(job, remainingSec)
   const valueText =
     phase === 'running' && job.currentStage
       ? `${progress}퍼센트, ${STAGE_NAME[job.currentStage]} 중, ${remainingText(job, remainingSec)}`
@@ -235,9 +239,12 @@ function JobPage({ jobId }: { jobId: number }) {
           {video.title} · {formatDurationSpoken(video.durationSec)}
         </p>
       )}
-      <p aria-hidden="true" className="mt-8 text-[8rem] leading-none font-bold tracking-tight">
-        {progress}%
-      </p>
+      <div className="mt-8 flex flex-wrap items-end justify-between gap-6">
+        <p aria-hidden="true" className="text-[8rem] leading-none font-bold tracking-tight">
+          {progress}%
+        </p>
+        <JobMascot phase={phaseOf(job)} />
+      </div>
       <ProgressBar
         value={progress}
         label="해설 만들기 진행률"
@@ -245,7 +252,6 @@ function JobPage({ jobId }: { jobId: number }) {
         className="mt-12 h-8"
       />
       <p className="mt-10 text-2xl text-ink-muted">{statusLine}</p>
-      <JobSteps steps={jobSteps(source, job)} className="mt-10" />
       <p className="mt-10 text-[1.625rem] font-bold">
         {phase === 'done'
           ? '내 영상에서 언제든 다시 볼 수 있어요.'

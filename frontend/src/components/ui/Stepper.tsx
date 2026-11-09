@@ -58,9 +58,10 @@ export function Stepper({
         {label}
       </span>
       <div className="flex items-center rounded-md border-2 border-navy bg-paper">
+        {/* 버튼 이름에 지금 값을 붙인다: 낭독기는 가운데 값 표시(output)를 Tab 으로 지나치지 않아 못 듣는다 (11-09 NVDA 실측) */}
         <button
           type="button"
-          aria-label={decreaseLabel}
+          aria-label={`${decreaseLabel}, 지금 ${format(value)}`}
           aria-disabled={value <= min || undefined}
           onClick={() => change(-step)}
           className={btn}
@@ -70,7 +71,7 @@ export function Stepper({
         <output className="min-w-20 text-center text-lg font-bold">{format(value)}</output>
         <button
           type="button"
-          aria-label={increaseLabel}
+          aria-label={`${increaseLabel}, 지금 ${format(value)}`}
           aria-disabled={value >= max || undefined}
           onClick={() => change(step)}
           className={btn}

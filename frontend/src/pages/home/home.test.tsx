@@ -333,11 +333,11 @@ describe('음성 검색', () => {
     const { router } = renderRoute('/')
     const voiceButton = await screen.findByRole('button', { name: '음성 검색' })
     expect(voiceButton).toHaveAccessibleDescription(
-      '음성으로는 "고양이 영상 찾아 줘", "말 빠르게"처럼 말해도 돼요.',
+      '음성으로는 "고양이 영상 찾아 줘"처럼 말해도 돼요.',
     )
     await userEvent.click(voiceButton)
     // 처음 몇 번은 듣기 시작 안내에 부가 기능을 함께 읽는다
-    expect(await screen.findByText(/"말 빠르게" 같은 설정을 말해도 돼요/)).toBeInTheDocument()
+    expect(await screen.findByText(/"고양이 영상 찾아 줘"처럼 문장으로 말해도 돼요/)).toBeInTheDocument()
     await userEvent.click(await screen.findByRole('button', { name: '말 끝내기' }))
     await waitFor(() => expect(router.state.location.search).toBe('?q=%EA%B3%A0%EC%96%91%EC%9D%B4'))
     expect(chatApi.send).toHaveBeenCalledWith(

@@ -1,6 +1,11 @@
 import { useContext, useEffect, useId, useRef, type ReactNode, type RefObject } from 'react'
 import { LiveHostContext } from '@/features/announcer/context'
+import { LiveRegions } from '@/features/announcer/AnnouncerProvider'
 import { cn } from './cn'
+
+/** Tab 으로 갈 수 있는 요소 */
+const FOCUSABLE =
+  'a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"]), [role="slider"]'
 
 export interface DialogProps {
   open: boolean
@@ -64,6 +69,7 @@ export function Dialog({
   const titleId = useId()
   const descId = useId()
   const registerLiveHost = useContext(LiveHostContext)
+  const liveHostId = useId()
   const unregisterRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
@@ -72,8 +78,8 @@ export function Dialog({
     if (open && !el.open) {
       returnFocusRef.current = restoreFocus ? (document.activeElement as HTMLElement | null) : null
       el.showModal()
-      // 창 바깥은 inert 가 되므로 안내 영역(aria-live)을 이 창 안으로 옮긴다
-      unregisterRef.current = registerLiveHost(el)
+      // 창 바깥은 inert 가 되므로 안내는 이 창 안의 LiveRegions 에 쓴다 (영역을 옮기지 않는다 — context.ts 참고)
+      unregisterRef.current = registerLiveHost(liveHostId)
       if (focusTitle) titleRef.current?.focus()
       else initialFocusRef?.current?.focus()
     } else if (!open && el.open) {
@@ -82,7 +88,15 @@ export function Dialog({
       unregisterRef.current = null
       focusAfterCloseRef?.current?.focus({ preventScroll: true })
     }
-  }, [open, initialFocusRef, focusTitle, restoreFocus, registerLiveHost, focusAfterCloseRef])
+  }, [
+    open,
+    initialFocusRef,
+    focusTitle,
+    restoreFocus,
+    registerLiveHost,
+    focusAfterCloseRef,
+    liveHostId,
+  ])
 
   // 창이 열린 채로 화면을 떠나면(라우트 이동) 안내 영역 자리를 돌려놓는다
   useEffect(
@@ -102,6 +116,7 @@ export function Dialog({
   }, [open])
 
   return (
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- onKeyDown 은 포커스 가두기(Tab)뿐, 창 자체는 조작 요소가 아니다
     <dialog
       ref={ref}
       role={alert ? 'alertdialog' : undefined}
@@ -110,6 +125,27 @@ export function Dialog({
       onCancel={(e) => {
         e.preventDefault()
         onClose()
+      }}
+      // Tab 을 창 안에서만 돌게 한다. 크롬은 모달 창의 마지막 요소에서 Tab 을 누르면 포커스를 body 로 보내는데,
+      // 그러면 낭독기가 "주요 내용 랜드마크"처럼 뒤 화면을 읽는다 (11-09 NVDA 실측, 버튼이 하나뿐인 단축키 안내 창)
+      onKeyDown={(e) => {
+        if (e.key !== 'Tab') return
+        const el = ref.current
+        if (!el) return
+        const items = [...el.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+          (n) => !n.hasAttribute('disabled') && n.getAttribute('aria-hidden') !== 'true',
+        )
+        if (items.length === 0) return
+        const first = items[0]
+        const last = items[items.length - 1]
+        const current = document.activeElement
+        if (e.shiftKey && (current === first || current === el)) {
+          e.preventDefault()
+          last.focus()
+        } else if (!e.shiftKey && (current === last || current === el)) {
+          e.preventDefault()
+          first.focus()
+        }
       }}
       className={cn(
         'm-auto max-h-[90svh] w-[min(48rem,calc(100%-2rem))] rounded-lg bg-paper text-ink',
@@ -154,6 +190,8 @@ export function Dialog({
           </button>
         )}
       </div>
+      {/* 이 창의 안내 영역. 창이 열려 있는 동안 안내(aria-live)가 여기에 쓰인다 */}
+      <LiveRegions hostId={liveHostId} />
       {children && <div className={longForm ? 'px-8 py-6' : 'mt-6'}>{children}</div>}
       {footer && (
         <div

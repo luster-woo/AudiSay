@@ -1,8 +1,8 @@
-import type { ReactNode } from 'react'
-import { act, renderHook } from '@testing-library/react'
+import { useContext, useEffect, type ReactNode } from 'react'
+import { act, render, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
-import { AnnouncerProvider } from './AnnouncerProvider'
-import { estimateReaderMs, useAnnouncer, type VoiceChannel } from './context'
+import { AnnouncerProvider, LiveRegions } from './AnnouncerProvider'
+import { LiveHostContext, estimateReaderMs, useAnnouncer, type VoiceChannel } from './context'
 
 /** 가짜 우리 음성: busy 를 테스트가 직접 바꾼다 */
 class FakeVoice implements VoiceChannel {
@@ -108,4 +108,55 @@ test('연결을 풀면 미뤄 둔 안내를 바로 읽는다', () => {
   wait(20)
   expect(polite()).toBe('멈췄어요.')
   expect(voice.quietWait).toBeNull()
+})
+
+test('창이 열리면 안내 영역을 옮기지 않고, 창 안에 미리 있던 영역에 방금 안내를 다시 쓴다', () => {
+  // 창 역할: 자기 id 로 등록하고 자기 LiveRegions 를 그린다
+  function FakeDialog({ open }: { open: boolean }) {
+    const register = useContext(LiveHostContext)
+    useEffect(() => (open ? register('dlg-1') : undefined), [open, register])
+    return (
+      <div data-testid="dlg">
+        <LiveRegions hostId="dlg-1" />
+      </div>
+    )
+  }
+  function Page({ open }: { open: boolean }) {
+    const { announce } = useAnnouncer()
+    return (
+      <>
+        <button type="button" onClick={() => announce('영상을 멈췄어요.')}>
+          열기
+        </button>
+        <FakeDialog open={open} />
+      </>
+    )
+  }
+  const view = render(<Page open={false} />, { wrapper })
+  const bodyRegion = document.querySelectorAll('[aria-live="polite"]')[1] // 본문 영역은 children 뒤에 그려진다
+  const dlgRegion = view.getByTestId('dlg').querySelector('[aria-live="polite"]')!
+
+  // 안내를 보낸 직후 창이 열린다 (⑤ 재생 설정과 같은 순서)
+  act(() => view.getByRole('button', { name: '열기' }).click())
+  view.rerender(<Page open />)
+  wait(100)
+
+  expect(dlgRegion.textContent).toBe('영상을 멈췄어요.')
+  expect(bodyRegion.textContent).toBe('')
+  // 영역 노드는 그대로다 (새로 만들면 크롬이 글자를 '처음부터 있던 내용'으로 보고 읽지 않는다)
+  expect(document.querySelectorAll('[aria-live="polite"]')[1]).toBe(bodyRegion)
+  expect(view.getByTestId('dlg').querySelector('[aria-live="polite"]')).toBe(dlgRegion)
+})
+
+test('우리 음성 중에 누른 다시 듣기는 미뤄 두되, 그사이 새 안내가 오면 다시 듣기는 버리고 새 안내만 읽는다', () => {
+  const { api, voice } = setup()
+  act(() => api().announce('요약을 들려 드릴게요.'))
+  wait(16)
+  act(() => voice.set(true)) // 요약 TTS 시작
+  act(() => api().repeat()) // Alt+Shift+R
+  expect(polite()).toBe('요약을 들려 드릴게요.') // 아직 다시 읽지 않는다
+  act(() => api().announce('요약이 끝났어요.'))
+  act(() => voice.set(false))
+  wait(400)
+  expect(polite()).toBe('요약이 끝났어요.')
 })

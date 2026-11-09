@@ -366,11 +366,10 @@ describe('시각장애인 인증', () => {
     )
     await userEvent.click(screen.getByRole('checkbox', { name: /민감정보/ }))
     await userEvent.click(screen.getByRole('button', { name: '인증 신청' }))
-    expect(await screen.findByRole('button', { name: /서류를 확인하는 중/ })).toHaveAttribute(
-      'aria-busy',
-      'true',
-    )
+    const busy = await screen.findByRole('button', { name: /서류를 확인하는 중/ })
     expect(screen.getByText('서류를 확인하고 있어요. 길면 1분쯤 걸려요.')).toBeInTheDocument()
+    // 처리 중 표시는 잠깐 뒤부터 (짧은 요청이면 낭독기에 끼어들지 않도록)
+    await waitFor(() => expect(busy).toHaveAttribute('aria-busy', 'true'), { timeout: 1500 })
   })
 
   test('이미 인증된 회원이 주소로 들어오면 내 정보로 보낸다 (기록에 남기지 않음)', async () => {

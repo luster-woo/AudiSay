@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   type FormEvent,
@@ -141,7 +142,8 @@ export function SearchBar({
     await voice.start({
       prepare: () => {
         // 처음 몇 번만 부가 기능을 함께 알린다 (매번 길게 읽지 않게)
-        const tip = takeVoiceTip() ? ' 영상 이름이나 "말 빠르게" 같은 설정을 말해도 돼요.' : ''
+        // 화면 아래 안내 문구와 같은 예시를 쓴다 (원칙 2장: 낭독 문구 = 화면 문구)
+        const tip = takeVoiceTip() ? ' "고양이 영상 찾아 줘"처럼 문장으로 말해도 돼요.' : ''
         const intro = `'띠' 소리 뒤에 말씀하세요.${tip}`
         announce(intro)
         return screenReaderLeadMs(intro)
@@ -151,8 +153,10 @@ export function SearchBar({
 
   useShortcutEntry('voiceSearch', () => void startVoice(), { scope: 'user' })
 
-  // 상태가 바뀌면 다음에 누를 버튼으로 포커스를 옮긴다
-  useEffect(() => {
+  // 상태가 바뀌면 다음에 누를 버튼으로 포커스를 옮긴다.
+  // useLayoutEffect: 포커스가 있던 '음성 검색' 버튼이 이 렌더에서 사라지면 브라우저가 포커스를 본문으로 내리고
+  // 낭독기가 문서·랜드마크를 처음부터 다시 읽는다. 그리기 전에 같은 작업 안에서 옮겨 한 번만 읽히게 한다
+  useLayoutEffect(() => {
     // 기다림이 없으면 preparing 을 건너뛰고 바로 listening 으로 그려질 수 있다
     if (voice.state === 'preparing' || voice.state === 'listening') finishRef.current?.focus()
     if (voice.state === 'processing') announce('알아듣는 중이에요.')

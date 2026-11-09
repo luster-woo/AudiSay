@@ -9,8 +9,11 @@ export type VoiceState = 'idle' | 'preparing' | 'listening' | 'processing' | 'er
 
 export interface StartOptions {
   /**
-   * 마이크를 연 직후 한 번 (영상 멈추기·안내하기). '띠' 소리 전에 기다릴 시간(ms)을 돌려준다 —
-   * 낭독기가 안내를 다 읽도록 screenReaderLeadMs(안내 문구) 로 어림한다
+   * 한 번 부른다 (영상 멈추기·안내하기). '띠' 소리 전에 기다릴 시간(ms)을 돌려준다 —
+   * 낭독기가 안내를 다 읽도록 screenReaderLeadMs(안내 문구) 로 어림한다.
+   * 마이크 권한이 이미 허용돼 있으면 마이크를 열기 **전에** 부른다: 크롬이 마이크를 켜는 순간 창 이름에
+   * "마이크 녹음 중"을 붙여 낭독기가 그걸 읽는데, 그보다 우리 안내("영상을 멈췄어요…")가 먼저 들리게 한다.
+   * 허용 전(팝업이 뜰 수 있음)·거부됨이면 마이크를 연 뒤에 부른다 — 못 열면 안내가 거짓말이 되므로
    */
   prepare?: () => number
 }
@@ -115,60 +118,73 @@ export function useVoiceRecorder({ onResult, onUnavailable, onAsking, onRecovere
     setState('idle')
   }, [stop])
 
-  const start = useCallback(async ({ prepare }: StartOptions = {}) => {
-    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
-      onUnavailable(MIC_MESSAGES.unsupported)
-      return false
-    }
-    // 처음이면 브라우저가 팝업을 띄우고 고를 때까지 기다린다. 그 전에 무슨 일인지 알린다
-    if ((await queryMic()) === 'prompt') onAsking?.()
-    let stream: MediaStream
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    } catch (err) {
-      const { message, blocked } = await micErrorMessage(err)
-      blockedRef.current = blocked
-      onUnavailable(message)
-      return false
-    }
-    blockedRef.current = false
-    const recorder = new MediaRecorder(stream)
-    recorderRef.current = recorder
-    chunksRef.current = []
-    cancelledRef.current = false
-    recorder.ondataavailable = (e) => {
-      if (e.data.size > 0) chunksRef.current.push(e.data)
-    }
-    recorder.onstop = () => {
-      const blob = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' })
-      releaseMic()
-      if (!cancelledRef.current) void transcribe(blob)
-    }
-    // 순서: 안내 → (낭독기가 읽는 동안) 기다림 → '띠' → 녹음. 녹음 중에 낭독기가 말하지 않게 한다
-    setElapsed(0)
-    setState('preparing')
-    const leadMs = prepare?.() ?? 0
-    if (leadMs > 0) {
-      await new Promise<void>((resolve) => {
-        leadDoneRef.current = resolve
-        leadTimerRef.current = window.setTimeout(endLead, leadMs)
-      })
-    }
-    if (cancelledRef.current) {
-      releaseMic()
-      return false
-    }
-    setState('listening')
-    playBeep()
-    recorder.start()
-    const startedAt = Date.now()
-    timerRef.current = window.setInterval(() => {
-      const sec = Math.floor((Date.now() - startedAt) / 1000)
-      setElapsed(sec)
-      if (sec >= MAX_RECORD_SEC) stop()
-    }, 250)
-    return true
-  }, [onUnavailable, onAsking, stop, transcribe])
+  const start = useCallback(
+    async ({ prepare }: StartOptions = {}) => {
+      if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+        onUnavailable(MIC_MESSAGES.unsupported)
+        return false
+      }
+      const permission = await queryMic()
+      // 처음이면 브라우저가 팝업을 띄우고 고를 때까지 기다린다. 그 전에 무슨 일인지 알린다
+      if (permission === 'prompt') onAsking?.()
+      // 이미 허용돼 있으면 안내를 먼저 보내고 마이크를 연다 (StartOptions.prepare 참고)
+      let leadMs = 0
+      let preparedAt: number | null = null
+      if (permission === 'granted' && prepare) {
+        leadMs = prepare()
+        preparedAt = Date.now()
+      }
+      let stream: MediaStream
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      } catch (err) {
+        const { message, blocked } = await micErrorMessage(err)
+        blockedRef.current = blocked
+        onUnavailable(message)
+        return false
+      }
+      blockedRef.current = false
+      const recorder = new MediaRecorder(stream)
+      recorderRef.current = recorder
+      chunksRef.current = []
+      cancelledRef.current = false
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data)
+      }
+      recorder.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' })
+        releaseMic()
+        if (!cancelledRef.current) void transcribe(blob)
+      }
+      // 순서: 안내 → (낭독기가 읽는 동안) 기다림 → '띠' → 녹음. 녹음 중에 낭독기가 말하지 않게 한다
+      setElapsed(0)
+      setState('preparing')
+      if (preparedAt == null) leadMs = prepare?.() ?? 0
+      // 안내를 먼저 보냈으면 마이크 여는 데 걸린 시간만큼은 이미 읽었다
+      else leadMs = Math.max(0, leadMs - (Date.now() - preparedAt))
+      if (leadMs > 0) {
+        await new Promise<void>((resolve) => {
+          leadDoneRef.current = resolve
+          leadTimerRef.current = window.setTimeout(endLead, leadMs)
+        })
+      }
+      if (cancelledRef.current) {
+        releaseMic()
+        return false
+      }
+      setState('listening')
+      playBeep()
+      recorder.start()
+      const startedAt = Date.now()
+      timerRef.current = window.setInterval(() => {
+        const sec = Math.floor((Date.now() - startedAt) / 1000)
+        setElapsed(sec)
+        if (sec >= MAX_RECORD_SEC) stop()
+      }, 250)
+      return true
+    },
+    [onUnavailable, onAsking, stop, transcribe],
+  )
 
   // 화면을 떠나면 마이크를 반드시 끈다
   useEffect(

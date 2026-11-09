@@ -73,15 +73,15 @@ test('상위 탭을 화살표로 바꾸어도 초점이 제목으로 튀지 않�
   expect(screen.getByRole('tab', { name: '단축키' })).toHaveFocus()
 })
 
-test('단축키는 분류 탭 없이 어디서나 3개, 영상 찾을 때 1개, 영상 볼 때 8개를 한 화면에 보여 준다 (axe)', async () => {
+test('단축키는 분류 탭 없이 어디서나 4개, 영상 찾을 때 1개, 영상 볼 때 8개를 한 화면에 보여 준다 (axe)', async () => {
   const { container } = renderRoute('/help')
   await openTab('단축키')
   expect(screen.queryByRole('tab', { name: '어디서나' })).not.toBeInTheDocument()
   const everywhere = screen.getByRole('list', { name: '어디서나' })
   const watch = screen.getByRole('list', { name: '영상 볼 때' })
-  expect(within(everywhere).getAllByRole('listitem')).toHaveLength(3)
+  expect(within(everywhere).getAllByRole('listitem')).toHaveLength(4)
   expect(within(watch).getAllByRole('listitem')).toHaveLength(8)
-  for (const key of ['H', 'R', '/']) expect(within(everywhere).getByText(key)).toBeVisible()
+  for (const key of ['H', 'R', '/', 'T']) expect(within(everywhere).getByText(key)).toBeVisible()
   for (const key of ['K', 'J', 'L', 'P', 'D', '1', '2', '3', 'Q', 'S', 'X']) {
     expect(within(watch).getByText(key)).toBeVisible()
   }
@@ -94,7 +94,7 @@ test('단축키는 분류 탭 없이 어디서나 3개, 영상 찾을 때 1개, 
   expect(
     within(screen.getByRole('list', { name: '영상 찾을 때' })).getAllByRole('listitem'),
   ).toHaveLength(1)
-  // 도움말 화면의 안내 창에는 어디서나 쓰는 3개만 나온다
+  // 도움말 화면의 안내 창에는 어디서나 쓰는 4개만 나온다
   await userEvent.keyboard('{Alt>}{Shift>}/{/Shift}{/Alt}')
   const dialog = screen.getByRole('dialog', { name: '단축키 안내' })
   expect(within(dialog).queryByRole('list', { name: '이 화면에서' })).not.toBeInTheDocument()
@@ -103,7 +103,12 @@ test('단축키는 분류 탭 없이 어디서나 3개, 영상 찾을 때 1개, 
     within(anywhere)
       .getAllByRole('listitem')
       .map((li) => li.querySelector('.shortcut-dialog-desc')?.textContent),
-  ).toEqual(['홈으로 가기', '방금 안내 다시 듣기', '지금 화면의 단축키 보기'])
+  ).toEqual([
+    '홈으로 가기',
+    '방금 안내 스크린리더로 다시 듣기',
+    '지금 화면의 단축키 보기',
+    '사용법 보기',
+  ])
   fireEvent(dialog, new Event('cancel', { bubbles: true, cancelable: true }))
   expect(await axe(container)).toHaveNoViolations()
 })
@@ -117,7 +122,7 @@ test('음성 안내는 와이어프레임의 3단계 설명과 음성 명령 표
     }),
   ).toBeVisible()
   expect(screen.getByText('원하는 요청을 말해 주세요.')).toBeVisible()
-  expect(screen.getByText('내용이 틀리면 ‘아니’라고 말해 주세요.')).toBeVisible()
+  expect(screen.getByText('잘못 알아들었으면 Esc로 답을 멈추고 다시 물어보세요.')).toBeVisible()
   expect(screen.queryByRole('button', { name: '말을 알아듣지 못할 때' })).not.toBeInTheDocument()
   // 머리글 1줄 + 명령 수 ('여기 신고'는 뺐다)
   const rowCounts = { '재생 조절': 5, '장면 찾기': 5, '질문과 해설': 4, '홈 음성 검색': 3 }
@@ -142,7 +147,10 @@ test('사용법 링크를 키보드로 열면 기존 튜토리얼로 이동한�
   const link = await screen.findByRole('link', { name: '튜토리얼 이동' })
   link.focus()
   await userEvent.keyboard('{Enter}')
-  await waitFor(() => expect(router.state.location.pathname).toBe('/tutorial/1'))
+  // 사용법 화면은 캡처 이미지 9장을 불러오는 모듈이라 전체 테스트를 함께 돌릴 때 1초를 넘길 수 있다
+  await waitFor(() => expect(router.state.location.pathname).toBe('/tutorial/1'), {
+    timeout: 4000,
+  })
 })
 
 test('표시는 유지하면서 단축키와 안내를 기호 대신 한국어 문장으로 제공한다', async () => {
@@ -175,8 +183,8 @@ test('음성 입력 단계와 모든 음성 명령 표는 따옴표와 슬래시
   await openTab('말로 하는 명령')
   expect(screen.getByText('① Alt+Shift+Q 누르기')).toHaveAttribute('aria-hidden', 'true')
   expect(screen.getByRole('heading', { name: '이 단계. 띠 소리가 나면 말하세요.' })).toBeVisible()
-  expect(screen.getByRole('heading', { name: '삼 단계. 들은 내용을 확인하세요.' })).toBeVisible()
-  expect(screen.getByText('내용이 틀리면 ‘아니’라고 말해 주세요.')).toHaveAttribute(
+  expect(screen.getByRole('heading', { name: '삼 단계. 답을 들으세요.' })).toBeVisible()
+  expect(screen.getByText('잘못 알아들었으면 Esc로 답을 멈추고 다시 물어보세요.')).toHaveAttribute(
     'aria-hidden',
     'true',
   )

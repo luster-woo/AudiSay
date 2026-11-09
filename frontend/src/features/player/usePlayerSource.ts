@@ -128,6 +128,23 @@ export function usePlayerSource(
     const mount = document.createElement('div')
     host.replaceChildren(mount)
 
+    // 예비: inert(onReady) 가 안 먹는 브라우저에서 포커스가 iframe 으로 들어가면 직전 조작 요소로 돌려보낸다.
+    // (영상 상자는 aria-hidden 이라 낭독기가 "문서, 알 수 없음…"만 읽고 사용자는 위치를 잃는다)
+    let lastFocused: HTMLElement | null = null
+    const onFocusIn = (e: FocusEvent) => {
+      const t = e.target
+      if (t instanceof HTMLElement && !host.contains(t)) lastFocused = t
+    }
+    // 포커스가 다른 origin 의 iframe 으로 들어가면 window 가 blur 되고 activeElement 가 그 iframe 이 된다
+    const onWindowBlur = () => {
+      setTimeout(() => {
+        const iframe = ytRef.current?.getIframe?.()
+        if (iframe && document.activeElement === iframe) lastFocused?.focus({ preventScroll: true })
+      }, 0)
+    }
+    document.addEventListener('focusin', onFocusIn)
+    window.addEventListener('blur', onWindowBlur)
+
     void loadYoutubeApi().then(() => {
       if (cancelled) return
       const player = new YT.Player(mount, {
@@ -148,8 +165,12 @@ export function usePlayerSource(
         events: {
           onReady: () => {
             if (cancelled) return
-            // 유튜브 iframe 에 Tab 으로 들어가지 않게 (영상 상자는 aria-hidden, 조작은 바깥 컨트롤)
-            player.getIframe()?.setAttribute('tabindex', '-1')
+            // 유튜브 iframe 에 포커스가 들어가지 않게. 유튜브는 재생·멈춤·이동 때마다 자기 iframe 으로 포커스를
+            // 가져가는데, inert 면 크롬이 프레임 안쪽까지 포커스 불가로 만들어 그 요청을 거부한다 (영상 상자는
+            // aria-hidden, 조작은 바깥 컨트롤). 클릭으로 영상을 멈추는 것도 함께 막히지만 재생 버튼이 그 역할을 한다
+            const iframe = player.getIframe()
+            iframe?.setAttribute('tabindex', '-1')
+            if (iframe) iframe.inert = true
             unloadCaptions(player)
             patch({
               ready: true,
@@ -174,6 +195,8 @@ export function usePlayerSource(
     })
     return () => {
       cancelled = true
+      document.removeEventListener('focusin', onFocusIn)
+      window.removeEventListener('blur', onWindowBlur)
       if (poll) clearInterval(poll)
       try {
         ytRef.current?.destroy()

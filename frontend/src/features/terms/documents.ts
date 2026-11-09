@@ -131,9 +131,3 @@ export const PRIVACY: TermsDocument = {
     },
   ],
 }
-
-/** '2026-11-04' → '2026년 11월 4일' */
-export function formatEffectiveDate(iso: string) {
-  const [y, m, d] = iso.split('-').map(Number)
-  return `${y}년 ${m}월 ${d}일`
-}

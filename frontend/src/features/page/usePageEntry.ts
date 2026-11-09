@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from 'react'
+import { useEffect, useLayoutEffect, type RefObject } from 'react'
 import { useAnnouncer } from '@/features/announcer/context'
 
 /** 브라우저 탭 제목 앞부분. 화면 이름을 뒤에 붙여 'AudiSay - 로그인' 처럼 쓴다 (2026-11-06 결정, 11-04 통일안 변경) */
@@ -23,9 +23,13 @@ interface PageEntryOptions {
 export function usePageEntry({ title, announce: text, focusRef, ready = true }: PageEntryOptions) {
   const { announce } = useAnnouncer()
 
+  // 탭 제목은 그리기 전에 바꾼다. 포커스와 같은 effect 에서 바꾸면 낭독기가 이전 화면 제목을 읽는다 (11-09 NVDA 실측)
+  useLayoutEffect(() => {
+    if (ready) document.title = pageTitle(title)
+  }, [ready, title])
+
   useEffect(() => {
     if (!ready) return
-    document.title = pageTitle(title)
     // 포커스를 먼저 옮기고 → 낭독기가 포커스 요소를 읽은 뒤 → 안내 문구가 이어지도록 한 프레임 뒤에 announce
     const target = focusRef?.current ?? document.getElementById('main')
     // 화면에 들어오자마자 대화상자가 열렸으면(예: 업로드 끊김) 포커스를 창 밖으로 빼지 않는다

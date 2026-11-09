@@ -69,7 +69,7 @@ export default function MyInfoPage() {
 
         <section
           aria-labelledby="account-info"
-          className={`${card} mt-16`}
+          className={`${card} mt-8`}
           aria-busy={profile.isPending}
         >
           <h2 id="account-info" className="text-[1.75rem] font-bold text-navy">
@@ -138,7 +138,7 @@ export default function MyInfoPage() {
                   </Button>
                 </dd>
               </div>
-              {/* 재생 설정도 계정 정보 목록 안에서 같은 크기의 버튼으로 바꾼다 */}
+              {/* 설정도 계정 정보 목록 안에서 같은 크기의 버튼으로 연다 (창 제목도 '설정') */}
               <div className={`${row} pt-2`}>
                 <dt className="font-bold">설정</dt>
                 <dd className="flex min-w-0 flex-wrap items-center justify-between gap-4">
@@ -195,7 +195,12 @@ export default function MyInfoPage() {
 
       <PasswordChangeDialog open={dialog === 'password'} onClose={closeDialog} />
       <WithdrawDialog open={dialog === 'withdraw'} onClose={closeDialog} />
-      <SettingsDialog open={dialog === 'settings'} onClose={closeDialog} onPreview={preview} />
+      <SettingsDialog
+        open={dialog === 'settings'}
+        onClose={closeDialog}
+        onPreview={preview}
+        context="me"
+      />
     </div>
   )
 }

@@ -341,10 +341,52 @@ test('안 듣기: 재생 버튼에 포커스. 목차를 고르면 그 시각으�
   expect(controls.seek).toHaveBeenCalledWith(T(48))
   await waitFor(() => expect(band()).toHaveTextContent('2. 막대그래프 비교 장면이에요. 48초.'))
   act(() => setPlayerState?.({ currentMs: T(48) }))
+  // 포커스가 있는 동안에는 이름이 그대로다(아래 테스트). 포커스가 빠지면 '지금'이 붙는다
+  act(() => toc.blur())
   expect(screen.getByRole('button', { name: /2번, 막대그래프 비교, 지금/ })).toHaveAttribute(
     'aria-current',
     'true',
   )
+})
+
+test('읽는 순서: 질문 입력칸이 목차·대본 탭보다 먼저 온다 (원칙 3장)', async () => {
+  renderRoute('/watch/15')
+  await screen.findByRole('button', { name: '재생' })
+  const input = screen.getByRole('textbox', { name: '챗봇과 대화하기' })
+  const tablist = screen.getByRole('tablist', { name: '목차와 대본' })
+  expect(input.compareDocumentPosition(tablist) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+})
+
+test('목차 목록은 Tab 한 번: 지금 줄에만 멈추고 ↑ ↓ 로 옮긴다. 포커스가 있는 동안 이름이 바뀌지 않는다', async () => {
+  const user = userEvent.setup()
+  renderRoute('/watch/15')
+  await screen.findByRole('button', { name: '재생' })
+  const rows = within(screen.getByRole('tabpanel')).getAllByRole('button')
+  expect(rows.length).toBeGreaterThan(1)
+  // Tab 자리는 한 줄뿐이고, 처음에는 '지금' 줄(0초 → 첫 줄)
+  expect(rows.filter((r) => r.tabIndex === 0)).toEqual([rows[0]])
+
+  act(() => rows[0].focus())
+  await user.keyboard('{ArrowDown}')
+  expect(rows[1]).toHaveFocus()
+  expect(rows[1]).toHaveAttribute('tabindex', '0')
+  expect(rows[0]).toHaveAttribute('tabindex', '-1')
+  await user.keyboard('{ArrowUp}')
+  expect(rows[0]).toHaveFocus()
+  await user.keyboard('{End}')
+  expect(rows[rows.length - 1]).toHaveFocus()
+
+  // 포커스가 있는 줄은 재생 중 '지금'이 바뀌어도 이름·aria-current 가 그대로 (낭독기가 바뀐 이름을 읽지 않게)
+  const focused = rows[1]
+  act(() => focused.focus())
+  const before = focused.getAttribute('aria-label')
+  act(() => setPlayerState?.({ currentMs: T(48) }))
+  expect(focused).toHaveAttribute('aria-label', before!)
+  expect(focused).not.toHaveAttribute('aria-current')
+  // 포커스가 빠지면 따라간다
+  act(() => focused.blur())
+  expect(focused.getAttribute('aria-label')).toMatch(/, 지금,/)
+  expect(focused).toHaveAttribute('aria-current', 'true')
 })
 
 test('재생 중 문장 시각을 지나면 읽고, 재생바로 건너뛴 문장은 읽지 않는다', async () => {
@@ -368,13 +410,13 @@ test('상세도는 누적이다: 기본은 1·2단계, 자세히를 고르면 3�
   renderRoute('/watch/15')
   await screen.findByRole('button', { name: '재생' })
   await user.click(screen.getByRole('tab', { name: '대본' }))
-  expect(await screen.findByText('해설 대본 · 2문장')).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: /^해설 대본, ?2문장$/ })).toBeInTheDocument()
   expect(screen.queryByText('가운데가 가장 높아요.')).not.toBeInTheDocument()
 
-  await user.click(screen.getByRole('radio', { name: '3 자세한 해설' }))
+  await user.click(screen.getByRole('radio', { name: '자세한 해설' }))
   expect(usersApi.updateSettings).toHaveBeenCalledWith({ detailLevel: 3 })
-  await waitFor(() => expect(band()).toHaveTextContent('해설 상세도 3 자세한 해설.'))
-  expect(await screen.findByText('해설 대본 · 3문장')).toBeInTheDocument()
+  await waitFor(() => expect(band()).toHaveTextContent('해설 상세도 자세한 해설.'))
+  expect(await screen.findByRole('heading', { name: /^해설 대본, ?3문장$/ })).toBeInTheDocument()
   const texts = screen
     .getAllByText(/칠판이 보여요|세 개의 막대가|가운데가 가장 높아요/)
     .map((el) => el.textContent)
@@ -384,8 +426,8 @@ test('상세도는 누적이다: 기본은 1·2단계, 자세히를 고르면 3�
     '가운데가 가장 높아요.',
   ])
 
-  await user.click(screen.getByRole('radio', { name: '1 짧은 해설' }))
-  expect(await screen.findByText('해설 대본 · 1문장')).toBeInTheDocument()
+  await user.click(screen.getByRole('radio', { name: '짧은 해설' }))
+  expect(await screen.findByRole('heading', { name: /^해설 대본, ?1문장$/ })).toBeInTheDocument()
 })
 
 test('이 문장 신고: 지금 문장을 보여 주고 사유를 골라 보낸다. 여는 동안 영상을 멈춘다', async () => {
@@ -427,7 +469,7 @@ test('질문: 영상을 멈추고 답을 문장 단위로 읽은 뒤 끝났다�
   renderRoute('/watch/15')
   await screen.findByRole('button', { name: '재생' })
   act(() => setPlayerState?.({ playing: true, currentMs: T(134) }))
-  const input = screen.getByRole('textbox', { name: '질문하거나 명령하기' })
+  const input = screen.getByRole('textbox', { name: '챗봇과 대화하기' })
   await user.type(input, '지금 화면에 숫자도 나와?{Enter}')
   await waitFor(() =>
     expect(chatApi.send).toHaveBeenCalledWith({
@@ -446,7 +488,8 @@ test('질문: 영상을 멈추고 답을 문장 단위로 읽은 뒤 끝났다�
   // readOnly 도 켜지 않는다: 켜고 끌 때 낭독기가 '읽기 전용'을 읽어 답 소리와 겹친다
   expect(input).toHaveFocus()
   expect(input).not.toHaveAttribute('readonly')
-  expect(screen.getByRole('tab', { name: '질문 기록' })).toHaveAttribute('aria-selected', 'true')
+  // 질문 기록은 대화 칸에 늘 보인다 (탭으로 열 필요가 없다)
+  expect(screen.getByRole('region', { name: /^질문 기록/ })).toBeInTheDocument()
 
   act(() => sse().onMessage({ event: 'delta', data: JSON.stringify({ text: '네. 막대 위에 ' }) }))
   act(() =>
@@ -478,8 +521,8 @@ test('질문: 영상을 멈추고 답을 문장 단위로 읽은 뒤 끝났다�
   await waitFor(() => expect(band()).toHaveTextContent('답변이 끝났어요. 입력칸에 있어요.'))
   expect(band()).not.toHaveTextContent('막대 위에')
   expect(controls.play).toHaveBeenCalled()
-  expect(screen.getByRole('textbox', { name: '질문하거나 명령하기' })).toHaveFocus()
-  expect(screen.getByText('질문 기록 · 2개')).toBeInTheDocument()
+  expect(screen.getByRole('textbox', { name: '챗봇과 대화하기' })).toHaveFocus()
+  expect(screen.getByRole('heading', { name: /^질문 기록, ?2개$/ })).toBeInTheDocument()
   expect(screen.getByRole('button', { name: /그 장면 보기, 2분 14초/ })).toBeInTheDocument()
 })
 
@@ -495,10 +538,7 @@ test('질문을 보낸 직후에는 낭독기가 읽을 시간만큼 기다렸�
   })
   renderRoute('/watch/15')
   await screen.findByRole('button', { name: '재생' })
-  await user.type(
-    screen.getByRole('textbox', { name: '질문하거나 명령하기' }),
-    '지금 뭐 나와?{Enter}',
-  )
+  await user.type(screen.getByRole('textbox', { name: '챗봇과 대화하기' }), '지금 뭐 나와?{Enter}')
   await waitFor(() =>
     expect(subscribeSse).toHaveBeenCalledWith('/chat/messages/90/stream', expect.anything()),
   )
@@ -528,10 +568,7 @@ test('재생 중 질문: 답이 끝나면 "답변이 끝났어요" 안내를 낭
   renderRoute('/watch/15')
   await screen.findByRole('button', { name: '재생' })
   act(() => setPlayerState?.({ playing: true, currentMs: T(30) }))
-  await user.type(
-    screen.getByRole('textbox', { name: '질문하거나 명령하기' }),
-    '지금 뭐 나와?{Enter}',
-  )
+  await user.type(screen.getByRole('textbox', { name: '챗봇과 대화하기' }), '지금 뭐 나와?{Enter}')
   await waitFor(() =>
     expect(subscribeSse).toHaveBeenCalledWith('/chat/messages/91/stream', expect.anything()),
   )
@@ -582,7 +619,7 @@ test('장면 이동 후보가 여럿이면 번호를 읽어 주고, 고르면 �
   renderRoute('/watch/15')
   await screen.findByRole('button', { name: '재생' })
   await user.type(
-    screen.getByRole('textbox', { name: '질문하거나 명령하기' }),
+    screen.getByRole('textbox', { name: '챗봇과 대화하기' }),
     'B반 나오는 장면으로 가 줘{Enter}',
   )
   const group = await screen.findByRole('radiogroup', { name: '장면 후보' })
@@ -634,16 +671,56 @@ test('장면 후보를 읽어 준 뒤 "2번"이라고 말하거나 적으면 서
   expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument()
 })
 
+test('목차·대본은 영상 아래 탭, 질문 기록은 대화 칸에 늘 보인다', async () => {
+  renderRoute('/watch/15')
+  await screen.findByRole('button', { name: '재생' })
+  expect(screen.getByRole('tab', { name: '목차' })).toBeInTheDocument()
+  expect(screen.getByRole('region', { name: /^질문 기록/ })).toBeInTheDocument()
+  expect(screen.queryByRole('tab', { name: '질문 기록' })).not.toBeInTheDocument()
+})
+
+test('답을 받는 중에는 마지막 답에 답 멈추기 버튼이 있고, 누르면 멈추고 입력칸으로 돌아온다', async () => {
+  const user = userEvent.setup()
+  vi.mocked(chatApi.send).mockResolvedValue({
+    chatLogId: 89,
+    inputMode: 'TEXT',
+    utterance: '지금 뭐 해?',
+    intent: 'QUESTION',
+    result: { answerStreamUrl: '/api/v1/chat/messages/89/stream' },
+  })
+  renderRoute('/watch/15')
+  await screen.findByRole('button', { name: '재생' })
+  // 입력칸 아래 키 안내와 예시 문구
+  expect(screen.getByText('말로 묻기')).toBeInTheDocument()
+  expect(screen.getByPlaceholderText('예: 지금 뭐 하고 있어?')).toBeInTheDocument()
+
+  const input = screen.getByRole('textbox', { name: '챗봇과 대화하기' })
+  await user.type(input, '지금 뭐 해?{Enter}')
+  await waitFor(() =>
+    expect(subscribeSse).toHaveBeenCalledWith('/chat/messages/89/stream', expect.anything()),
+  )
+  const stop = await screen.findByRole('button', { name: '답 멈추기' })
+  expect(stop).toHaveAttribute('aria-keyshortcuts', 'Escape')
+  await user.click(stop)
+  await waitFor(() => expect(band()).toHaveTextContent('답변을 멈췄어요.'))
+  expect(input).toHaveFocus()
+  await waitFor(() =>
+    expect(screen.queryByRole('button', { name: '답 멈추기' })).not.toBeInTheDocument(),
+  )
+})
+
 test('크게 보기: 패널을 숨기고 Esc 로 돌아온다', async () => {
   const user = userEvent.setup()
   renderRoute('/watch/15')
   await screen.findByRole('button', { name: '재생' })
   await user.click(screen.getByRole('button', { name: '크게 보기' }))
   // 크게 보기: 질문 입력칸과 질문 기록만 오른쪽에 남고, 목차·대본 탭과 즐겨찾기는 숨긴다
-  expect(screen.getByRole('textbox', { name: '질문하거나 명령하기' })).toBeInTheDocument()
+  expect(screen.getByRole('textbox', { name: '챗봇과 대화하기' })).toBeInTheDocument()
   expect(screen.getByRole('heading', { name: /질문 기록/ })).toBeInTheDocument()
   expect(screen.queryByRole('tab', { name: '목차' })).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: /즐겨찾기/ })).not.toBeInTheDocument()
+  // 대화 칸이 좁아 입력칸 아래 키 안내도 숨긴다
+  expect(screen.queryByText('말로 묻기')).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: '작게 보기' })).toHaveFocus()
   expect(screen.queryByRole('button', { name: '이 문장 신고' })).not.toBeInTheDocument()
   expect(screen.queryByRole('group', { name: '해설 상세도' })).not.toBeInTheDocument()
@@ -718,7 +795,7 @@ test('해설이 아직 없고 만드는 중이면 해설 만들기 화면으로 
 
 /** 입력칸에 적어 보낸다 */
 async function ask(user: ReturnType<typeof userEvent.setup>, text: string) {
-  await user.type(screen.getByRole('textbox', { name: '질문하거나 명령하기' }), `${text}{Enter}`)
+  await user.type(screen.getByRole('textbox', { name: '챗봇과 대화하기' }), `${text}{Enter}`)
 }
 /** 답변 스트림을 문장 하나로 끝낸다 */
 function answer(text: string, futureAvailable = false) {
@@ -868,7 +945,7 @@ test('"들으시겠어요?"를 물은 답에는 다시 듣기·그 장면 보기
   expect(screen.getByRole('button', { name: '네, 뒤 내용 들을게요' })).not.toHaveAttribute(
     'aria-disabled',
   )
-  // 질문 기록 안에서만 찾는다 (위 안내 띠에도 '다시 듣기 Alt+Shift+R' 버튼이 늘 있다)
+  // 질문 기록 안에서만 찾는다 (위 안내 띠에도 '스크린리더로 다시 듣기 Alt+Shift+R' 버튼이 늘 있다)
   const history = () => screen.getByRole('region', { name: /^질문 기록/ })
   expect(within(history()).queryByRole('button', { name: /^다시 듣기/ })).not.toBeInTheDocument()
   expect(within(history()).queryByRole('button', { name: /^그 장면 보기/ })).not.toBeInTheDocument()
@@ -916,13 +993,13 @@ test('말로 질문: 알아들으면 바로 입력칸으로 포커스를 옮긴�
   await user.click(screen.getByRole('button', { name: '음성 인식' }))
   await user.click(await screen.findByRole('button', { name: '말 끝내기' }))
   await waitFor(() => expect(chatApi.send).toHaveBeenCalled())
-  expect(screen.getByRole('textbox', { name: '질문하거나 명령하기' })).toHaveFocus()
+  expect(screen.getByRole('textbox', { name: '챗봇과 대화하기' })).toHaveFocus()
 
   vi.unstubAllGlobals()
   Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: undefined })
 })
 
-test('다른 탭을 보고 있어도 입력을 마치면(명령 포함) 질문 기록 탭을 보여 주고 포커스는 입력칸에 둔다', async () => {
+test('대본 탭을 보고 있어도 입력을 마치면(명령 포함) 탭은 그대로, 질문 기록은 대화 칸에 쌓이고 포커스는 입력칸에 둔다', async () => {
   const user = userEvent.setup()
   vi.mocked(chatApi.send).mockResolvedValueOnce({
     chatLogId: 95,
@@ -936,9 +1013,10 @@ test('다른 탭을 보고 있어도 입력을 마치면(명령 포함) 질문 �
   await user.click(screen.getByRole('tab', { name: '대본' }))
   expect(screen.getByRole('tab', { name: '대본' })).toHaveAttribute('aria-selected', 'true')
 
-  const input = screen.getByRole('textbox', { name: '질문하거나 명령하기' })
+  const input = screen.getByRole('textbox', { name: '챗봇과 대화하기' })
   await user.type(input, '이동 되돌려 줘{Enter}')
-  expect(screen.getByRole('tab', { name: '질문 기록' })).toHaveAttribute('aria-selected', 'true')
+  expect(screen.getByRole('tab', { name: '대본' })).toHaveAttribute('aria-selected', 'true')
+  expect(screen.getByRole('region', { name: /^질문 기록/ })).toBeInTheDocument()
   expect(input).toHaveFocus()
   await waitFor(() => expect(chatApi.send).toHaveBeenCalled())
 })
@@ -962,7 +1040,7 @@ test('새 명령: 방금 거 다시 듣기 / 이동 되돌리기 / 읽기 멈추
 
   // 목차로 2분 30초에 갔다가 되돌리면 이동 전(0초)으로
   act(() => setPlayerState?.({ currentMs: T(20) }))
-  // 명령을 보내면 질문 기록 탭으로 바뀌므로 목차 탭으로 돌아가서 고른다
+  // 목차 탭에서 고른다
   await user.click(screen.getByRole('tab', { name: '목차' }))
   await user.click(
     screen.getByRole('button', { name: /3번, 선그래프로 보기|2번, 막대그래프 비교/ }),
@@ -994,7 +1072,6 @@ test('새 명령: 방금 거 다시 듣기 / 이동 되돌리기 / 읽기 멈추
   vi.mocked(chatApi.send).mockResolvedValueOnce(action(97, 'SOMETHING_NEW'))
   await ask(user, '새 기능')
   await waitFor(() => expect(band()).toHaveTextContent('이 화면에서는 할 수 없는 기능이에요.'))
-  await user.click(screen.getByRole('tab', { name: '질문 기록' }))
   expect(
     await screen.findByText('"SOMETHING_NEW" → 이 화면에서는 할 수 없는 기능이에요'),
   ).toBeInTheDocument()
@@ -1064,7 +1141,6 @@ test('장면을 못 찾으면 서버가 준 이유를 읽고 기록에 남긴다
   await ask(user, '골 넣는 장면')
   await waitFor(() => expect(band()).toHaveTextContent('시간이 오래 걸려요'))
   expect(band()).not.toHaveTextContent('찾지 못했어요')
-  await user.click(screen.getByRole('tab', { name: '질문 기록' }))
   expect(await screen.findByText(/"골 넣는 장면" → 지금은 장면을 찾는 데/)).toBeInTheDocument()
 })
 
@@ -1121,16 +1197,30 @@ test('재생 전(0초) "요약 들려줘"는 묻지 않고 바로 들려준다',
 })
 
 test('질문 기록은 이 화면에서 한 것만 보여 준다: 들어올 때 서버 기록을 불러오지 않는다', async () => {
-  const user = userEvent.setup()
   renderRoute('/watch/15')
   await screen.findByRole('button', { name: '재생' })
-  await user.click(screen.getByRole('tab', { name: '질문 기록' }))
-  expect(screen.getByText('질문 기록 · 0개')).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: /^질문 기록, ?0개$/ })).toBeInTheDocument()
   expect(screen.getByText(/아직 질문한 적이 없어요/)).toBeInTheDocument()
   expect(videosApi.chatHistory).not.toHaveBeenCalled()
 })
 
 const keys = (k: string) => `{Alt>}{Shift>}${k}{/Shift}{/Alt}`
+
+test('영상을 마우스로 누르면 재생 버튼과 같이 재생·멈춤하고 안내한다 (낭독기·Tab 에는 없음)', async () => {
+  const user = userEvent.setup()
+  renderRoute('/watch/15')
+  await screen.findByRole('button', { name: '재생' })
+  const overlay = screen.getByTestId('video-click-overlay')
+  expect(overlay.closest('[aria-hidden="true"]')).not.toBeNull()
+  expect(overlay).not.toHaveAttribute('tabindex')
+  await user.click(overlay)
+  expect(controls.play).toHaveBeenCalledTimes(1)
+  await waitFor(() => expect(band()).toHaveTextContent('재생해요.'))
+  act(() => setPlayerState?.({ playing: true, currentMs: T(30) }))
+  await user.click(overlay)
+  expect(controls.pause).toHaveBeenCalledTimes(1)
+  await waitFor(() => expect(band()).toHaveTextContent('멈췄어요.'))
+})
 
 test('시청 화면 단축키: K 재생·멈춤, J/L 이동, P 위치, 1~3 상세도, S 설정, X 신고. 창이 열려 있으면 뒤 화면은 움직이지 않는다', async () => {
   const user = userEvent.setup()
@@ -1165,7 +1255,7 @@ test('시청 화면 단축키: K 재생·멈춤, J/L 이동, P 위치, 1~3 상�
       expect.objectContaining({ detailLevel: 3 }),
     ),
   )
-  await waitFor(() => expect(band()).toHaveTextContent('해설 상세도 3 자세한 해설.'))
+  await waitFor(() => expect(band()).toHaveTextContent('해설 상세도 자세한 해설.'))
 
   // 한 글자 1/2/3 은 더 이상 상세도를 바꾸지 않는다 (낭독기 제목 이동 키와 겹침)
   vi.mocked(usersApi.updateSettings).mockClear()
@@ -1201,7 +1291,7 @@ test('재생 설정: 재생 중이면 열 때 멈추고 닫으면 이어서 재�
   const dialog = await screen.findByRole('dialog', { name: '재생 설정' })
   expect(controls.pause).toHaveBeenCalledTimes(1)
   await waitFor(() => expect(band()).toHaveTextContent('영상을 멈췄어요.'))
-  // 창이 열린 동안 안내 영역은 창 안에 있어야 낭독기가 읽는다 (바깥은 inert)
+  // 창이 열린 동안 안내는 창 안의 영역에 쓰여야 낭독기가 읽는다 (바깥은 inert). 영역은 창 markup 에 처음부터 있다
   await waitFor(() =>
     expect(dialog.querySelector('[aria-live="polite"]')).toHaveTextContent('영상을 멈췄어요.'),
   )
@@ -1210,7 +1300,12 @@ test('재생 설정: 재생 중이면 열 때 멈추고 닫으면 이어서 재�
   await waitFor(() => expect(dialog).not.toHaveAttribute('open'))
   expect(controls.play).toHaveBeenCalledTimes(1)
   await waitFor(() => expect(band()).toHaveTextContent('이어서 재생해요.'))
-  expect(dialog.querySelector('[aria-live]')).toBeNull()
+  // 닫히면 창 안 영역은 비고, 본문 영역(늘 있는 것)에 쓰인다
+  await waitFor(() => {
+    const regions = [...document.querySelectorAll('[aria-live="polite"]')]
+    expect(regions.some((r) => r.textContent === '이어서 재생해요.')).toBe(true)
+  })
+  expect(dialog.querySelector('[aria-live="polite"]')).toHaveTextContent('')
 
   // 멈춰 있음 → 열고 닫아도 그대로
   vi.mocked(controls.pause).mockClear()
@@ -1245,8 +1340,9 @@ test('Alt+Shift+/ 안내 창은 시청 화면에서 쓰는 키 8줄과 어디서
   ])
   expect(desc('어디서나')).toEqual([
     '홈으로 가기',
-    '방금 안내 다시 듣기',
+    '방금 안내 스크린리더로 다시 듣기',
     '지금 화면의 단축키 보기',
+    '사용법 보기',
   ])
-  expect(dialog).toHaveAccessibleDescription(/단축키 11개예요/)
+  expect(dialog).toHaveAccessibleDescription(/단축키 12개예요/)
 })

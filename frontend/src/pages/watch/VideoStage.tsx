@@ -10,6 +10,11 @@ export interface VideoStageProps {
   volume: number
   /** 전체 화면: 테두리·비율 없이 남는 자리를 다 채운다 (영상은 비율을 지켜 가운데) */
   fill?: boolean
+  /**
+   * 영상을 클릭했을 때 (마우스 사용자의 재생·멈춤). 유튜브 iframe 은 inert 라 자체 클릭이 막혀 있어
+   * 투명 겹판이 대신 받아 재생 버튼과 같은 처리(안내·해설 중단)를 한다. 없으면 겹판을 두지 않는다
+   */
+  onClick?: () => void
   className?: string
 }
 
@@ -23,6 +28,7 @@ export function VideoStage({
   ytHostRef,
   volume,
   fill = false,
+  onClick,
   className,
 }: VideoStageProps) {
   return (
@@ -55,6 +61,16 @@ export function VideoStage({
       )}
       {playback?.sourceType === 'YOUTUBE' && (
         <div ref={ytHostRef} className="absolute inset-0 size-full [&>*]:size-full" />
+      )}
+      {/* 클릭 겹판: 상자 전체가 aria-hidden 이라 낭독기·Tab 에는 없다. 일부러 버튼이 아닌 div 다 —
+          키보드·낭독기 조작은 바깥의 재생 버튼(Space, Alt+Shift+K)이 맡고, 여기는 마우스만 받는다 */}
+      {onClick && (
+        // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
+        <div
+          data-testid="video-click-overlay"
+          className="absolute inset-0 cursor-pointer"
+          onClick={onClick}
+        />
       )}
     </div>
   )

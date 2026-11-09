@@ -72,8 +72,9 @@ export function Tabs<T extends string>({
     if (next === null) return
     e.preventDefault()
     const v = items[next].value
-    onChange(v)
+    // 포커스를 먼저 옮기고 선택을 바꾼다. 반대로 하면 낭독기가 '선택됨'인 탭을 포커스로 한 번, 선택 변화로 또 한 번 읽는다 (11-09 NVDA 실측)
     tabRefs.current.get(v)?.focus()
+    onChange(v)
   }
 
   const active = items.find((it) => it.value === value)

@@ -112,13 +112,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStatus('loading')
       queryClient.clear() // 관리자 데이터가 다음 사용자에게 남지 않게
       try {
-        await navigate('/landing', { replace: true, flushSync: true })
+        // 안내는 랜딩이 입장 안내 앞에 붙여 읽는다. 여기서 따로 announce 하면 랜딩의 입장 안내가 덮어써서
+        // "로그아웃했어요"가 읽히지 않는다 (11-09 NVDA 실측)
+        await navigate('/landing', { replace: true, flushSync: true, state: { notice: message } })
       } finally {
         setStatus('anonymous')
-        announce(message)
       }
     },
-    [announce, navigate, queryClient],
+    [navigate, queryClient],
   )
 
   const logout = useCallback(async () => {

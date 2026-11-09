@@ -21,13 +21,15 @@ export function AnnounceBar() {
         <p className="flex min-h-[3em] min-w-[16rem] flex-1 items-center font-bold text-yellow">
           {lastMessage}
         </p>
+        {/* 읽는 주체는 사용자의 스크린리더다 (AudiSay 가 소리를 내지 않는다). 스크린리더 없이 누르면 아무 소리도
+            나지 않아 '다시 듣기'만으로는 고장으로 오해할 수 있어 이름에 밝힌다 */}
         <button
           type="button"
           className={barButton}
           onClick={repeat}
           aria-keyshortcuts="Alt+Shift+R"
         >
-          다시 듣기 <kbd className="kbd text-yellow">Alt+Shift+R</kbd>
+          스크린리더로 다시 듣기 <kbd className="kbd text-yellow">Alt+Shift+R</kbd>
         </button>
         <button
           type="button"

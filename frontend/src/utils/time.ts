@@ -24,20 +24,6 @@ export function formatDurationSpoken(sec: number): string {
 /** ms → 낭독용. 재생바 위치 읽어 줄 때 */
 export const formatPositionSpoken = (ms: number) => formatDurationSpoken(ms / 1000)
 
-/** 서버 UTC ISO → 한국 시간 "10. 24." / "2026. 10. 24. 09:12" */
-export function formatDateKst(iso: string, withTime = false): string {
-  const d = new Date(iso)
-  return new Intl.DateTimeFormat('ko-KR', {
-    timeZone: 'Asia/Seoul',
-    year: withTime ? 'numeric' : undefined,
-    month: 'numeric',
-    day: 'numeric',
-    hour: withTime ? '2-digit' : undefined,
-    minute: withTime ? '2-digit' : undefined,
-    hour12: false,
-  }).format(d)
-}
-
 /** 초 → "7분 05초" / "72분 03초" (영상 카드 표시용. 시간 단위 없이 분으로 센다) */
 export function formatDurationShort(sec: number): string {
   const total = Math.max(0, Math.round(sec))

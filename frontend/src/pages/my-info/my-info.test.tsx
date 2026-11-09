@@ -69,7 +69,7 @@ async function withdrawDialog() {
   return within(screen.getByRole('alertdialog', { name: '정말 탈퇴할까요?' }))
 }
 
-test('계정 정보(재생 설정 포함)·이용 횟수를 표시하고 제목에 초점을 둔다 (axe 포함)', async () => {
+test('계정 정보(설정 포함)·이용 횟수를 표시하고 제목에 초점을 둔다 (axe 포함)', async () => {
   const { container } = renderRoute('/me')
   expect(await screen.findByText(me.email)).toBeVisible()
   // 회원 등급에는 인증 날짜를 적지 않는다
@@ -82,7 +82,7 @@ test('계정 정보(재생 설정 포함)·이용 횟수를 표시하고 제목�
     expect(screen.getByRole('heading', { level: 1, name: '내 정보' })).toHaveFocus(),
   )
   expect(screen.getByText('5번 중 4번 남음')).toBeInTheDocument()
-  // 설정 칸은 없애고 재생 설정은 계정 정보 목록 안에 둔다. 사용법 다시 듣기는 도움말에만 있다
+  // 설정은 계정 정보 목록 안의 '설정 바꾸기' 버튼으로 연다. 사용법 다시 듣기는 도움말에만 있다
   expect(screen.queryByRole('heading', { name: '설정' })).not.toBeInTheDocument()
   expect(screen.queryByRole('link', { name: '사용법 다시 듣기' })).not.toBeInTheDocument()
   const account = within(screen.getByRole('region', { name: '계정 정보' }))
@@ -328,18 +328,22 @@ test.each([false, true])(
     expect(header.getByText(`${me.name} 님`)).toBeInTheDocument()
     await userEvent.click(header.getByRole('button', { name: '로그아웃' }))
     await waitFor(() => expect(router.state.location.pathname).toBe('/landing'))
+    // 랜딩의 입장 안내 앞에 붙여 한 번에 읽는다 (따로 보내면 입장 안내에 덮인다)
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: /영상 화면해설/ })).toHaveFocus(),
+    )
     expect(tokenStore.get()).toBeNull()
     expect(queryClient.getQueryData(['private-test'])).toBeUndefined()
   },
 )
 
-test('공통 재생 설정을 열어 고대비 변경을 저장하고 닫으면 버튼으로 돌아온다', async () => {
+test('설정 창을 열어 고대비 변경을 저장하고 닫으면 버튼으로 돌아온다', async () => {
   vi.mocked(usersApi.updateSettings).mockResolvedValue({ ...DEFAULT_SETTINGS, highContrast: true })
   renderRoute('/me')
   const open = await screen.findByRole('button', { name: '설정 바꾸기' })
   await waitFor(() => expect(open).not.toHaveAttribute('aria-disabled'))
   await userEvent.click(open)
-  const dialog = within(screen.getByRole('dialog', { name: '재생 설정' }))
+  const dialog = within(screen.getByRole('dialog', { name: '설정' }))
   await userEvent.click(dialog.getByRole('checkbox', { name: '켜기' }))
   expect(usersApi.updateSettings).toHaveBeenCalledWith({ highContrast: true })
   await waitFor(() => expect(document.documentElement.dataset.contrast).toBe('high'))
@@ -347,13 +351,13 @@ test('공통 재생 설정을 열어 고대비 변경을 저장하고 닫으면 
   expect(open).toHaveFocus()
 })
 
-test('재생 설정 저장 실패 시 이전 값으로 원복하고 성공 안내를 하지 않는다', async () => {
+test('설정 저장 실패 시 이전 값으로 원복하고 성공 안내를 하지 않는다', async () => {
   vi.mocked(usersApi.updateSettings).mockRejectedValue(new Error('offline'))
   const { queryClient } = renderRoute('/me')
   const open = await screen.findByRole('button', { name: '설정 바꾸기' })
   await waitFor(() => expect(open).not.toHaveAttribute('aria-disabled'))
   await userEvent.click(open)
-  const dialog = within(screen.getByRole('dialog', { name: '재생 설정' }))
+  const dialog = within(screen.getByRole('dialog', { name: '설정' }))
   await userEvent.click(dialog.getByRole('radio', { name: '3 자세한 해설' }))
   await waitFor(() => expect(dialog.getByRole('radio', { name: '2 기본 해설' })).toBeChecked())
   expect(queryClient.getQueryData(queryKeys.settings)).toMatchObject({ detailLevel: 2 })

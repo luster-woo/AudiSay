@@ -1,13 +1,14 @@
 /**
  * AudiSay 단축키 목록 (원본).
- * 도움말 '단축키' 탭이 이 목록을 그대로 보여 준다. 단축키 안내 창(Alt+Shift+/)과
- * 실제 키 등록(useShortcut)도 이 목록을 읽도록 옮길 예정이다.
+ * 도움말 '단축키' 탭이 이 목록을 그대로 보여 주고, 단축키 안내 창(Alt+Shift+/)과
+ * 실제 키 등록(useShortcutEntry)도 이 목록을 읽는다.
  * 모든 키는 Alt+Shift 와 함께 누른다 (낭독기의 한 글자 이동 키와 겹치지 않게, 원칙 5장).
  */
 export type ShortcutEntryId =
   | 'home'
   | 'repeat'
   | 'help'
+  | 'tutorial'
   | 'voiceSearch'
   | 'play'
   | 'seek'
@@ -57,7 +58,7 @@ export const shortcutCatalog: ShortcutEntry[] = [
     id: 'repeat',
     group: 'everywhere',
     keys: ['R'],
-    description: '방금 안내 다시 듣기',
+    description: '방금 안내 스크린리더로 다시 듣기',
     hint: 'Repeat의 R',
     spokenKeys: '알',
   },
@@ -68,6 +69,16 @@ export const shortcutCatalog: ShortcutEntry[] = [
     description: '지금 화면의 단축키 보기',
     hint: '물음표와 같은 키예요',
     spokenKeys: '슬래시',
+  },
+  {
+    // 크롬은 Alt+Shift+T 를 '도구 모음으로 포커스'에 쓰지만 예약 키가 아니라 페이지가 preventDefault 로 가져온다.
+    // NVDA·센스리더 기본 명령에는 Alt+Shift+글자 조합이 없다
+    id: 'tutorial',
+    group: 'everywhere',
+    keys: ['T'],
+    description: '사용법 보기',
+    hint: 'Tutorial의 T',
+    spokenKeys: '티',
   },
   {
     id: 'voiceSearch',
@@ -152,7 +163,7 @@ export function shortcutById(id: ShortcutEntryId): ShortcutEntry {
   return entry
 }
 
-/** 'Alt+Shift+K' 형태 (useShortcut 등록용) */
+/** 'Alt+Shift+K' 형태 (useShortcutEntry 등록용) */
 export function comboOf(key: string) {
   return `${SHORTCUT_MODIFIER}+${key}`
 }

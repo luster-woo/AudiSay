@@ -46,13 +46,35 @@ export const estimateReaderMs = (text: string) =>
 export const AnnouncerContext = createContext<AnnouncerValue | null>(null)
 
 /**
- * 열린 모달 대화상자를 안내 영역의 자리로 등록한다. 돌려받은 함수로 등록을 푼다.
+ * 열린 모달 대화상자를 안내 영역의 자리로 등록한다(창마다 고유한 id). 돌려받은 함수로 등록을 푼다.
  * showModal() 은 창 바깥을 inert 로 막아 바깥 aria-live 영역을 낭독기가 읽지 않는다.
- * 그래서 창이 열려 있는 동안에는 안내 영역을 맨 위 창 안으로 옮겨 그린다.
+ * 그래서 창이 열려 있는 동안에는 맨 위 창 안의 안내 영역(LiveRegions)에 글자를 쓴다.
+ *
+ * 안내 영역은 옮기거나 새로 만들지 않는다 — 본문에 하나, 창마다 하나가 처음부터 있고 글자만 바뀐다.
+ * 크롬은 새로 생긴(또는 막 나타난) 영역의 글자를 "처음부터 있던 내용"으로 보고 읽지 않기 때문이다
+ * (2026-11-09 NVDA 실측: 창을 열 때 영역을 끼워 넣으면 안 읽히고, 미리 있던 영역에 쓰면 읽힌다).
  * Provider 밖(부품 단독 테스트)에서는 아무 일도 하지 않는다.
  */
-export type RegisterLiveHost = (el: HTMLElement) => () => void
+export type RegisterLiveHost = (hostId: string) => () => void
 export const LiveHostContext = createContext<RegisterLiveHost>(() => () => {})
+
+/** 안내 영역이 보여 줄 글자와 지금 글자를 써야 할 자리. LiveRegions 가 읽는다 */
+export interface LiveRegionsValue {
+  polite: string
+  assertive: string
+  /** 글자를 쓸 자리: 맨 위 창의 hostId, 창이 없으면 null(본문) */
+  activeHostId: string | null
+  /** polite·assertive 글자가 각각 지금 자리에서 쓴 것인지. 자리가 바뀐 뒤에는 옛 글자를 보이지 않는다 */
+  politeCurrent: boolean
+  assertiveCurrent: boolean
+}
+export const LiveRegionsContext = createContext<LiveRegionsValue>({
+  polite: '',
+  assertive: '',
+  activeHostId: null,
+  politeCurrent: false,
+  assertiveCurrent: false,
+})
 
 export function useAnnouncer() {
   const ctx = useContext(AnnouncerContext)

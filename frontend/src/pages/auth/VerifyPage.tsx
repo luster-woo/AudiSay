@@ -145,7 +145,10 @@ export default function VerifyPage() {
   return (
     <div className="grid gap-12 lg:grid-cols-[1fr_24rem]">
       <div>
-        <Link to="/me" className="inline-flex min-h-touch items-center gap-2 font-bold text-ink">
+        <Link
+          to="/me"
+          className="inline-flex min-h-touch items-center gap-2 text-xl font-bold text-ink"
+        >
           <span aria-hidden="true">←</span>내 정보
         </Link>
         <h1 ref={headingRef} tabIndex={-1} className="mt-6 text-4xl font-bold outline-none">
@@ -176,11 +179,13 @@ export default function VerifyPage() {
 
             <form noValidate onSubmit={onSubmit} className="mt-8 flex flex-col gap-6">
               <fieldset>
-                <legend className="text-lg font-bold">인증 서류</legend>
-                <p id={hintId} className="mt-2 text-xl text-ink-muted">
+                <legend className="text-2xl font-bold">인증 서류</legend>
+                {/* 어떤 파일을 올려야 하는지가 이 화면의 핵심 정보라 회색이 아닌 본문색으로 둔다 (저시력) */}
+                <p id={hintId} className="mt-2 text-xl text-ink">
                   복지카드 사진이나 장애인증명서 한 장 · PDF, JPG, PNG · 10MB 이하
                 </p>
-                <div className="mt-3 flex flex-wrap items-center gap-4">
+                {/* 고른 파일 상태는 늘 버튼 아래 줄에 둔다. 옆에 두면 확대할 때만 아래로 내려가 자리가 바뀐다 */}
+                <div className="mt-3 flex flex-col items-start gap-3">
                   {/* 진짜 파일 입력은 숨기고, 겉의 label 을 버튼 모양으로 그린다 */}
                   <input
                     ref={fileRef}
@@ -199,7 +204,10 @@ export default function VerifyPage() {
                   >
                     파일 고르기
                   </label>
-                  <p id={fileStatusId} className="flex flex-wrap items-center gap-3 text-lg">
+                  <p
+                    id={fileStatusId}
+                    className="flex flex-wrap items-center gap-3 text-xl empty:hidden"
+                  >
                     {file && (
                       <span className="font-bold">
                         {file.name} · {formatBytes(file.size)}
@@ -233,9 +241,9 @@ export default function VerifyPage() {
                   aria-invalid={agreeError ? true : undefined}
                   aria-describedby={agreeError ? `${agreeHintId} agree-error` : agreeHintId}
                 />
+                {/* '저장하지 않아요'는 위 설명에 이미 있어 여기서는 무엇을 확인하는지만 (낭독기는 체크박스마다 이 문장을 읽는다) */}
                 <p id={agreeHintId} className="mt-1 text-lg text-ink-muted">
-                  서류의 글자를 읽어 복지카드·장애인증명서인지와 장애 유형만 확인해요. 서류와 읽은
-                  글자는 저장하지 않아요.
+                  서류의 글자를 읽어 복지카드·장애인증명서인지와 장애 유형만 확인해요.
                 </p>
                 {agreeError && (
                   <p
@@ -258,9 +266,10 @@ export default function VerifyPage() {
                 >
                   {submitting ? '서류를 확인하는 중' : '인증 신청'}
                 </Button>
-                <Link to="/" className="min-h-touch content-center font-bold text-navy underline">
-                  나중에 할게요
-                </Link>
+                {/* 홈으로 가는 이동이라 링크지만(원칙 4장), 제출 버튼 옆의 두 번째 선택지라 버튼 모양으로 보이게 한다 */}
+                <ButtonLink to="/" variant="secondary" size="lg">
+                  나중에 하고 홈으로
+                </ButtonLink>
               </div>
               {submitting && (
                 <p className="text-lg text-ink-muted">서류를 확인하고 있어요. 길면 1분쯤 걸려요.</p>

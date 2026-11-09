@@ -868,7 +868,7 @@ test('"들으시겠어요?"를 물은 답에는 다시 듣기·그 장면 보기
   expect(screen.getByRole('button', { name: '네, 뒤 내용 들을게요' })).not.toHaveAttribute(
     'aria-disabled',
   )
-  // 질문 기록 안에서만 찾는다 (위 안내 띠에도 '다시 듣기 Alt+Shift+R' 버튼이 늘 있다)
+  // 질문 기록 안에서만 찾는다 (위 안내 띠에도 '스크린리더로 다시 듣기 Alt+Shift+R' 버튼이 늘 있다)
   const history = () => screen.getByRole('region', { name: /^질문 기록/ })
   expect(within(history()).queryByRole('button', { name: /^다시 듣기/ })).not.toBeInTheDocument()
   expect(within(history()).queryByRole('button', { name: /^그 장면 보기/ })).not.toBeInTheDocument()
@@ -1245,7 +1245,7 @@ test('Alt+Shift+/ 안내 창은 시청 화면에서 쓰는 키 8줄과 어디서
   ])
   expect(desc('어디서나')).toEqual([
     '홈으로 가기',
-    '방금 안내 다시 듣기',
+    '방금 안내 스크린리더로 다시 듣기',
     '지금 화면의 단축키 보기',
   ])
   expect(dialog).toHaveAccessibleDescription(/단축키 11개예요/)

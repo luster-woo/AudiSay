@@ -69,7 +69,7 @@ export default function MyInfoPage() {
 
         <section
           aria-labelledby="account-info"
-          className={`${card} mt-16`}
+          className={`${card} mt-8`}
           aria-busy={profile.isPending}
         >
           <h2 id="account-info" className="text-[1.75rem] font-bold text-navy">

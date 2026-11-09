@@ -57,7 +57,7 @@ export const shortcutCatalog: ShortcutEntry[] = [
     id: 'repeat',
     group: 'everywhere',
     keys: ['R'],
-    description: '방금 안내 다시 듣기',
+    description: '방금 안내 스크린리더로 다시 듣기',
     hint: 'Repeat의 R',
     spokenKeys: '알',
   },

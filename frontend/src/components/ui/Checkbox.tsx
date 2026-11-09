@@ -36,10 +36,11 @@ export function Checkbox({ label, indeterminate = false, className, ref, ...rest
         ref={inner}
         id={id}
         type="checkbox"
-        className="size-6 shrink-0 accent-navy"
+        // 저시력: 글자보다 큰 32px 로 두고, 체크되면 글자도 굵게 바꿔 상태를 두 가지로 보인다
+        className="peer size-8 shrink-0 accent-navy"
         {...rest}
       />
-      <label htmlFor={id} className="text-lg text-ink">
+      <label htmlFor={id} className="text-lg text-ink peer-checked:font-bold">
         {label}
       </label>
     </div>

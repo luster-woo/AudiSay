@@ -138,7 +138,7 @@ function TutorialView({ step }: { step: number }) {
             )}
           </div>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-            {/* 안내 띠의 '다시 듣기'(마지막 안내)와 이름이 겹치지 않게 (버튼 목록으로 훑는 사용자 구분용) */}
+            {/* 안내 띠의 '스크린리더로 다시 듣기'(마지막 안내)와 구분되는 이름 (버튼 목록으로 훑는 사용자용) */}
             <Button variant="ghost" onClick={() => announce(spoken)} className="px-2">
               이 단계 설명 다시 듣기
             </Button>

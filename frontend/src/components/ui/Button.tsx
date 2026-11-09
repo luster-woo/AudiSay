@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, MouseEvent, Ref } from 'react'
+import { useEffect, useState, type ButtonHTMLAttributes, type MouseEvent, type Ref } from 'react'
 import { buttonClass, type ButtonSize, type ButtonVariant } from './buttonStyles'
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -9,6 +9,9 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   loading?: boolean
   ref?: Ref<HTMLButtonElement>
 }
+
+/** 처리 중(loading)을 낭독기·화면에 알리기까지 기다리는 시간 */
+const LOADING_SHOW_DELAY_MS = 800
 
 /**
  * 버튼. disabled 대신 aria-disabled 를 쓴다:
@@ -28,6 +31,15 @@ export function Button({
   ...rest
 }: ButtonProps) {
   const inactive = disabled || loading
+  // 짧은 요청(공개 범위 바꾸기, 더 보기 등)의 처리 중은 낭독기에 바로 알리지 않는다: 1초도 안 돼 끝나는데
+  // "사용불가, 작업 중"이 끼어들어 결과 안내를 가린다 (11-09 NVDA 실측). 누름은 즉시 막고, 표시만 늦춘다
+  const [shownLoading, setShownLoading] = useState(false)
+  if (!loading && shownLoading) setShownLoading(false) // 끝나면 즉시 되돌린다
+  useEffect(() => {
+    if (!loading) return
+    const id = window.setTimeout(() => setShownLoading(true), LOADING_SHOW_DELAY_MS)
+    return () => window.clearTimeout(id)
+  }, [loading])
 
   const handleClick = (e: MouseEvent<HTMLButtonElement>) => {
     if (inactive) {
@@ -41,8 +53,8 @@ export function Button({
     <button
       ref={ref}
       type={type}
-      aria-disabled={inactive || undefined}
-      aria-busy={loading || undefined}
+      aria-disabled={disabled || shownLoading || undefined}
+      aria-busy={shownLoading || undefined}
       onClick={handleClick}
       className={buttonClass(variant, size, className)}
       {...rest}

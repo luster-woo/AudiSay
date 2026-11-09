@@ -328,6 +328,10 @@ test.each([false, true])(
     expect(header.getByText(`${me.name} 님`)).toBeInTheDocument()
     await userEvent.click(header.getByRole('button', { name: '로그아웃' }))
     await waitFor(() => expect(router.state.location.pathname).toBe('/landing'))
+    // 랜딩의 입장 안내 앞에 붙여 한 번에 읽는다 (따로 보내면 입장 안내에 덮인다)
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: /영상 화면해설/ })).toHaveFocus(),
+    )
     expect(tokenStore.get()).toBeNull()
     expect(queryClient.getQueryData(['private-test'])).toBeUndefined()
   },

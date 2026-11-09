@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import mascot from '@/assets/landing-mascot.webp'
 import { usePageEntry } from '@/features/page/usePageEntry'
 import { useShortcutHelp } from '@/features/shortcuts/useShortcutHelp'
@@ -87,10 +87,12 @@ export default function LandingPage() {
     }
   }, [])
 
+  // 로그아웃·탈퇴 뒤에 왔으면 그 안내("로그아웃했어요.")를 입장 안내 앞에 붙인다
+  const notice = (useLocation().state as { notice?: string } | null)?.notice
   usePageEntry({
     title: '시작하기',
     // 처음 온 사람이 무슨 서비스인지 듣도록 포커스는 제목(h1)에. 다음 Tab 이 '지금 시작하기'
-    announce: "AudiSay예요. Tab을 누르면 '지금 시작하기', 로그인 화면으로 가요.",
+    announce: `${notice ? `${notice} ` : ''}AudiSay예요. Tab을 누르면 '지금 시작하기', 로그인 화면으로 가요.`,
     focusRef: headingRef,
   })
 

@@ -237,7 +237,8 @@ export default function VerifyPage() {
                     setAgreed(e.target.checked)
                     if (e.target.checked) setAgreeError(null)
                   }}
-                  required
+                  // required 대신 aria-required: 체크 전엔 늘 :invalid 라 낭독기가 '입력 오류'로 읽는다 (11-09 NVDA 실측)
+                  aria-required="true"
                   aria-invalid={agreeError ? true : undefined}
                   aria-describedby={agreeError ? `${agreeHintId} agree-error` : agreeHintId}
                 />

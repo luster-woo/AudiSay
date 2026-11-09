@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FocusEvent,
+  type KeyboardEvent,
+  type ReactNode,
+} from 'react'
 import type { Chapter, NarrationLine, SceneCandidate } from '@/api/types'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/components/ui/cn'
@@ -13,6 +20,18 @@ export function Clock({ ms, className }: { ms: number; className?: string }) {
       <span aria-hidden="true">{formatClock(ms)}</span>
       <span className="sr-only">{formatPositionSpoken(ms)}</span>
     </span>
+  )
+}
+
+/**
+ * 눈에는 ' · ', 낭독기에는 쉼표. 가운뎃점(·)은 낭독기 기호 읽기 수준에 따라 "가운뎃점"으로 읽힌다 (원칙 11장)
+ */
+function Dot() {
+  return (
+    <>
+      <span aria-hidden="true"> · </span>
+      <span className="sr-only">, </span>
+    </>
   )
 }
 
@@ -50,38 +69,99 @@ function useFollowCurrent<T extends HTMLElement>(currentKey: string | number | u
 }
 
 /**
+ * 목차·대본 목록을 Tab 한 번에 지나가게 한다 (roving tabindex).
+ * Tab 은 목록 안 한 줄에만 멈추고, 줄 사이는 ↑ ↓ Home End 로 옮긴다. 누르면(Enter·Space) 그 시각으로 간다.
+ * 목록 밖에서 들어오면 '지금' 줄에 멈춘다(없으면 첫 줄). 목록 안에서 옮긴 동안에는 옮긴 줄을 기억한다
+ */
+function useRovingRows(keys: (string | number)[], currentKey: string | number | undefined) {
+  const [focusKey, setFocusKey] = useState<string | number | null>(null)
+  const stopKey =
+    focusKey != null && keys.includes(focusKey) ? focusKey : (currentKey ?? keys[0] ?? null)
+
+  const onKeyDown = (e: KeyboardEvent<HTMLUListElement>) => {
+    const list = e.currentTarget
+    const rows = Array.from(list.querySelectorAll<HTMLButtonElement>('[data-row]'))
+    const i = rows.findIndex((r) => r === document.activeElement)
+    if (i < 0) return
+    const next =
+      e.key === 'ArrowDown'
+        ? Math.min(rows.length - 1, i + 1)
+        : e.key === 'ArrowUp'
+          ? Math.max(0, i - 1)
+          : e.key === 'Home'
+            ? 0
+            : e.key === 'End'
+              ? rows.length - 1
+              : null
+    if (next === null) return
+    e.preventDefault()
+    rows[next].focus()
+  }
+  // 목록 안 줄에 포커스가 오면 그 줄을 Tab 자리로. 목록을 떠나면 다시 '지금' 줄을 따라간다
+  const onFocus = (e: FocusEvent<HTMLUListElement>) => {
+    const key = (e.target as HTMLElement).closest<HTMLElement>('[data-key]')?.dataset.key
+    if (key == null) return
+    setFocusKey(keys.find((k) => String(k) === key) ?? null)
+  }
+  const onBlur = (e: FocusEvent<HTMLUListElement>) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocusKey(null)
+  }
+  return { stopKey, listProps: { onKeyDown, onFocus, onBlur } }
+}
+
+/**
  * 목차·대본이 함께 쓰는 한 줄: 왼쪽 시각, 오른쪽 글. 누르면 그 시각으로 간다.
- * 지금 위치는 노란 바탕 + 검은 테두리 + 굵은 글자 (색만이 아니라 테두리·굵기로도). 말로는 aria-label 이 알린다
+ * 지금 위치는 노란 바탕 + 검은 테두리 + 굵은 글자 (색만이 아니라 테두리·굵기로도). 말로는 aria-label 이 알린다.
+ * 포커스가 있는 동안에는 낭독기용 이름·'지금' 표시를 포커스가 들어온 때 그대로 둔다:
+ * 재생 중 '지금'이 옮겨 가며 이름이 바뀌면 낭독기가 바뀐 이름을 읽어 해설·영상 소리와 겹친다 (원칙 1장. 재생바와 같은 방식).
+ * 눈에 보이는 노란 표시는 그대로 따라간다
  */
 function TimeRow({
   ms,
   current,
   label,
+  tabStop,
   onClick,
   children,
 }: {
   ms: number
   current: boolean
   label: string
+  /** 목록에서 Tab 이 멈출 줄이면 true (한 목록에 하나) */
+  tabStop: boolean
   onClick: () => void
   children: ReactNode
 }) {
+  const [frozen, setFrozen] = useState<{ label: string; current: boolean } | null>(null)
+  const spoken = frozen ?? { label, current }
   return (
     <button
       type="button"
+      data-row
+      tabIndex={tabStop ? 0 : -1}
+      // 눌러서 이 줄이 '지금'이 되어도 이름은 그대로 둔다 (옮긴 위치는 안내 전광판이 알린다). 다음에 들어올 때 새로 맞춘다
       onClick={onClick}
-      aria-current={current ? 'true' : undefined}
-      aria-label={label}
+      onFocus={() => setFrozen({ label, current })}
+      onBlur={() => setFrozen(null)}
+      aria-current={spoken.current ? 'true' : undefined}
+      aria-label={spoken.label}
       className={cn(
-        'flex min-h-touch w-full items-start gap-4 rounded-lg border-2 px-4 py-3 text-left',
+        'flex min-h-touch w-full items-center rounded-lg border-2 px-4 py-3 text-left',
         current ? 'border-ink bg-yellow font-bold' : 'border-line bg-paper hover:border-navy',
       )}
     >
-      <Clock
-        ms={ms}
-        className={cn('w-14 shrink-0 pt-0.5 text-base font-bold', !current && 'text-ink-muted')}
-      />
-      <span className="min-w-0 flex-1 text-lg leading-snug">{children}</span>
+      {/* 한 줄이면 줄 전체가 세로 가운데, 여러 줄이면 시각은 첫 줄 높이에 붙는다.
+          시각의 줄 높이를 글(text-lg · leading-snug)과 같게 맞춰 두 글자의 가운데가 한 줄에 온다 */}
+      <span className="flex min-w-0 flex-1 items-start gap-4">
+        <Clock
+          ms={ms}
+          className={cn(
+            'w-14 shrink-0 text-base leading-[calc(1.125rem*1.375)] font-bold',
+            !current && 'text-ink-muted',
+          )}
+        />
+        <span className="min-w-0 flex-1 text-lg leading-snug">{children}</span>
+      </span>
     </button>
   )
 }
@@ -97,15 +177,22 @@ export function ChaptersPanel({
 }) {
   const current = [...chapters].reverse().find((c) => c.startMs <= currentMs) ?? null
   const listRef = useFollowCurrent<HTMLUListElement>(current?.chapterId)
+  const { stopKey, listProps } = useRovingRows(
+    chapters.map((c) => c.chapterId),
+    current?.chapterId,
+  )
   return (
     <section aria-labelledby="chapters-title" className={WRAP}>
       <h2 id="chapters-title" className={LIST_TITLE}>
-        장면 목차 · {chapters.length}개
+        장면 목차
+        <Dot />
+        {chapters.length}개
       </h2>
       {chapters.length === 0 ? (
         <p className="mt-3 text-ink-muted">목차가 없어요.</p>
       ) : (
-        <ul ref={listRef} className={LIST}>
+        // 줄 사이 ↑ ↓ Home End 이동 (useRovingRows). 키는 안쪽 버튼이 받는다
+        <ul ref={listRef} className={LIST} {...listProps}>
           {chapters.map((c) => {
             const isCurrent = c.chapterId === current?.chapterId
             return (
@@ -113,6 +200,7 @@ export function ChaptersPanel({
                 <TimeRow
                   ms={c.startMs}
                   current={isCurrent}
+                  tabStop={c.chapterId === stopKey}
                   onClick={() => onPick(c)}
                   label={`${c.chapterIndex}번, ${c.title}${isCurrent ? ', 지금' : ''}, ${formatPositionSpoken(c.startMs)}부터`}
                 >
@@ -140,15 +228,22 @@ export function ScriptPanel({
   onPick: (l: NarrationLine) => void
 }) {
   const listRef = useFollowCurrent<HTMLUListElement>(current?.lineId)
+  const { stopKey, listProps } = useRovingRows(
+    lines.map((l) => l.lineId),
+    current?.lineId,
+  )
   return (
     <section aria-labelledby="script-title" className={WRAP}>
       <h2 id="script-title" className={LIST_TITLE}>
-        해설 대본 · {lines.length}문장
+        해설 대본
+        <Dot />
+        {lines.length}문장
       </h2>
       {lines.length === 0 ? (
         <p className="mt-3 text-ink-muted">대본이 없어요.</p>
       ) : (
-        <ul ref={listRef} className={LIST}>
+        // 줄 사이 ↑ ↓ Home End 이동 (useRovingRows). 키는 안쪽 버튼이 받는다
+        <ul ref={listRef} className={LIST} {...listProps}>
           {lines.map((l) => {
             const isCurrent = l.lineId === current?.lineId
             return (
@@ -156,6 +251,7 @@ export function ScriptPanel({
                 <TimeRow
                   ms={l.startMs}
                   current={isCurrent}
+                  tabStop={l.lineId === stopKey}
                   onClick={() => onPick(l)}
                   label={`${formatPositionSpoken(l.startMs)}${isCurrent ? ', 지금 문장' : ''}. ${l.text}`}
                 >
@@ -172,8 +268,9 @@ export function ScriptPanel({
 
 /* ───────────── 질문 기록(대화) + 장면 후보 ───────────── */
 
+/** 낭독기용 '누가, 언제' (쉼표로 끊는다. 화면용은 shortStamp) */
 const stamp = (who: string, ms: number | null) =>
-  ms == null ? who : `${who} · ${formatPositionSpoken(ms)}`
+  ms == null ? who : `${who}, ${formatPositionSpoken(ms)}`
 const shortStamp = (who: string, ms: number | null) =>
   ms == null ? who : `${who} · ${formatClock(ms)}`
 
@@ -214,7 +311,9 @@ export function HistoryPanel({
     <section aria-labelledby="history-title" className={cn(WRAP, 'flex min-h-0 flex-1 flex-col')}>
       <div className="flex items-baseline justify-between gap-3">
         <h3 id="history-title" className="text-base font-bold text-ink-muted">
-          질문 기록 · {entries.length}개
+          질문 기록
+          <Dot />
+          {entries.length}개
         </h3>
         {entries.length > 1 && <p className="text-sm text-ink-muted">최근 것이 아래</p>}
       </div>
@@ -426,11 +525,22 @@ export function CandidatesPanel({
       aria-labelledby="cands-title"
       className={cn(WRAP, 'rounded-lg border-2 border-navy p-4')}
     >
-      <h2 id="cands-title" className="text-lg font-bold">
-        장면 찾기 · 후보 {candidates.length}곳
-      </h2>
+      {/* 대화 칸(h2 '챗봇과 대화하기') 안이라 질문 기록과 같은 h3 */}
+      <h3 id="cands-title" className="text-lg font-bold">
+        장면 찾기
+        <Dot />
+        후보 {candidates.length}곳
+      </h3>
       <div className="mt-3 rounded-md border-2 border-navy bg-paper px-4 py-3">
-        <p className="font-bold">{stamp('나', videoTimeMs)}</p>
+        <p className="font-bold">
+          나
+          {videoTimeMs != null && (
+            <>
+              <Dot />
+              {formatPositionSpoken(videoTimeMs)}
+            </>
+          )}
+        </p>
         <p className="mt-1 text-lg">{utterance}</p>
       </div>
       <div className="mt-3 rounded-md border-2 border-navy bg-yellow px-4 py-3">
@@ -469,7 +579,11 @@ export function CandidatesPanel({
             >
               <span className="block font-bold">
                 <span aria-hidden="true">{checked ? '● ' : '○ '}</span>
-                {i + 1} · {c.title} · <Clock ms={c.startMs} />
+                {i + 1}
+                <Dot />
+                {c.title}
+                <Dot />
+                <Clock ms={c.startMs} />
               </span>
               <span className="mt-1 block text-lg">{c.summary}</span>
             </button>

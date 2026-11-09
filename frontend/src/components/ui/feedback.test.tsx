@@ -28,11 +28,14 @@ function Speed() {
 
 test('Stepper: 소수점 오차 없이 바뀐다', async () => {
   renderWithProviders(<Speed />)
-  const up = await screen.findByRole('button', { name: '말하기 속도 높이기' })
-  await userEvent.click(up)
-  await userEvent.click(up)
-  await userEvent.click(up)
+  // 버튼 이름에 지금 값이 붙는다 (낭독기는 가운데 값 표시를 Tab 으로 지나치지 않는다)
+  const up = () => screen.getByRole('button', { name: /^말하기 속도 높이기, 지금 / })
+  expect(await screen.findByRole('button', { name: '말하기 속도 높이기, 지금 1.0배' })).toBeVisible()
+  await userEvent.click(up())
+  await userEvent.click(up())
+  await userEvent.click(up())
   expect(screen.getByRole('group', { name: '말하기 속도' })).toHaveTextContent('1.3배')
+  expect(screen.getByRole('button', { name: '말하기 속도 줄이기, 지금 1.3배' })).toBeVisible()
 })
 
 test('ProgressBar: 값과 읽을 문구', () => {

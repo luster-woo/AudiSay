@@ -64,11 +64,16 @@ export interface LiveRegionsValue {
   assertive: string
   /** 글자를 쓸 자리: 맨 위 창의 hostId, 창이 없으면 null(본문) */
   activeHostId: string | null
+  /** polite·assertive 글자가 각각 지금 자리에서 쓴 것인지. 자리가 바뀐 뒤에는 옛 글자를 보이지 않는다 */
+  politeCurrent: boolean
+  assertiveCurrent: boolean
 }
 export const LiveRegionsContext = createContext<LiveRegionsValue>({
   polite: '',
   assertive: '',
   activeHostId: null,
+  politeCurrent: false,
+  assertiveCurrent: false,
 })
 
 export function useAnnouncer() {

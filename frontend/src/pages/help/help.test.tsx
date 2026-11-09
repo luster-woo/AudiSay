@@ -122,7 +122,7 @@ test('음성 안내는 와이어프레임의 3단계 설명과 음성 명령 표
     }),
   ).toBeVisible()
   expect(screen.getByText('원하는 요청을 말해 주세요.')).toBeVisible()
-  expect(screen.getByText('내용이 틀리면 ‘아니’라고 말해 주세요.')).toBeVisible()
+  expect(screen.getByText('잘못 알아들었으면 Esc로 답을 멈추고 다시 물어보세요.')).toBeVisible()
   expect(screen.queryByRole('button', { name: '말을 알아듣지 못할 때' })).not.toBeInTheDocument()
   // 머리글 1줄 + 명령 수 ('여기 신고'는 뺐다)
   const rowCounts = { '재생 조절': 5, '장면 찾기': 5, '질문과 해설': 4, '홈 음성 검색': 3 }
@@ -183,8 +183,8 @@ test('음성 입력 단계와 모든 음성 명령 표는 따옴표와 슬래시
   await openTab('말로 하는 명령')
   expect(screen.getByText('① Alt+Shift+Q 누르기')).toHaveAttribute('aria-hidden', 'true')
   expect(screen.getByRole('heading', { name: '이 단계. 띠 소리가 나면 말하세요.' })).toBeVisible()
-  expect(screen.getByRole('heading', { name: '삼 단계. 들은 내용을 확인하세요.' })).toBeVisible()
-  expect(screen.getByText('내용이 틀리면 ‘아니’라고 말해 주세요.')).toHaveAttribute(
+  expect(screen.getByRole('heading', { name: '삼 단계. 답을 들으세요.' })).toBeVisible()
+  expect(screen.getByText('잘못 알아들었으면 Esc로 답을 멈추고 다시 물어보세요.')).toHaveAttribute(
     'aria-hidden',
     'true',
   )

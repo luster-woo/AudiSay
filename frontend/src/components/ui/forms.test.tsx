@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { axe } from 'vitest-axe'
 import { Button } from './Button'
@@ -25,9 +25,20 @@ describe('Button', () => {
     expect(onClick).not.toHaveBeenCalled()
   })
 
-  test('loading 이면 aria-busy', () => {
-    render(<Button loading>보내는 중</Button>)
-    expect(screen.getByRole('button')).toHaveAttribute('aria-busy', 'true')
+  test('loading 은 잠깐(0.8초) 뒤부터 aria-busy·aria-disabled 로 알리고, 그동안에도 누를 수 없다', async () => {
+    const onClick = vi.fn()
+    render(
+      <Button loading onClick={onClick}>
+        보내는 중
+      </Button>,
+    )
+    const btn = screen.getByRole('button')
+    expect(btn).not.toHaveAttribute('aria-busy')
+    expect(btn).not.toHaveAttribute('aria-disabled')
+    await userEvent.click(btn)
+    expect(onClick).not.toHaveBeenCalled()
+    await waitFor(() => expect(btn).toHaveAttribute('aria-busy', 'true'), { timeout: 1500 })
+    expect(btn).toHaveAttribute('aria-disabled', 'true')
   })
 })
 

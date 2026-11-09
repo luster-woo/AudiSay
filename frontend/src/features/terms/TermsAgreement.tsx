@@ -124,7 +124,9 @@ function ConsentRow({
           }
           checked={checked}
           onChange={(e) => onCheck(e.target.checked)}
-          required
+          // 네이티브 required 는 체크 전엔 늘 :invalid 라 낭독기가 열자마자 '입력 오류'로 읽는다 (11-09 NVDA 실측).
+          // 필수 표시만 하고, 오류는 제출 뒤 aria-invalid 로 알린다
+          aria-required="true"
           aria-invalid={invalid || undefined}
           aria-describedby={
             [summary ? summaryId : undefined, invalid ? errorId : undefined]

@@ -159,8 +159,9 @@ export function AskPanel({
   const bar = 'flex min-h-touch items-center gap-4 rounded-md border-2 px-5 text-lg'
 
   return (
+    // 바깥 aside('질문')가 이미 랜드마크라 여기는 이름을 붙이지 않는다 (이름이 있으면 region 랜드마크가 되어
+    // 포커스가 들어올 때 "보조 정보 랜드마크 → 영역" 두 겹으로 읽힌다). 제목(h2)은 그대로라 H 키 탐색은 된다
     <section
-      aria-labelledby="ask-title"
       className={cn(
         dock &&
           'flex flex-col overflow-hidden rounded-2xl border-2 border-line bg-paper shadow-[0_10px_30px_rgba(17,24,39,0.07)]',

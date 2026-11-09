@@ -37,6 +37,13 @@ export function AnnouncerProvider({ children }: { children: ReactNode }) {
   const [lastMessage, setLastMessage] = useState('')
   const [polite, setPolite] = useState('')
   const [assertive, setAssertive] = useState('')
+  // 글자를 쓴 '자리 세대'. 창이 열리거나 닫혀 자리가 바뀔 때마다 세대가 올라가고, 옛 세대의 글자는 보이지 않는다.
+  // 그러지 않으면 옛 글자가 새 자리(또는 돌아온 본문 자리)에 '새 내용'으로 나타나 낭독기가 지난 안내를 또 읽는다
+  // (11-09 NVDA 실측: 창을 열고 닫을 때마다 입장 안내가 다시 읽힘)
+  const [politeGen, setPoliteGen] = useState(0)
+  const [assertiveGen, setAssertiveGen] = useState(0)
+  const [gen, setGen] = useState(0)
+  const genRef = useRef(0)
   // 열린 모달 창들의 id (나중에 연 것이 맨 뒤). 맨 위 창 안의 안내 영역에 글자를 쓴다
   const [hosts, setHosts] = useState<string[]>([])
   const registerLiveHost = useCallback<RegisterLiveHost>((id) => {
@@ -53,6 +60,8 @@ export function AnnouncerProvider({ children }: { children: ReactNode }) {
   const voiceRef = useRef<VoiceChannel | null>(null)
   /** 우리 음성이 말하는 동안 미뤄 둔 polite 안내 */
   const queueRef = useRef<string[]>([])
+  /** 줄에 들어 있는 것 중 '다시 듣기'로 넣은 문장. 새 안내가 오면 버린다 (옛 안내를 새 안내와 이어 읽지 않게) */
+  const queuedRepeatRef = useRef<string | null>(null)
   const flushTimerRef = useRef<number | null>(null)
   /** 낭독기가 마지막 안내를 다 읽을 것으로 어림한 시각 */
   const quietUntilRef = useRef(0)
@@ -62,7 +71,10 @@ export function AnnouncerProvider({ children }: { children: ReactNode }) {
     const set = politeness === 'assertive' ? setAssertive : setPolite
     // 같은 문자열은 낭독기가 다시 읽지 않으므로 비웠다가 다음 프레임에 넣는다
     set('')
-    pendingRef.current = requestAnimationFrame(() => set(text))
+    pendingRef.current = requestAnimationFrame(() => {
+      ;(politeness === 'assertive' ? setAssertiveGen : setPoliteGen)(genRef.current)
+      set(text)
+    })
   }, [])
 
   const cancelFlush = useCallback(() => {
@@ -77,6 +89,7 @@ export function AnnouncerProvider({ children }: { children: ReactNode }) {
     if (voiceRef.current?.busy) return
     const texts = queueRef.current
     queueRef.current = []
+    queuedRepeatRef.current = null
     if (texts.length > 0 && !mutedRef.current) push(texts.join(' '), 'polite')
   }, [cancelFlush, push])
 
@@ -87,7 +100,7 @@ export function AnnouncerProvider({ children }: { children: ReactNode }) {
 
   /** 우리 음성과 겹치지 않게 낭독기로 보낸다 */
   const deliver = useCallback(
-    (text: string, politeness: Politeness) => {
+    (text: string, politeness: Politeness, isRepeat = false) => {
       const voice = voiceRef.current
       if (politeness === 'assertive') {
         if (voice?.busy) voice.stop()
@@ -95,8 +108,18 @@ export function AnnouncerProvider({ children }: { children: ReactNode }) {
         return
       }
       const queue = queueRef.current
+      // 새 안내가 오면 줄에서 기다리던 '다시 듣기'는 버린다. 둘을 이어 읽으면
+      // "요약을 들려 드릴게요. 요약이 끝났어요."처럼 앞뒤가 안 맞게 들린다 (11-09 NVDA 실측)
+      if (!isRepeat && queuedRepeatRef.current !== null) {
+        const i = queue.lastIndexOf(queuedRepeatRef.current)
+        if (i >= 0) queue.splice(i, 1)
+        queuedRepeatRef.current = null
+      }
       if (voice?.busy || queue.length > 0) {
-        if (queue[queue.length - 1] !== text) queue.push(text)
+        if (queue[queue.length - 1] !== text) {
+          queue.push(text)
+          if (isRepeat) queuedRepeatRef.current = text
+        }
         if (!voice?.busy) scheduleFlush()
         return
       }
@@ -119,7 +142,7 @@ export function AnnouncerProvider({ children }: { children: ReactNode }) {
 
   const repeat = useCallback(() => {
     const { text, politeness } = lastRef.current
-    if (text) deliver(text, politeness)
+    if (text) deliver(text, politeness, true)
   }, [deliver])
 
   const setMuted = useCallback((m: boolean) => {
@@ -157,6 +180,15 @@ export function AnnouncerProvider({ children }: { children: ReactNode }) {
   )
 
   const host = hosts.at(-1) ?? null
+  // 자리가 바뀌면 세대를 올린다 (렌더 중 같은 컴포넌트의 state 갱신: React 가 허용하는 '이전 값에서 파생' 패턴)
+  const [genHost, setGenHost] = useState(host)
+  if (genHost !== host) {
+    setGenHost(host)
+    setGen((g) => g + 1)
+  }
+  useEffect(() => {
+    genRef.current = gen
+  }, [gen])
 
   /**
    * 창이 열리거나 닫혀 글자를 쓸 자리가 바뀌면, 그 직전에 보낸 안내는 이제 inert 가 된(또는 닫힌) 자리에 남아
@@ -179,13 +211,22 @@ export function AnnouncerProvider({ children }: { children: ReactNode }) {
     cancelAnimationFrame(pendingRef.current)
     set('')
     // 새 자리(창 안 영역)가 접근성 트리에 올라간 뒤에 바꿔야 변화로 읽힌다
-    const id = setTimeout(() => set(text), REPLAY_DELAY_MS)
+    const id = setTimeout(() => {
+      ;(politeness === 'assertive' ? setAssertiveGen : setPoliteGen)(genRef.current)
+      set(text)
+    }, REPLAY_DELAY_MS)
     return () => clearTimeout(id)
   }, [host])
 
   const live = useMemo<LiveRegionsValue>(
-    () => ({ polite, assertive, activeHostId: host }),
-    [polite, assertive, host],
+    () => ({
+      polite,
+      assertive,
+      activeHostId: host,
+      politeCurrent: politeGen === gen,
+      assertiveCurrent: assertiveGen === gen,
+    }),
+    [polite, assertive, host, politeGen, assertiveGen, gen],
   )
 
   return (
@@ -207,15 +248,17 @@ export function AnnouncerProvider({ children }: { children: ReactNode }) {
  * 지금 글자를 쓸 자리(activeHostId)와 같은 것만 글자를 보인다. Provider 밖에서는 빈 영역이다
  */
 export function LiveRegions({ hostId }: { hostId: string | null }) {
-  const { polite, assertive, activeHostId } = useContext(LiveRegionsContext)
+  const { polite, assertive, activeHostId, politeCurrent, assertiveCurrent } =
+    useContext(LiveRegionsContext)
+  // 이 자리가 지금 쓸 자리이고, 글자도 이 자리에서 쓴 것일 때만 보인다 (자리가 바뀌며 옛 글자가 되살아나지 않게)
   const active = activeHostId === hostId
   return (
     <>
       <div aria-live="polite" aria-atomic="true" className="sr-only">
-        {active ? polite : ''}
+        {active && politeCurrent ? polite : ''}
       </div>
       <div aria-live="assertive" aria-atomic="true" role="alert" className="sr-only">
-        {active ? assertive : ''}
+        {active && assertiveCurrent ? assertive : ''}
       </div>
     </>
   )

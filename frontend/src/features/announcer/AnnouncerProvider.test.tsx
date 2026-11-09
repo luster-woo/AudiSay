@@ -147,3 +147,16 @@ test('창이 열리면 안내 영역을 옮기지 않고, 창 안에 미리 있�
   expect(document.querySelectorAll('[aria-live="polite"]')[1]).toBe(bodyRegion)
   expect(view.getByTestId('dlg').querySelector('[aria-live="polite"]')).toBe(dlgRegion)
 })
+
+test('우리 음성 중에 누른 다시 듣기는 미뤄 두되, 그사이 새 안내가 오면 다시 듣기는 버리고 새 안내만 읽는다', () => {
+  const { api, voice } = setup()
+  act(() => api().announce('요약을 들려 드릴게요.'))
+  wait(16)
+  act(() => voice.set(true)) // 요약 TTS 시작
+  act(() => api().repeat()) // Alt+Shift+R
+  expect(polite()).toBe('요약을 들려 드릴게요.') // 아직 다시 읽지 않는다
+  act(() => api().announce('요약이 끝났어요.'))
+  act(() => voice.set(false))
+  wait(400)
+  expect(polite()).toBe('요약이 끝났어요.')
+})

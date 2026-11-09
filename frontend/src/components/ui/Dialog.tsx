@@ -3,6 +3,10 @@ import { LiveHostContext } from '@/features/announcer/context'
 import { LiveRegions } from '@/features/announcer/AnnouncerProvider'
 import { cn } from './cn'
 
+/** Tab 으로 갈 수 있는 요소 */
+const FOCUSABLE =
+  'a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"]), [role="slider"]'
+
 export interface DialogProps {
   open: boolean
   /** Esc·닫기 버튼으로 닫으려 할 때. 실제로 닫는 건 부모가 open 을 false 로 바꿔서 한다 */
@@ -112,6 +116,7 @@ export function Dialog({
   }, [open])
 
   return (
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- onKeyDown 은 포커스 가두기(Tab)뿐, 창 자체는 조작 요소가 아니다
     <dialog
       ref={ref}
       role={alert ? 'alertdialog' : undefined}
@@ -120,6 +125,27 @@ export function Dialog({
       onCancel={(e) => {
         e.preventDefault()
         onClose()
+      }}
+      // Tab 을 창 안에서만 돌게 한다. 크롬은 모달 창의 마지막 요소에서 Tab 을 누르면 포커스를 body 로 보내는데,
+      // 그러면 낭독기가 "주요 내용 랜드마크"처럼 뒤 화면을 읽는다 (11-09 NVDA 실측, 버튼이 하나뿐인 단축키 안내 창)
+      onKeyDown={(e) => {
+        if (e.key !== 'Tab') return
+        const el = ref.current
+        if (!el) return
+        const items = [...el.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+          (n) => !n.hasAttribute('disabled') && n.getAttribute('aria-hidden') !== 'true',
+        )
+        if (items.length === 0) return
+        const first = items[0]
+        const last = items[items.length - 1]
+        const current = document.activeElement
+        if (e.shiftKey && (current === first || current === el)) {
+          e.preventDefault()
+          last.focus()
+        } else if (!e.shiftKey && (current === last || current === el)) {
+          e.preventDefault()
+          first.focus()
+        }
       }}
       className={cn(
         'm-auto max-h-[90svh] w-[min(48rem,calc(100%-2rem))] rounded-lg bg-paper text-ink',

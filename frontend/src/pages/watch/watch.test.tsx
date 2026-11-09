@@ -341,10 +341,52 @@ test('안 듣기: 재생 버튼에 포커스. 목차를 고르면 그 시각으�
   expect(controls.seek).toHaveBeenCalledWith(T(48))
   await waitFor(() => expect(band()).toHaveTextContent('2. 막대그래프 비교 장면이에요. 48초.'))
   act(() => setPlayerState?.({ currentMs: T(48) }))
+  // 포커스가 있는 동안에는 이름이 그대로다(아래 테스트). 포커스가 빠지면 '지금'이 붙는다
+  act(() => toc.blur())
   expect(screen.getByRole('button', { name: /2번, 막대그래프 비교, 지금/ })).toHaveAttribute(
     'aria-current',
     'true',
   )
+})
+
+test('읽는 순서: 질문 입력칸이 목차·대본 탭보다 먼저 온다 (원칙 3장)', async () => {
+  renderRoute('/watch/15')
+  await screen.findByRole('button', { name: '재생' })
+  const input = screen.getByRole('textbox', { name: '챗봇과 대화하기' })
+  const tablist = screen.getByRole('tablist', { name: '목차와 대본' })
+  expect(input.compareDocumentPosition(tablist) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+})
+
+test('목차 목록은 Tab 한 번: 지금 줄에만 멈추고 ↑ ↓ 로 옮긴다. 포커스가 있는 동안 이름이 바뀌지 않는다', async () => {
+  const user = userEvent.setup()
+  renderRoute('/watch/15')
+  await screen.findByRole('button', { name: '재생' })
+  const rows = within(screen.getByRole('tabpanel')).getAllByRole('button')
+  expect(rows.length).toBeGreaterThan(1)
+  // Tab 자리는 한 줄뿐이고, 처음에는 '지금' 줄(0초 → 첫 줄)
+  expect(rows.filter((r) => r.tabIndex === 0)).toEqual([rows[0]])
+
+  act(() => rows[0].focus())
+  await user.keyboard('{ArrowDown}')
+  expect(rows[1]).toHaveFocus()
+  expect(rows[1]).toHaveAttribute('tabindex', '0')
+  expect(rows[0]).toHaveAttribute('tabindex', '-1')
+  await user.keyboard('{ArrowUp}')
+  expect(rows[0]).toHaveFocus()
+  await user.keyboard('{End}')
+  expect(rows[rows.length - 1]).toHaveFocus()
+
+  // 포커스가 있는 줄은 재생 중 '지금'이 바뀌어도 이름·aria-current 가 그대로 (낭독기가 바뀐 이름을 읽지 않게)
+  const focused = rows[1]
+  act(() => focused.focus())
+  const before = focused.getAttribute('aria-label')
+  act(() => setPlayerState?.({ currentMs: T(48) }))
+  expect(focused).toHaveAttribute('aria-label', before!)
+  expect(focused).not.toHaveAttribute('aria-current')
+  // 포커스가 빠지면 따라간다
+  act(() => focused.blur())
+  expect(focused.getAttribute('aria-label')).toMatch(/, 지금,/)
+  expect(focused).toHaveAttribute('aria-current', 'true')
 })
 
 test('재생 중 문장 시각을 지나면 읽고, 재생바로 건너뛴 문장은 읽지 않는다', async () => {
@@ -368,13 +410,13 @@ test('상세도는 누적이다: 기본은 1·2단계, 자세히를 고르면 3�
   renderRoute('/watch/15')
   await screen.findByRole('button', { name: '재생' })
   await user.click(screen.getByRole('tab', { name: '대본' }))
-  expect(await screen.findByText('해설 대본 · 2문장')).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: /^해설 대본, ?2문장$/ })).toBeInTheDocument()
   expect(screen.queryByText('가운데가 가장 높아요.')).not.toBeInTheDocument()
 
   await user.click(screen.getByRole('radio', { name: '자세한 해설' }))
   expect(usersApi.updateSettings).toHaveBeenCalledWith({ detailLevel: 3 })
   await waitFor(() => expect(band()).toHaveTextContent('해설 상세도 자세한 해설.'))
-  expect(await screen.findByText('해설 대본 · 3문장')).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: /^해설 대본, ?3문장$/ })).toBeInTheDocument()
   const texts = screen
     .getAllByText(/칠판이 보여요|세 개의 막대가|가운데가 가장 높아요/)
     .map((el) => el.textContent)
@@ -385,7 +427,7 @@ test('상세도는 누적이다: 기본은 1·2단계, 자세히를 고르면 3�
   ])
 
   await user.click(screen.getByRole('radio', { name: '짧은 해설' }))
-  expect(await screen.findByText('해설 대본 · 1문장')).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: /^해설 대본, ?1문장$/ })).toBeInTheDocument()
 })
 
 test('이 문장 신고: 지금 문장을 보여 주고 사유를 골라 보낸다. 여는 동안 영상을 멈춘다', async () => {
@@ -480,7 +522,7 @@ test('질문: 영상을 멈추고 답을 문장 단위로 읽은 뒤 끝났다�
   expect(band()).not.toHaveTextContent('막대 위에')
   expect(controls.play).toHaveBeenCalled()
   expect(screen.getByRole('textbox', { name: '챗봇과 대화하기' })).toHaveFocus()
-  expect(screen.getByText('질문 기록 · 2개')).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: /^질문 기록, ?2개$/ })).toBeInTheDocument()
   expect(screen.getByRole('button', { name: /그 장면 보기, 2분 14초/ })).toBeInTheDocument()
 })
 
@@ -1157,7 +1199,7 @@ test('재생 전(0초) "요약 들려줘"는 묻지 않고 바로 들려준다',
 test('질문 기록은 이 화면에서 한 것만 보여 준다: 들어올 때 서버 기록을 불러오지 않는다', async () => {
   renderRoute('/watch/15')
   await screen.findByRole('button', { name: '재생' })
-  expect(screen.getByText('질문 기록 · 0개')).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: /^질문 기록, ?0개$/ })).toBeInTheDocument()
   expect(screen.getByText(/아직 질문한 적이 없어요/)).toBeInTheDocument()
   expect(videosApi.chatHistory).not.toHaveBeenCalled()
 })

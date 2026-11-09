@@ -19,10 +19,10 @@ const steps = [
     spokenDescription: '원하는 요청을 말해 주세요.',
   },
   {
-    title: '들은 내용 확인',
-    description: '내용이 틀리면 ‘아니’라고 말해 주세요.',
-    spokenTitle: '삼 단계. 들은 내용을 확인하세요.',
-    spokenDescription: '내용이 틀리면 아니라고 말해 주세요.',
+    title: '답 듣기',
+    description: '잘못 알아들었으면 Esc로 답을 멈추고 다시 물어보세요.',
+    spokenTitle: '삼 단계. 답을 들으세요.',
+    spokenDescription: '잘못 알아들었으면 이스케이프로 답을 멈추고 다시 물어보세요.',
   },
 ]
 

@@ -105,16 +105,6 @@ export const voiceCategories: { value: VoiceCategory; label: string; rows: HelpR
         spokenCommand: '말 빠르게 또는 고대비 켜 줘라고 말하세요.',
         spokenDescription: '검색하지 않고 설정을 바꿔요.',
       },
-      {
-        command: '‘도움말’',
-        description: '도움말 열기',
-        spokenCommand: '도움말이라고 말하세요.',
-      },
-      {
-        command: '‘사용법 다시’',
-        description: '사용법 처음부터',
-        spokenCommand: '사용법 다시라고 말하세요.',
-      },
     ],
   },
 ]

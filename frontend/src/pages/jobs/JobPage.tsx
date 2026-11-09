@@ -239,7 +239,7 @@ function JobPage({ jobId }: { jobId: number }) {
           {video.title} · {formatDurationSpoken(video.durationSec)}
         </p>
       )}
-      <div className="mt-8 flex items-end justify-between gap-6">
+      <div className="mt-8 flex flex-wrap items-end justify-between gap-6">
         <p aria-hidden="true" className="text-[8rem] leading-none font-bold tracking-tight">
           {progress}%
         </p>

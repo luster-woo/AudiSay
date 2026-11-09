@@ -107,7 +107,7 @@ export default function HomePage() {
       announce('더 불러올 영상이 없어요.')
       return
     }
-    listRef.current?.querySelectorAll<HTMLAnchorElement>(':scope > li > a')[from]?.focus()
+    listRef.current?.querySelectorAll<HTMLAnchorElement>(':scope > li a')[from]?.focus()
     const done = data.content.length >= data.page.totalElements
     announce(
       `${added}개 더 불러왔어요. 전체 ${data.page.totalElements}개 중 ${data.content.length}개.${done ? ' 모든 영상을 불러왔어요.' : ''}`,

@@ -144,9 +144,8 @@ describe('홈', () => {
       '직접 올린 영상 · 7분 05초',
     )
     expect(row).toHaveAttribute('href', '/watch/1')
-    expect(within(row).getByRole('heading', { level: 3 })).toHaveTextContent(
-      '김치볶음밥, 10분이면 충분해요',
-    )
+    // 제목(h3)이 링크를 감싼다 (링크 안의 h3 는 크롬이 제목 탐색에서 숨긴다)
+    expect(row.closest('h3')).toHaveTextContent('김치볶음밥, 10분이면 충분해요')
     expect(screen.queryByRole('button', { name: /재생|즐겨찾기/ })).not.toBeInTheDocument()
     expect(within(section).getByRole('heading', { level: 2 })).toHaveTextContent(
       '해설이 준비된 영상48개',
@@ -489,7 +488,7 @@ describe('검색 결과', () => {
     const ready = screen.getByRole('link', { name: '그래프를 읽는 방법' })
     expect(ready).toHaveAttribute('href', '/watch/7')
     expect(ready).toHaveAccessibleDescription('유튜브 · 채널 · 4분 42초 해설 있음')
-    expect(within(ready).getByRole('heading', { level: 3 })).toHaveTextContent('그래프를 읽는 방법')
+    expect(ready.closest('h3')).toHaveTextContent('그래프를 읽는 방법')
     const creatable = screen.getByRole('link', { name: '엑셀 차트 기초' })
     expect(creatable).toHaveAttribute(
       'href',

@@ -36,31 +36,6 @@ export function useShortcuts() {
   return ctx
 }
 
-/** 컴포넌트에서 단축키 하나를 등록. 언마운트되면 자동 해제 */
-export function useShortcut(
-  combo: string,
-  handler: ShortcutDef['handler'],
-  opts: { description: string; scope?: ShortcutScope; allowInInput?: boolean },
-) {
-  const { register } = useShortcuts()
-  const handlerRef = useRef(handler)
-  // 렌더 중 ref 를 쓰지 않도록 effect 에서 handler를 최신으로 저장
-  useEffect(() => {
-    handlerRef.current = handler
-  })
-  useEffect(
-    () =>
-      register({
-        combo,
-        description: opts.description,
-        scope: opts.scope ?? 'global',
-        allowInInput: opts.allowInInput,
-        handler: (e) => handlerRef.current(e),
-      }),
-    [combo, opts.description, opts.scope, opts.allowInInput, register],
-  )
-}
-
 export function useShortcutScope(scope: Exclude<ShortcutScope, 'global'>) {
   const { setActiveScope } = useShortcuts()
   useEffect(() => {

@@ -1,7 +1,7 @@
 /**
  * AudiSay 단축키 목록 (원본).
- * 도움말 '단축키' 탭이 이 목록을 그대로 보여 준다. 단축키 안내 창(Alt+Shift+/)과
- * 실제 키 등록(useShortcut)도 이 목록을 읽도록 옮길 예정이다.
+ * 도움말 '단축키' 탭이 이 목록을 그대로 보여 주고, 단축키 안내 창(Alt+Shift+/)과
+ * 실제 키 등록(useShortcutEntry)도 이 목록을 읽는다.
  * 모든 키는 Alt+Shift 와 함께 누른다 (낭독기의 한 글자 이동 키와 겹치지 않게, 원칙 5장).
  */
 export type ShortcutEntryId =
@@ -152,7 +152,7 @@ export function shortcutById(id: ShortcutEntryId): ShortcutEntry {
   return entry
 }
 
-/** 'Alt+Shift+K' 형태 (useShortcut 등록용) */
+/** 'Alt+Shift+K' 형태 (useShortcutEntry 등록용) */
 export function comboOf(key: string) {
   return `${SHORTCUT_MODIFIER}+${key}`
 }

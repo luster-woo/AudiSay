@@ -95,12 +95,6 @@ beforeEach(() => {
   vi.mocked(subscribeSse).mockResolvedValue(undefined)
 })
 
-/** 단계 목록의 항목 글 ("영상 분석, 완료") */
-const steps = () =>
-  within(screen.getByRole('list', { name: '진행 단계' }))
-    .getAllByRole('listitem')
-    .map((li) => li.textContent)
-
 test('진행 중: 제목에 포커스, 영상 정보·진행률·남은 시간, 단계와 퍼센트를 읽어 준다', async () => {
   vi.mocked(jobsApi.get).mockResolvedValue(job())
   const { container } = renderRoute('/jobs/51')
@@ -112,15 +106,9 @@ test('진행 중: 제목에 포커스, 영상 정보·진행률·남은 시간, 
     'aria-valuenow',
     '81',
   )
-  expect(screen.getByText('약 1분 20초 남았어요')).toBeInTheDocument()
-  expect(steps()).toEqual([
-    '영상 업로드, 완료',
-    '영상 분석, 완료',
-    '장면 해설 만들기, 진행 중',
-    '해설 합치고 다듬기, 대기',
-    '해설 음성 만들기, 대기',
-  ])
-  expect(screen.getByRole('listitem', { current: 'step' })).toHaveTextContent('장면 해설 만들기')
+  // 단계 목록 없이 지금 단계 한 줄만
+  expect(screen.getByText('장면 해설 만들기 진행 중 · 약 1분 20초 남았어요')).toBeInTheDocument()
+  expect(screen.queryByRole('list', { name: '진행 단계' })).not.toBeInTheDocument()
   expect(screen.getByRole('link', { name: '홈으로 가기' })).toHaveAttribute('href', '/')
   expect(screen.getByRole('link', { name: '영상 등록' })).toHaveAttribute('aria-current', 'page')
   await waitFor(() => expect(band()).toHaveTextContent('장면 해설을 만드는 중이에요, 81퍼센트.'))
@@ -146,7 +134,7 @@ test('SSE 진행률은 10% 단위로만 읽고, 완료되면 준비 창의 지�
       }),
     }),
   )
-  expect(await screen.findByText('약 1분 남았어요')).toBeInTheDocument()
+  expect(await screen.findByText(/약 1분 남았어요$/)).toBeInTheDocument()
   // 서버 54 → 화면 81 그대로라 같은 10% 구간: 다시 읽지 않는다
   expect(band()).toHaveTextContent('장면 해설을 만드는 중이에요, 81퍼센트.')
 
@@ -162,13 +150,7 @@ test('SSE 진행률은 10% 단위로만 읽고, 완료되면 준비 창의 지�
     }),
   )
   await waitFor(() => expect(band()).toHaveTextContent('해설 음성을 만드는 중이에요, 92퍼센트.'))
-  expect(steps()).toEqual([
-    '영상 업로드, 완료',
-    '영상 분석, 완료',
-    '장면 해설 만들기, 완료',
-    '해설 합치고 다듬기, 완료',
-    '해설 음성 만들기, 진행 중',
-  ])
+  expect(screen.getByText(/^해설 음성 만들기 진행 중 · /)).toBeInTheDocument()
 
   vi.mocked(jobsApi.get).mockResolvedValue(
     job({
@@ -270,11 +252,11 @@ test('남은 시간은 1초마다 줄고, 조금 늘어난 값이 와도 되올�
   try {
     vi.mocked(jobsApi.get).mockResolvedValue(job({ estimatedRemainingSec: 37 }))
     renderRoute('/jobs/51')
-    expect(await screen.findByText('약 37초 남았어요')).toBeInTheDocument()
+    expect(await screen.findByText(/약 37초 남았어요$/)).toBeInTheDocument()
     await waitFor(() => expect(subscribeSse).toHaveBeenCalled())
 
     await act(() => vi.advanceTimersByTimeAsync(3_000))
-    expect(screen.getByText(/약 3[34]초 남았어요/)).toBeInTheDocument()
+    expect(screen.getByText(/약 3[34]초 남았어요$/)).toBeInTheDocument()
 
     await act(() => vi.advanceTimersByTimeAsync(12_000))
     act(() =>
@@ -290,7 +272,7 @@ test('남은 시간은 1초마다 줄고, 조금 늘어난 값이 와도 되올�
     )
     await act(() => vi.advanceTimersByTimeAsync(1_000))
     // 화면은 21~22초 — 서버 24초로 되올라가지 않는다
-    expect(screen.getByText(/약 2[12]초 남았어요/)).toBeInTheDocument()
+    expect(screen.getByText(/약 2[12]초 남았어요$/)).toBeInTheDocument()
   } finally {
     vi.useRealTimers()
   }
@@ -308,7 +290,7 @@ test('서버 예상 시간이 오면 진행률을 남은 시간과 같은 예측
       }),
     )
     renderRoute('/jobs/51')
-    expect(await screen.findByText('약 40초 남았어요')).toBeInTheDocument()
+    expect(await screen.findByText(/약 40초 남았어요$/)).toBeInTheDocument()
     // 서버 진행률(10, 분석 중)이 아니라 남은 시간 기준 60% (화면에서 1초씩 세므로 조금 더 클 수 있음)
     const now = () => Number(screen.getByRole('progressbar').getAttribute('aria-valuenow'))
     expect(now()).toBeGreaterThanOrEqual(60)
@@ -348,7 +330,7 @@ test('SSE 가 끊기면 5초마다 작업 상태를 다시 받는다', async () 
     act(() => sse().onClose('timeout'))
     await act(() => vi.advanceTimersByTimeAsync(5_100))
     expect(vi.mocked(jobsApi.get).mock.calls.length).toBeGreaterThanOrEqual(before + 2)
-    expect(await screen.findByText('약 30초 남았어요')).toBeInTheDocument()
+    expect(await screen.findByText(/약 30초 남았어요$/)).toBeInTheDocument()
   } finally {
     vi.useRealTimers()
   }
@@ -378,16 +360,11 @@ test('유튜브 영상: 영상 업로드 없이 4단계, 서버 진행률을 그
     'aria-valuenow',
     '37',
   )
-  expect(steps()).toEqual([
-    '영상 분석, 진행 중',
-    '장면 해설 만들기, 대기',
-    '해설 합치고 다듬기, 대기',
-    '해설 음성 만들기, 대기',
-  ])
+  expect(screen.getByText(/^영상 분석 진행 중 · /)).toBeInTheDocument()
   await waitFor(() => expect(band()).toHaveTextContent('영상을 분석하는 중이에요, 37퍼센트.'))
 })
 
-test('실패하면 멈춘 단계를 멈춤으로 보여 준다', async () => {
+test('실패하면 멈춘 단계를 알려 준다', async () => {
   vi.mocked(jobsApi.get).mockResolvedValue(
     job({
       status: 'FAILED',
@@ -399,11 +376,5 @@ test('실패하면 멈춘 단계를 멈춤으로 보여 준다', async () => {
   )
   renderRoute('/jobs/51')
   await screen.findByRole('heading', { level: 1, name: '해설을 만들지 못했어요' })
-  expect(steps()).toEqual([
-    '영상 업로드, 완료',
-    '영상 분석, 완료',
-    '장면 해설 만들기, 완료',
-    '해설 합치고 다듬기, 멈춤',
-    '해설 음성 만들기, 대기',
-  ])
+  expect(screen.getByText('해설을 합치고 다듬는 중에 멈췄어요')).toBeInTheDocument()
 })

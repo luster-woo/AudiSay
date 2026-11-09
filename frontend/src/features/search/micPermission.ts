@@ -78,16 +78,3 @@ export async function micErrorMessage(
       return { message: MIC_MESSAGES.other, blocked: false }
   }
 }
-
-/** 브라우저 음성 인식(SpeechRecognition)의 오류 코드 → 안내 문구. 권한 문제가 아니면 null */
-export function recognitionErrorMessage(code: string): string | null {
-  switch (code) {
-    case 'not-allowed':
-    case 'service-not-allowed':
-      return MIC_MESSAGES.denied
-    case 'audio-capture':
-      return MIC_MESSAGES.noDevice
-    default:
-      return null
-  }
-}

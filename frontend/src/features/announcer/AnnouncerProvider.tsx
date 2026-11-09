@@ -1,9 +1,18 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { createPortal } from 'react-dom'
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import {
   AnnouncerContext,
   estimateReaderMs,
   LiveHostContext,
+  LiveRegionsContext,
+  type LiveRegionsValue,
   type RegisterLiveHost,
   type AnnounceOptions,
   type AnnouncerValue,
@@ -28,11 +37,11 @@ export function AnnouncerProvider({ children }: { children: ReactNode }) {
   const [lastMessage, setLastMessage] = useState('')
   const [polite, setPolite] = useState('')
   const [assertive, setAssertive] = useState('')
-  // 열린 모달 창들 (나중에 연 것이 맨 뒤). 맨 위 창 안에 안내 영역을 그린다
-  const [hosts, setHosts] = useState<HTMLElement[]>([])
-  const registerLiveHost = useCallback<RegisterLiveHost>((el) => {
-    setHosts((h) => [...h.filter((x) => x !== el), el])
-    return () => setHosts((h) => h.filter((x) => x !== el))
+  // 열린 모달 창들의 id (나중에 연 것이 맨 뒤). 맨 위 창 안의 안내 영역에 글자를 쓴다
+  const [hosts, setHosts] = useState<string[]>([])
+  const registerLiveHost = useCallback<RegisterLiveHost>((id) => {
+    setHosts((h) => [...h.filter((x) => x !== id), id])
+    return () => setHosts((h) => h.filter((x) => x !== id))
   }, [])
   const mutedRef = useRef(false)
   const lastAtRef = useRef(0)
@@ -147,22 +156,13 @@ export function AnnouncerProvider({ children }: { children: ReactNode }) {
     [announce, repeat, lastMessage, setMuted, bindVoice],
   )
 
-  // 화면에는 안 보이고 낭독기만 읽는 영역. 보이는 띠는 AppLayout 이 lastMessage 로 그린다
-  const regions = (
-    <>
-      <div aria-live="polite" aria-atomic="true" className="sr-only">
-        {polite}
-      </div>
-      <div aria-live="assertive" aria-atomic="true" role="alert" className="sr-only">
-        {assertive}
-      </div>
-    </>
-  )
-  const host = hosts.at(-1)
+  const host = hosts.at(-1) ?? null
 
   /**
-   * 창이 열리거나 닫혀 안내 영역이 새 자리에 다시 그려지면, 그 직전에 넣은 문구는 '처음부터 있던 내용'이 되어
-   * 낭독기가 읽지 않는다 (예: 창을 열며 "영상을 멈췄어요", 닫으며 "이어서 재생해요"). 방금 보낸 안내를 다시 넣는다
+   * 창이 열리거나 닫혀 글자를 쓸 자리가 바뀌면, 그 직전에 보낸 안내는 이제 inert 가 된(또는 닫힌) 자리에 남아
+   * 낭독기가 읽지 못한다 (예: 창을 열며 "영상을 멈췄어요", 닫으며 "이어서 재생해요"). 새 자리에 다시 쓴다.
+   * 새 자리의 영역은 이미 DOM 에 있으므로(창 markup 에 포함) 글자 변화로 읽힌다 — 단, 창이 막 나타난 직후라
+   * 접근성 트리에 올라갈 시간을 조금 준다
    */
   const prevHostRef = useRef(host)
   useEffect(() => {
@@ -178,18 +178,45 @@ export function AnnouncerProvider({ children }: { children: ReactNode }) {
     // 아직 넣지 않은 안내가 있으면 거두고, 새 영역에 한 번만 넣는다 (두 번 읽히지 않게)
     cancelAnimationFrame(pendingRef.current)
     set('')
-    // 새 영역이 접근성 트리에 올라간 뒤에 바꿔야 변화로 읽힌다
+    // 새 자리(창 안 영역)가 접근성 트리에 올라간 뒤에 바꿔야 변화로 읽힌다
     const id = setTimeout(() => set(text), REPLAY_DELAY_MS)
     return () => clearTimeout(id)
   }, [host])
 
+  const live = useMemo<LiveRegionsValue>(
+    () => ({ polite, assertive, activeHostId: host }),
+    [polite, assertive, host],
+  )
+
   return (
     <AnnouncerContext.Provider value={value}>
       <LiveHostContext.Provider value={registerLiveHost}>
-        {children}
-        {/* 모달 창이 열려 있으면 바깥이 inert 라 읽히지 않으므로 창 안에 그린다 */}
-        {host ? createPortal(regions, host) : regions}
+        <LiveRegionsContext.Provider value={live}>
+          {children}
+          {/* 본문의 안내 영역. 늘 여기 있고, 모달 창이 열려 있는 동안은 비워 둔다(바깥은 inert 라 읽히지 않는다) */}
+          <LiveRegions hostId={null} />
+        </LiveRegionsContext.Provider>
       </LiveHostContext.Provider>
     </AnnouncerContext.Provider>
+  )
+}
+
+/**
+ * 화면에는 안 보이고 낭독기만 읽는 안내 영역 한 벌 (polite + assertive).
+ * 본문에 하나(hostId=null), 모달 창마다 하나(Dialog 가 자기 id 로 둔다). 처음 그릴 때부터 DOM 에 있고,
+ * 지금 글자를 쓸 자리(activeHostId)와 같은 것만 글자를 보인다. Provider 밖에서는 빈 영역이다
+ */
+export function LiveRegions({ hostId }: { hostId: string | null }) {
+  const { polite, assertive, activeHostId } = useContext(LiveRegionsContext)
+  const active = activeHostId === hostId
+  return (
+    <>
+      <div aria-live="polite" aria-atomic="true" className="sr-only">
+        {active ? polite : ''}
+      </div>
+      <div aria-live="assertive" aria-atomic="true" role="alert" className="sr-only">
+        {active ? assertive : ''}
+      </div>
+    </>
   )
 }

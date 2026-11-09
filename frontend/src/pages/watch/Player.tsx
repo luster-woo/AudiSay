@@ -742,6 +742,11 @@ export function Player({ video }: { video: VideoDetail }) {
             ytHostRef={ytHostRef}
             volume={settings.originalVolume}
             fill={fullscreen}
+            // 마우스로 영상을 눌러도 재생 버튼과 같은 처리 (요약 듣는 중에는 재생 버튼처럼 막는다)
+            onClick={() => {
+              if (summaryBusy) announce('요약이 끝나면 재생할 수 있어요.')
+              else toggle()
+            }}
           />
           <div className={cn(fullscreen && 'shrink-0 px-6 pb-5')}>
             {!fullscreen && playbackError && (

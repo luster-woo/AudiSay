@@ -1,5 +1,6 @@
 import { useContext, useEffect, useId, useRef, type ReactNode, type RefObject } from 'react'
 import { LiveHostContext } from '@/features/announcer/context'
+import { LiveRegions } from '@/features/announcer/AnnouncerProvider'
 import { cn } from './cn'
 
 export interface DialogProps {
@@ -64,6 +65,7 @@ export function Dialog({
   const titleId = useId()
   const descId = useId()
   const registerLiveHost = useContext(LiveHostContext)
+  const liveHostId = useId()
   const unregisterRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
@@ -72,8 +74,8 @@ export function Dialog({
     if (open && !el.open) {
       returnFocusRef.current = restoreFocus ? (document.activeElement as HTMLElement | null) : null
       el.showModal()
-      // 창 바깥은 inert 가 되므로 안내 영역(aria-live)을 이 창 안으로 옮긴다
-      unregisterRef.current = registerLiveHost(el)
+      // 창 바깥은 inert 가 되므로 안내는 이 창 안의 LiveRegions 에 쓴다 (영역을 옮기지 않는다 — context.ts 참고)
+      unregisterRef.current = registerLiveHost(liveHostId)
       if (focusTitle) titleRef.current?.focus()
       else initialFocusRef?.current?.focus()
     } else if (!open && el.open) {
@@ -82,7 +84,15 @@ export function Dialog({
       unregisterRef.current = null
       focusAfterCloseRef?.current?.focus({ preventScroll: true })
     }
-  }, [open, initialFocusRef, focusTitle, restoreFocus, registerLiveHost, focusAfterCloseRef])
+  }, [
+    open,
+    initialFocusRef,
+    focusTitle,
+    restoreFocus,
+    registerLiveHost,
+    focusAfterCloseRef,
+    liveHostId,
+  ])
 
   // 창이 열린 채로 화면을 떠나면(라우트 이동) 안내 영역 자리를 돌려놓는다
   useEffect(
@@ -154,6 +164,8 @@ export function Dialog({
           </button>
         )}
       </div>
+      {/* 이 창의 안내 영역. 창이 열려 있는 동안 안내(aria-live)가 여기에 쓰인다 */}
+      <LiveRegions hostId={liveHostId} />
       {children && <div className={longForm ? 'px-8 py-6' : 'mt-6'}>{children}</div>}
       {footer && (
         <div

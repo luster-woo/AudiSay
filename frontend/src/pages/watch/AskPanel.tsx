@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type FormEvent,
@@ -52,6 +53,8 @@ export function AskPanel({
       onSubmit(heard, 'VOICE')
     },
     onUnavailable: (reason) => {
+      // 권한이 허용된 상태에서는 안내(영상 멈춤)가 마이크보다 먼저 나간다. 마이크를 못 열었으면 영상을 되돌린다
+      onListenAbort()
       inputRef.current?.focus()
       announce(`${reason} 질문은 입력칸에 글자로 적어도 돼요.`, { politeness: 'assertive' })
     },
@@ -64,7 +67,8 @@ export function AskPanel({
       announce('답을 듣는 중이에요. 끝나면 다시 물어보세요.')
       return
     }
-    inputRef.current?.focus()
+    // 입력칸으로 먼저 옮기지 않는다: 바로 뒤에 입력칸이 사라지고 '말 끝내기'로 옮겨 가므로, 먼저 옮기면
+    // 낭독기가 "서식 → 입력란 → (사라져서) 문서 → 버튼"을 다 읽는다. 음성을 못 쓰면 onUnavailable 이 입력칸으로 옮긴다
     // 안내 → 낭독기가 읽는 동안 기다림 → '띠' → 녹음 (녹음 중에 낭독기 음성이 겹치거나 녹음되지 않게)
     const intro = "영상을 멈췄어요. '띠' 소리 뒤에 질문하세요."
     await voice.start({
@@ -74,14 +78,16 @@ export function AskPanel({
         return screenReaderLeadMs(intro)
       },
     })
-  }, [busy, voice, inputRef, onListenStart, announce])
+  }, [busy, voice, onListenStart, announce])
 
   useShortcutEntry('ask', () => void startVoice(), { scope: 'user' })
 
   // 알아들은 뒤 입력칸이 다시 그려지면 바로 입력칸으로 (말 끝내기 버튼이 사라지며 포커스가 본문으로 빠지면
   // 낭독기가 그 자리를 읽어 답 소리와 겹친다. 원칙 9장: 포커스는 입력칸에 남긴다)
+  // useLayoutEffect: 포커스가 있던 요소(입력칸·말 끝내기)가 이 렌더에서 사라지면 브라우저가 포커스를 본문으로 내리고
+  // 낭독기가 문서 전체("AudiSay - … 영역")를 읽는다. 그리기 전에 같은 작업 안에서 새 자리로 옮겨 한 번만 읽히게 한다
   const prevVoiceState = useRef(voice.state)
-  useEffect(() => {
+  useLayoutEffect(() => {
     const prev = prevVoiceState.current
     prevVoiceState.current = voice.state
     if (voice.state === 'idle' && prev === 'processing') inputRef.current?.focus()
@@ -141,7 +147,9 @@ export function AskPanel({
   const bar = 'flex min-h-touch items-center gap-4 rounded-md border-2 px-5 text-lg'
 
   return (
-    <section aria-labelledby="ask-title">
+    // 바깥 aside('질문과 패널')가 이미 랜드마크라 여기는 이름을 붙이지 않는다 (이름이 있으면 region 랜드마크가 되어
+    // 포커스가 들어올 때 "보조 정보 랜드마크 → 영역" 두 겹으로 읽힌다). 제목(h2)은 그대로라 H 키 탐색은 된다
+    <section>
       <h2 id="ask-title" className="text-2xl font-bold">
         질문하거나 명령하기
       </h2>
@@ -185,9 +193,7 @@ export function AskPanel({
             <span aria-hidden="true" className="text-danger">
               ●
             </span>
-            <span className="font-bold">
-              {VOICE_LABEL[voice.state]}
-            </span>
+            <span className="font-bold">{VOICE_LABEL[voice.state]}</span>
             {/* 남은 시간은 매초 읽지 않는다 (원칙 9장) */}
             <span aria-hidden="true" className="ml-auto font-mono tabular-nums">
               {formatClock(voice.elapsed * 1000)} / {formatClock(MAX_RECORD_SEC * 1000)}

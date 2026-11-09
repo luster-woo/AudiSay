@@ -1132,6 +1132,22 @@ test('질문 기록은 이 화면에서 한 것만 보여 준다: 들어올 때 
 
 const keys = (k: string) => `{Alt>}{Shift>}${k}{/Shift}{/Alt}`
 
+test('영상을 마우스로 누르면 재생 버튼과 같이 재생·멈춤하고 안내한다 (낭독기·Tab 에는 없음)', async () => {
+  const user = userEvent.setup()
+  renderRoute('/watch/15')
+  await screen.findByRole('button', { name: '재생' })
+  const overlay = screen.getByTestId('video-click-overlay')
+  expect(overlay.closest('[aria-hidden="true"]')).not.toBeNull()
+  expect(overlay).not.toHaveAttribute('tabindex')
+  await user.click(overlay)
+  expect(controls.play).toHaveBeenCalledTimes(1)
+  await waitFor(() => expect(band()).toHaveTextContent('재생해요.'))
+  act(() => setPlayerState?.({ playing: true, currentMs: T(30) }))
+  await user.click(overlay)
+  expect(controls.pause).toHaveBeenCalledTimes(1)
+  await waitFor(() => expect(band()).toHaveTextContent('멈췄어요.'))
+})
+
 test('시청 화면 단축키: K 재생·멈춤, J/L 이동, P 위치, 1~3 상세도, S 설정, X 신고. 창이 열려 있으면 뒤 화면은 움직이지 않는다', async () => {
   const user = userEvent.setup()
   renderRoute('/watch/15')
@@ -1201,7 +1217,7 @@ test('재생 설정: 재생 중이면 열 때 멈추고 닫으면 이어서 재�
   const dialog = await screen.findByRole('dialog', { name: '재생 설정' })
   expect(controls.pause).toHaveBeenCalledTimes(1)
   await waitFor(() => expect(band()).toHaveTextContent('영상을 멈췄어요.'))
-  // 창이 열린 동안 안내 영역은 창 안에 있어야 낭독기가 읽는다 (바깥은 inert)
+  // 창이 열린 동안 안내는 창 안의 영역에 쓰여야 낭독기가 읽는다 (바깥은 inert). 영역은 창 markup 에 처음부터 있다
   await waitFor(() =>
     expect(dialog.querySelector('[aria-live="polite"]')).toHaveTextContent('영상을 멈췄어요.'),
   )
@@ -1210,7 +1226,12 @@ test('재생 설정: 재생 중이면 열 때 멈추고 닫으면 이어서 재�
   await waitFor(() => expect(dialog).not.toHaveAttribute('open'))
   expect(controls.play).toHaveBeenCalledTimes(1)
   await waitFor(() => expect(band()).toHaveTextContent('이어서 재생해요.'))
-  expect(dialog.querySelector('[aria-live]')).toBeNull()
+  // 닫히면 창 안 영역은 비고, 본문 영역(늘 있는 것)에 쓰인다
+  await waitFor(() => {
+    const regions = [...document.querySelectorAll('[aria-live="polite"]')]
+    expect(regions.some((r) => r.textContent === '이어서 재생해요.')).toBe(true)
+  })
+  expect(dialog.querySelector('[aria-live="polite"]')).toHaveTextContent('')
 
   // 멈춰 있음 → 열고 닫아도 그대로
   vi.mocked(controls.pause).mockClear()

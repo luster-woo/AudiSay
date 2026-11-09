@@ -36,7 +36,9 @@ function TutorialView({ step }: { step: number }) {
 
   usePageEntry({
     title: `사용법 ${step}단계`,
-    announce: `사용법 ${total}단계 중 ${step}단계, ${data.screen.name} 화면. ${spoken}`,
+    // 안내 띠에는 단계와 제목만 (설명까지 넣으면 단계마다 띠가 2~3줄로 바뀌며 화면 전체가 밀린다).
+    // 설명·사용 방법은 안내창에 있고 '이 단계 설명 다시 듣기'로 읽어 준다
+    announce: `사용법 ${total}단계 중 ${step}단계, ${data.screen.name} 화면, ${data.title}.`,
     focusRef: headingRef,
   })
 
@@ -83,8 +85,11 @@ function TutorialView({ step }: { step: number }) {
         >
           {data.title}
         </h1>
-        <p className="mt-4 text-xl leading-relaxed text-pretty break-keep">{data.body}</p>
-        <p className="mt-2 text-lg leading-relaxed text-pretty break-keep text-ink-muted">
+        {/* 설명·사용 방법은 단계마다 같은 자리를 잡아 둔다 (설명 4줄, 사용 방법 3줄). 글이 짧아도 아래 점·버튼 위치가 같다 */}
+        <p className="mt-4 min-h-[calc(1.625em*4)] text-lg leading-relaxed text-pretty break-keep">
+          {data.body}
+        </p>
+        <p className="mt-2 min-h-[calc(1.625em*3)] text-base leading-relaxed text-pretty break-keep text-ink-muted">
           <span className="sr-only">사용 방법: </span>
           {data.keys}
         </p>
@@ -137,12 +142,17 @@ function TutorialView({ step }: { step: number }) {
               </ButtonLink>
             )}
           </div>
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+          {/* 한 줄: 왼쪽 다시 듣기, 오른쪽 건너뛰기 */}
+          <div className="mt-2 flex items-center justify-between gap-2">
             {/* 안내 띠의 '스크린리더로 다시 듣기'(마지막 안내)와 구분되는 이름 (버튼 목록으로 훑는 사용자용) */}
-            <Button variant="ghost" onClick={() => announce(spoken)} className="px-2">
+            <Button
+              variant="ghost"
+              onClick={() => announce(spoken)}
+              className="px-1! whitespace-nowrap"
+            >
               이 단계 설명 다시 듣기
             </Button>
-            <Button variant="ghost" onClick={() => void done()} className="px-2">
+            <Button variant="ghost" onClick={() => void done()} className="px-1! whitespace-nowrap">
               건너뛰기
             </Button>
           </div>

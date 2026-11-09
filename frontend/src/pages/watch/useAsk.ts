@@ -537,7 +537,7 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
       resumeAfterRef.current = resumeAfter
       // 글자: Enter 에 낭독기가 친 단어를 읽는다. 말: 알아들은 뒤 입력칸으로 돌아오며 그 이름을 읽는다
       quietUntilRef.current =
-        Date.now() + screenReaderLeadMs(inputMode === 'VOICE' ? '질문하거나 명령하기, 편집창' : '')
+        Date.now() + screenReaderLeadMs(inputMode === 'VOICE' ? '챗봇과 대화하기, 편집창' : '')
       // 장면 후보를 읽어 준 뒤 "2번"·"두 번째"라고 말하거나 적으면 그 후보로 옮긴다 (서버로 보내지 않는다)
       const picked = pending ? candidateNumber(utterance) : null
       if (pending && picked !== null) {

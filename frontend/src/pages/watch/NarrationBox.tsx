@@ -30,7 +30,13 @@ export function NarrationBox({
     <div
       className={cn(
         'flex items-start gap-6 rounded-lg px-5 py-3 hc:border-2 hc:border-yellow',
-        waiting ? 'bg-stage/75' : 'bg-stage',
+        // 전체 화면은 바탕이 검정이라 같은 검정 상자가 묻힌다: 남색 바탕 + 노란 테두리로 띄운다
+        // (고대비에서는 남색이 노랑이 되므로 검정 바탕 그대로)
+        fullscreen
+          ? 'border-2 border-yellow bg-navy hc:bg-stage'
+          : waiting
+            ? 'bg-stage/75'
+            : 'bg-stage',
       )}
     >
       {/* '해설 0:18'을 한 줄로. 숫자 폭을 고정해 시각이 바뀌어도 문장 위치가 흔들리지 않는다 */}

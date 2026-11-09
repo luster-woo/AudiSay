@@ -62,13 +62,13 @@ export function JobMascot({ phase }: { phase: Phase }) {
     setPaused(!paused)
   }
 
-  // 자동 재생 영상처럼 그림 전체가 멈춤 버튼이고, 모서리의 작은 ⏸/▶ 표시로 알려 준다. 이름은 낭독기용으로 바뀐다
+  // 그림 전체가 멈춤 버튼이다 (따로 ⏸/▶ 표시는 두지 않는다). 이름은 낭독기용으로 바뀐다
   return (
     <button
       type="button"
       onClick={toggle}
       aria-label={paused ? '캐릭터 움직임 켜기' : '캐릭터 움직임 멈추기'}
-      className="relative shrink-0 cursor-pointer rounded-lg"
+      className="shrink-0 cursor-pointer rounded-lg"
     >
       <img
         src={paused ? analyzingStillImg : analyzingImg}
@@ -77,18 +77,6 @@ export function JobMascot({ phase }: { phase: Phase }) {
         height={288}
         className="h-48 w-auto"
       />
-      <span
-        aria-hidden="true"
-        className="absolute right-1 bottom-1 flex size-10 items-center justify-center rounded-full border-2 border-navy bg-paper text-navy"
-      >
-        <svg viewBox="0 0 24 24" className="size-5" fill="currentColor">
-          {paused ? (
-            <path d="M8 5.5v13l10.5-6.5z" />
-          ) : (
-            <path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z" />
-          )}
-        </svg>
-      </span>
     </button>
   )
 }

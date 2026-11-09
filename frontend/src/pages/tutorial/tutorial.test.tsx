@@ -5,6 +5,7 @@ import { reissueAccessToken } from '@/api/client'
 import { usersApi } from '@/api/users'
 import { DEFAULT_SETTINGS } from '@/api/types'
 import { renderRoute } from '@/test/renderWithProviders'
+import { SHOT_HEIGHT, SHOT_WIDTH, TUTORIAL_STEPS } from './steps'
 
 vi.mock('@/api/client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/api/client')>()
@@ -33,64 +34,80 @@ beforeEach(() => {
   })
 })
 
-test('1단계: 제목에 포커스, 현재 단계 표시, Alt+Shift+R 연습', async () => {
+test('1단계: 제목에 포커스, 현재 단계 표시, 예시 화면은 낭독기에 숨긴다', async () => {
   const { container } = renderRoute('/tutorial/1')
-  const h1 = await screen.findByRole('heading', { level: 1, name: '둘러보기' })
+  const h1 = await screen.findByRole('heading', { level: 1, name: '영상 불러오기' })
   await waitFor(() => expect(h1).toHaveFocus())
-  expect(screen.getByRole('link', { name: '1 둘러보기' })).toHaveAttribute('aria-current', 'step')
-  expect(screen.getByText('아직 누르지 않았어요')).toBeInTheDocument()
+  expect(screen.getByText(`${TUTORIAL_STEPS.length}단계 중 1단계, 홈 화면`)).toBeInTheDocument()
+  // 단계 목록 링크는 없다 (이전·다음으로만 오간다)
+  expect(screen.queryByRole('link', { name: /^1 / })).toBeNull()
+  expect(
+    screen.getByText(
+      '유튜브 링크를 입력하거나 영상을 직접 업로드해 보세요. AI가 영상 내용을 분석해 드립니다.',
+    ),
+  ).toBeInTheDocument()
 
-  await userEvent.keyboard('{Alt>}{Shift>}R{/Shift}{/Alt}')
-  expect(screen.getByText('Alt+Shift+R을 눌렀어요')).toBeInTheDocument()
+  const stage = screen.getByTestId('tutorial-stage')
+  expect(stage).toHaveAttribute('aria-hidden', 'true')
+  expect(stage.querySelector('img')).toHaveAttribute('src', TUTORIAL_STEPS[0].screen.image)
   expect(await axe(container)).toHaveNoViolations()
 })
 
-test('다음 링크로 2단계, 잘못된 단계 번호는 1단계로', async () => {
+test('강조 영역은 모두 예시 화면 안에 있고, 같은 화면이 이어지면 그림은 그대로 두고 강조만 옮긴다', async () => {
+  for (const s of TUTORIAL_STEPS) {
+    const { x, y, w, h } = s.target
+    expect(x >= 0 && y >= 0 && w > 0 && h > 0).toBe(true)
+    expect(x + w <= SHOT_WIDTH && y + h <= SHOT_HEIGHT).toBe(true)
+  }
+  const { router } = renderRoute('/tutorial/1')
+  await screen.findByRole('heading', { level: 1, name: TUTORIAL_STEPS[0].title })
+  const img = screen.getByTestId('tutorial-stage').querySelector('img')
+  const before = screen.getByTestId('tutorial-highlight').style.top
+  await router.navigate('/tutorial/2')
+  await screen.findByRole('heading', { level: 1, name: TUTORIAL_STEPS[1].title })
+  expect(TUTORIAL_STEPS[1].screen).toBe(TUTORIAL_STEPS[0].screen)
+  expect(screen.getByTestId('tutorial-stage').querySelector('img')).toBe(img)
+  expect(screen.getByTestId('tutorial-highlight').style.top).not.toBe(before)
+})
+
+test('버튼은 이전·다음으로 통일: 첫 단계의 이전은 누를 수 없고, 다음·이전으로 오간다', async () => {
+  const user = userEvent.setup()
   const { router } = renderRoute('/tutorial/9')
+  // 주소로 단계를 바로 연다
+  await waitFor(() => expect(router.state.location.pathname).toBe('/tutorial/9'))
+  await screen.findByRole('heading', { level: 1, name: TUTORIAL_STEPS[8].title })
+
+  // 없는 단계 번호는 1단계로
+  await router.navigate('/tutorial/99')
   await waitFor(() => expect(router.state.location.pathname).toBe('/tutorial/1'))
-  await userEvent.click(await screen.findByRole('link', { name: '다음으로 이동' }))
-  expect(await screen.findByRole('heading', { level: 1, name: '영상 찾기' })).toBeInTheDocument()
+  expect(await screen.findByRole('button', { name: '이전' })).toHaveAttribute(
+    'aria-disabled',
+    'true',
+  )
+
+  await user.click(screen.getByRole('link', { name: '다음' }))
+  expect(
+    await screen.findByRole('heading', { level: 1, name: TUTORIAL_STEPS[1].title }),
+  ).toBeInTheDocument()
+  await user.click(screen.getByRole('link', { name: '이전' }))
+  expect(
+    await screen.findByRole('heading', { level: 1, name: '영상 불러오기' }),
+  ).toBeInTheDocument()
 })
 
-test('2단계: 연습 검색은 실제로 검색하지 않고 해 봤다고 표시한다', async () => {
-  renderRoute('/tutorial/2')
-  await userEvent.type(await screen.findByRole('textbox', { name: '연습 검색어' }), '김치볶음밥')
-  await userEvent.click(screen.getByRole('button', { name: '검색' }))
-  expect(screen.getByText('검색을 눌렀어요')).toBeInTheDocument()
-})
-
-test('3단계: 재생을 누르면 버튼 이름이 일시정지로 바뀐다', async () => {
-  renderRoute('/tutorial/3')
-  await userEvent.click(await screen.findByRole('button', { name: '재생' }))
-  expect(screen.getByRole('button', { name: '일시정지' })).toBeInTheDocument()
-  expect(screen.getByText('재생해 봤어요')).toBeInTheDocument()
-})
-
-test('건너뛰면 사용법 완료를 저장하고 홈으로 간다', async () => {
-  const { router } = renderRoute('/tutorial/2')
-  await userEvent.click(await screen.findByRole('button', { name: '건너뛰고 시작하기' }))
+test('마지막 단계의 다음은 완료를 저장하고 홈으로 간다', async () => {
+  const user = userEvent.setup()
+  const { router } = renderRoute(`/tutorial/${TUTORIAL_STEPS.length}`)
+  await screen.findByRole('heading', { level: 1, name: '자유롭게 영상 즐기기' })
+  await user.click(screen.getByRole('button', { name: '다음' }))
   await waitFor(() => expect(router.state.location.pathname).toBe('/'))
   expect(usersApi.updateSettings).toHaveBeenCalledWith({ tutorialCompleted: true })
 })
 
-test('4단계: 마지막 단계는 마치기 버튼과 처음부터 다시 듣기', async () => {
-  renderRoute('/tutorial/4')
-  expect(await screen.findByRole('button', { name: '사용법 마치고 시작하기' })).toBeInTheDocument()
-  expect(screen.getByRole('link', { name: '처음부터 다시 듣기' })).toHaveAttribute(
-    'href',
-    '/tutorial/1',
-  )
-})
-
-test('4단계: Alt+Shift+Q 는 질문 칸으로 옮기고, 음성 인식이 없으면 글자로 적으라고 안내한다', async () => {
+test('건너뛰기도 완료를 저장하고 홈으로 간다', async () => {
   const user = userEvent.setup()
-  renderRoute('/tutorial/4')
-  const input = await screen.findByRole('textbox', { name: '연습 질문' })
-  // 화면 진입 안내가 먼저 끝나야 한다 (늦게 오면 단축키 안내 문구를 덮어씀)
-  await screen.findAllByText('사용법 4단계, 질문하기. 마지막 단계예요. 마치면 홈으로 가요.')
-  await user.keyboard('{Alt>}{Shift>}Q{/Shift}{/Alt}')
-  expect(input).toHaveFocus()
-  // 안내 띠와 낭독 영역 두 곳에 같은 문장이 들어갈 수 있어 하나 이상이면 된다
-  const msg = '이 브라우저에서는 말로 묻기를 쓸 수 없어요. 질문을 글자로 적어 주세요.'
-  expect((await screen.findAllByText(msg)).length).toBeGreaterThan(0)
+  const { router } = renderRoute('/tutorial/3')
+  await user.click(await screen.findByRole('button', { name: '건너뛰기' }))
+  await waitFor(() => expect(router.state.location.pathname).toBe('/'))
+  expect(usersApi.updateSettings).toHaveBeenCalledWith({ tutorialCompleted: true })
 })

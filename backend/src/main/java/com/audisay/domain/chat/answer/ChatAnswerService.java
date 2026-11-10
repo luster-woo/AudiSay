@@ -98,7 +98,7 @@ public class ChatAnswerService {
         ChatLog chatLog = chatLogRepository.findById(chatLogId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CHAT_LOG_NOT_FOUND));
         if (!chatLog.getUserId().equals(authUser.userId())) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "본인의 질문만 볼 수 있습니다.");
+            throw new BusinessException(ErrorCode.FORBIDDEN, "본인의 질문만 볼 수 있어요.");
         }
         if (!chatLog.isAnswerable()) {
             throw new BusinessException(ErrorCode.NOT_ANSWERABLE_INPUT);
@@ -217,8 +217,9 @@ public class ChatAnswerService {
     private void respond(ChatLog chatLog, AnswerSink sink, boolean llmAllowed, long startedAt, boolean includeFuture) {
         boolean checkFuture = !includeFuture && chatLog.getIntent() == ChatIntent.QUESTION && tuning.answerFutureCheck();
         Mode ragMode = includeFuture || chatLog.getIntent() != ChatIntent.QUESTION ? Mode.OFF : answerRetriever.mode();
+        // 지금 장면도 첫 문장을 잡아 둔다: LLM이 "자료에 없어요"로 시작하면 보내지 않고 장면 설명(대체)을 읽는다
         AnswerSession session = new AnswerSession(sink, this::speech, executors.tts(), startedAt,
-                checkFuture || ragMode == Mode.FALLBACK);
+                checkFuture || ragMode == Mode.FALLBACK || chatLog.getIntent() == ChatIntent.SCENE_NOW);
         AnswerSource savedSource = null;
         boolean futureAvailable = false;
         String result;
@@ -573,19 +574,31 @@ public class ChatAnswerService {
             try {
                 LlmResult result = llmClient.stream(request, session::onDelta);
                 session.flush();
-                if (result.cancelled() || session.generated()) {
+                if (result.cancelled()) {
                     return AnswerSource.STORED;
+                }
+                // 첫 문장이 "자료에 없어요"였으면(보내지 않았다) 아래 장면 설명으로 대신한다
+                if (session.generated() && !session.suppressedUnanswerable()) {
+                    return AnswerPrompt.saidUnanswerable(session.text()) ? AnswerSource.UNANSWERABLE : AnswerSource.STORED;
+                }
+                if (session.suppressedUnanswerable()) {
+                    log.info("[CHAT] 지금 장면 LLM이 자료에 없다고 답함 → 장면 설명으로 chatLogId={}", chatLogId);
                 }
             } catch (LlmException e) {
                 log.warn("[CHAT] 지금 장면 LLM 실패 → 장면 설명으로 chatLogId={} kind={}", chatLogId, e.getKind());
                 session.flush();
-                if (session.generated()) {
+                if (session.generated() && !session.suppressedUnanswerable()) {
                     return AnswerSource.STORED;
                 }
             }
         }
         if (!session.cancelled()) {
-            session.speak(SceneNowComposer.fallback(context));
+            List<String> fallback = SceneNowComposer.fallback(context);
+            session.speak(fallback);
+            // 장면 설명도 없으면 답하지 못한 것으로 남긴다 (관리자 통계의 바로 답한 비율이 부풀지 않게)
+            if (fallback.equals(List.of(SceneNowComposer.NO_SCENE))) {
+                return AnswerSource.UNANSWERABLE;
+            }
         }
         return AnswerSource.STORED;
     }

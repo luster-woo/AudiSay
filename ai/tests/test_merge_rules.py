@@ -103,7 +103,11 @@ def test_name_must_appear_in_title_dialogue_or_screen():
     plan = assemble(full, chunks)
     assert [c["name"] for c in plan.characters] == ["박진영", "사토 히데오"]
     assert plan.dropped_names == ["최유리"]
-    assert plan.lines[0]["text"] == "원피스가 맥주를 건넨다."  # 근거 없는 이름은 겉모습 호칭으로 바꿔 읽는다
+    assert plan.lines[0]["flags"] == ["UNSUPPORTED_NAME"]
+    # 표시만 하지 않고 문장에서도 이름을 겉모습 호칭으로 바꾼다(조사도 받침에 맞춘다). 장면 설명의 '등장'에도 이름을 쓰지 않는다
+    assert plan.lines[0]["text"] == "원피스 차림의 인물이 맥주를 건넨다."
+    assert "최유리" not in plan.scenes[0]["sceneDescription"]
+    assert "이름 모르는 인물(원피스)" in plan.scenes[0]["sceneDescription"]
     old = assemble({**full, "title": None}, chunks)  # 제목 모르면 예전처럼 근거 말만 본다
     assert [c["name"] for c in old.characters] == ["박진영", "최유리", "사토 히데오"]
 

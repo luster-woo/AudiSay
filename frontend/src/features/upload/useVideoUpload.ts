@@ -11,6 +11,28 @@ export interface UploadDraft {
   visibility: Visibility
 }
 
+/**
+ * 올리는 중인 업로드 번호를 브라우저에 적어 둔다. 탭이 닫혀 중단 요청(pagehide)이 못 갔으면, 다음에 올릴 때 먼저 정리한다.
+ * (정리하지 않으면 서버가 24시간 동안 '올리는 중'으로 붙잡아 일반 회원은 그날 다시 올릴 수 없다)
+ */
+const PENDING_KEY = 'audisay:pending-upload'
+function readPending(): number | null {
+  try {
+    const v = Number(localStorage.getItem(PENDING_KEY))
+    return Number.isInteger(v) && v > 0 ? v : null
+  } catch {
+    return null
+  }
+}
+function writePending(videoId: number | null) {
+  try {
+    if (videoId == null) localStorage.removeItem(PENDING_KEY)
+    else localStorage.setItem(PENDING_KEY, String(videoId))
+  } catch {
+    /* 저장할 수 없는 브라우저면 pagehide 중단 요청만 쓴다 */
+  }
+}
+
 /** idle → starting(사전 검사) → uploading → completing → done(서버가 해설 만들기 시작) / failed(연결 끊김) */
 export type UploadPhase = 'idle' | 'starting' | 'uploading' | 'completing' | 'done' | 'failed'
 
@@ -54,6 +76,7 @@ export function useVideoUpload(onDone: (result: UploadCompleteResult) => void) {
         setPhase('completing')
         const result = await uploadsApi.complete(videoId, parts)
         videoIdRef.current = null
+        writePending(null)
         setPhase('done')
         onDoneRef.current(result)
       } catch {
@@ -72,6 +95,12 @@ export function useVideoUpload(onDone: (result: UploadCompleteResult) => void) {
       setLoaded(0)
       setEtaSec(null)
       try {
+        // 지난번에 탭을 닫아 끝나지 않은 업로드가 남아 있으면 먼저 정리한다 (안 하면 '올리는 중인 영상이 있어' 거절)
+        const leftover = readPending()
+        if (leftover != null) {
+          await uploadsApi.abort(leftover).catch(() => undefined)
+          writePending(null)
+        }
         const started = await uploadsApi.start({
           title: draft.title,
           originalFilename: draft.file.name,
@@ -82,6 +111,7 @@ export function useVideoUpload(onDone: (result: UploadCompleteResult) => void) {
           copyrightAgreed: true,
         })
         videoIdRef.current = started.videoId
+        writePending(started.videoId)
         setPhase('uploading')
         void transfer(started.videoId, draft, started.partSizeBytes, started.partCount)
       } catch (err) {
@@ -97,7 +127,14 @@ export function useVideoUpload(onDone: (result: UploadCompleteResult) => void) {
     controllerRef.current?.abort()
     const id = videoIdRef.current
     videoIdRef.current = null
-    if (id != null) await uploadsApi.abort(id).catch(() => undefined)
+    if (id != null) {
+      // 중단이 실패하면(오프라인 등) 적어 둔 번호를 남겨, 다음에 올릴 때 다시 정리한다
+      const ok = await uploadsApi.abort(id).then(
+        () => true,
+        () => false,
+      )
+      if (ok) writePending(null)
+    }
   }, [])
 
   /** '업로드 멈추기' → 확인 → 멈추기 */
@@ -117,9 +154,19 @@ export function useVideoUpload(onDone: (result: UploadCompleteResult) => void) {
   useEffect(() => {
     if (!busy) return
     const warn = (e: BeforeUnloadEvent) => e.preventDefault()
+    // 그래도 닫으면 중단을 보낸다(언마운트 정리는 창 닫기·새로고침에는 돌지 않는다)
+    // 완료 요청을 보내는 중(completing)이면 중단하지 않는다 (끝나 가는 업로드를 지우지 않게)
+    const leave = () => {
+      const id = videoIdRef.current
+      if (id != null && phase !== 'completing') uploadsApi.abortOnUnload(id)
+    }
     window.addEventListener('beforeunload', warn)
-    return () => window.removeEventListener('beforeunload', warn)
-  }, [busy])
+    window.addEventListener('pagehide', leave)
+    return () => {
+      window.removeEventListener('beforeunload', warn)
+      window.removeEventListener('pagehide', leave)
+    }
+  }, [busy, phase])
 
   // 화면을 떠나면(다른 메뉴로 이동) 올리던 조각을 정리한다
   useEffect(

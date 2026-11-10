@@ -60,11 +60,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // ── client.ts 인터셉터가 세션 종료를 알리면 화면 쪽 처리 ──
   useEffect(() => {
     onSessionEvent((reason) => {
-      if (reason === 'expired') {
+      if (reason === 'expired' || reason === 'replaced') {
         setUser(null)
         setStatus('anonymous')
         queryClient.clear()
-        announce('로그인이 만료됐어요. 다시 로그인해 주세요.', { politeness: 'assertive' })
+        // 여러 탭·창에서 같이 쓰다 다른 쪽이 로그인 정보를 바꾼 경우: 의도된 로그아웃(동시 접속 불가)이라 이유를 알린다
+        announce(
+          reason === 'replaced'
+            ? '다른 탭이나 창에서 로그인 정보가 바뀌어 이 화면은 로그아웃됐어요. AudiSay는 한 번에 한 곳에서만 쓸 수 있어요. 다시 로그인해 주세요.'
+            : '로그인이 만료됐어요. 다시 로그인해 주세요.',
+          { politeness: 'assertive' },
+        )
         navigate('/login', { replace: true, state: { from: location.pathname } })
       } else {
         announce('권한이 없어요.', { politeness: 'assertive' })

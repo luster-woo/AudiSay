@@ -208,7 +208,9 @@ test('새 비밀번호의 공백·불일치를 막고 해당 칸으로 초점을
 })
 
 test('현재 비밀번호 불일치는 해당 값만 비우고 오류를 연결한다', async () => {
-  vi.mocked(usersApi.changePassword).mockRejectedValue(new ApiError('USER_002', 400, ''))
+  vi.mocked(usersApi.changePassword).mockRejectedValue(
+    new ApiError('USER_002', 400, '비밀번호가 맞지 않아요.'),
+  )
   renderRoute('/me')
   const dialog = await fillPassword()
   await userEvent.click(dialog.getByRole('button', { name: '비밀번호 바꾸기' }))
@@ -272,7 +274,9 @@ test('탈퇴 모달은 취소에 진입하고 취소하면 호출 버튼으로 �
 })
 
 test('탈퇴에 빈 비밀번호나 틀린 비밀번호를 입력하면 계정을 유지한다', async () => {
-  vi.mocked(usersApi.withdraw).mockRejectedValue(new ApiError('USER_002', 400, ''))
+  vi.mocked(usersApi.withdraw).mockRejectedValue(
+    new ApiError('USER_002', 400, '비밀번호가 맞지 않아요.'),
+  )
   const { router } = renderRoute('/me')
   const dialog = await withdrawDialog()
   await userEvent.click(dialog.getByRole('button', { name: '탈퇴하기' }))

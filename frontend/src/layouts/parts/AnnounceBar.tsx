@@ -29,7 +29,11 @@ export function AnnounceBar() {
           onClick={repeat}
           aria-keyshortcuts="Alt+Shift+R"
         >
-          스크린리더로 다시 듣기 <kbd className="kbd text-yellow">Alt+Shift+R</kbd>
+          {/* 키는 aria-keyshortcuts 로 읽히므로 눈에 보이는 글자는 이름에서 뺀다 (같은 키를 두 번 읽지 않게) */}
+          스크린리더로 다시 듣기{' '}
+          <kbd aria-hidden="true" className="kbd text-yellow">
+            Alt+Shift+R
+          </kbd>
         </button>
         <button
           type="button"
@@ -37,7 +41,10 @@ export function AnnounceBar() {
           onClick={openHelp}
           aria-keyshortcuts="Alt+Shift+/"
         >
-          단축키 <kbd className="kbd text-yellow">Alt+Shift+/</kbd>
+          단축키{' '}
+          <kbd aria-hidden="true" className="kbd text-yellow">
+            Alt+Shift+/
+          </kbd>
         </button>
       </div>
     </section>

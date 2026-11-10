@@ -239,7 +239,9 @@ test('연결이 끊기면 처음부터 다시 올리기 / 업로드 취소를 �
 })
 
 test('서버가 시작을 거절하면 이유를 3단계에 보여 준다', async () => {
-  vi.mocked(uploadsApi.start).mockRejectedValue(new ApiError('UPLOAD_002', 400, ''))
+  vi.mocked(uploadsApi.start).mockRejectedValue(
+    new ApiError('UPLOAD_002', 400, '파일이 너무 커요. 해상도를 낮춰서 올려 주세요.'),
+  )
   const user = userEvent.setup()
   renderRoute('/register')
   await startUpload(user)

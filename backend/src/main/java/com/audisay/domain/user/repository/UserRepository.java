@@ -16,7 +16,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
     boolean existsByEmailAndWithdrawnAtIsNull(String email);
 
     /**
-     * 관리자 회원 목록. 가입 최신순이다. role·pattern이 null이면 거르지 않는다.
+     * 관리자 회원 목록. 정렬은 pageable의 Sort로 준다(AdminUserSort, 기본 가입 최신순). role·pattern이 null이면 거르지 않는다.
      * pattern은 소문자로 바꾸고 %, _, !를 '!'로 이스케이프한 LIKE 패턴이다.
      */
     @Query(value = """
@@ -24,7 +24,6 @@ public interface UserRepository extends JpaRepository<User, Long> {
             where (:role is null or u.role = :role)
               and (:includeWithdrawn = true or u.withdrawnAt is null)
               and (:pattern is null or lower(u.email) like :pattern escape '!' or lower(u.name) like :pattern escape '!')
-            order by u.createdAt desc, u.id desc
             """,
             countQuery = """
             select count(u) from User u

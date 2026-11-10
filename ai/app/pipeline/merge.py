@@ -33,7 +33,7 @@ from app.storage import Storage
 log = logging.getLogger(__name__)
 
 STAGE_END_PROGRESS = 80  # 진행률 범위 MERGE 70~80
-PRE_TTS_LEVEL = 2  # job.tts가 미리 음성을 만드는 상세도(1·2). 3은 사용자가 고를 때 line.tts
+PRE_TTS_LEVEL = 3  # job.tts가 미리 음성을 만드는 상세도(1·2·3, tts.PRE_TTS_LEVEL과 같게). 확인용 ttsLines 수에만 쓴다
 
 # 이름 근거로 인정하는 말(ai_pipeline_spec 2.1 + 데모 규칙): 이름 자막·제목·이름표, 대사 속 호명, 크레딧, 시리즈 등장인물 사전.
 # 이 말이 basis에 없으면 이름을 지운다. 실제로 걸러진 예: "외형", "대사 속 목소리", "가상 홀로그램 인물"
@@ -173,6 +173,9 @@ def assemble(full: dict, chunks: list[dict], covered_until_ms: int | None = None
                 names[name] = {"name": name, "appearance": p.get("appearance"), "nameSource": name_source(p.get("basis"))}
     plan.characters = list(names.values())
     plan.dropped_names = sorted(dropped - set(names))
+    # 뺀 이름 → 겉모습 (문장 속 이름을 겉모습 호칭으로 바꾸는 데 쓴다)
+    looks = {p["name"]: p.get("appearance") for s in full["scenes"] for p in s.get("people", []) if p.get("name")}
+    unsupported = {n: looks.get(n) for n in plan.dropped_names}
 
     plan.dialogues = sorted(({"startMs": min(int(d["startMs"]), duration), "endMs": min(int(d["endMs"]), duration),
                               "speaker": _speaker(d.get("speaker"), renames), "text": d["text"],
@@ -197,9 +200,13 @@ def assemble(full: dict, chunks: list[dict], covered_until_ms: int | None = None
                 for wrong, right in renames.items():
                     text = rename(text, wrong, right)
             if text and int(x["startMs"]) <= duration:
+                # 근거 없는 이름은 표시만 하지 않고 문장에서도 겉모습 호칭으로 바꾼다 (틀린 이름을 시각장애인은 확인할 수 없다)
+                had_name = any(n in text for n in plan.dropped_names)
+                if had_name:
+                    text = replace_names(text, unsupported)
                 lines.append({"detailLevel": int(x["detailLevel"]), "startMs": int(x["startMs"]), "gapEndMs": x.get("gapEndMs"),
                               "importance": int(x.get("importance") or 4 - int(x["detailLevel"])), "text": text,
-                              "flags": list(x.get("flags") or []) + (["UNSUPPORTED_NAME"] if any(n in text for n in plan.dropped_names) else [])})
+                              "flags": list(x.get("flags") or []) + (["UNSUPPORTED_NAME"] if had_name else [])})
     lines.sort(key=lambda x: (x["startMs"], x["detailLevel"]))
     # 1초쯤 간격으로 붙은 문장은 두 문장짜리 해설 하나로 묶고, 그래도 겹치는 문장은 뒤로 띄운다(조각 경계를 넘는 것까지 보려고 여기서)
     lines = spread(join_near(lines), full["dialogues"], duration)
@@ -239,6 +246,8 @@ def assemble(full: dict, chunks: list[dict], covered_until_ms: int | None = None
         people = []
         for p in s.get("people", []):
             name = p.get("name") if labels else trusted_name(p.get("name"), p.get("basis"))
+            if name in unsupported:  # 제목·대사·화면 글자에 없어 뺀 이름은 장면 설명의 '등장'에도 쓰지 않는다
+                name = None
             people.append(f"{name}({p['appearance']})" if name else f"이름 모르는 인물({p['appearance']})")
         desc = " ".join(x["text"] for x in in_scene)
         if people:
@@ -258,6 +267,30 @@ def assemble(full: dict, chunks: list[dict], covered_until_ms: int | None = None
                                       "fullText": t["fullText"], "sameAsDialogue": bool(t.get("sameAsDialogue"))})
     plan.screen_texts.sort(key=lambda t: t["startMs"])
     return plan
+
+
+# 받침이 있는 말 뒤에 붙는 조사로 바꾼다 (호칭이 '인물'로 끝나 받침이 있다)
+_AFTER_CONSONANT = {"가": "이", "는": "은", "를": "을", "와": "과", "랑": "이랑", "로": "으로", "야": "아", "여": "이여"}
+
+
+def appearance_label(appearance: str | None) -> str:
+    """이름 대신 쓸 겉모습 호칭: '빨간 코트 차림의 인물'. 겉모습을 모르면 '한 인물'."""
+    look = (appearance or "").strip().rstrip(".")
+    return f"{look} 차림의 인물" if look else "한 인물"
+
+
+def replace_names(text: str, unsupported: dict[str, str | None]) -> str:
+    """문장 속 근거 없는 이름을 겉모습 호칭으로 바꾸고, 바로 뒤 조사를 받침에 맞춘다(최유리가 → 원피스 차림의 인물이)."""
+    for name in sorted(unsupported, key=len, reverse=True):  # 긴 이름 먼저('김유리'보다 '김유리아')
+        label = appearance_label(unsupported[name])
+        pattern = re.compile(re.escape(name) + r"(씨|님)?(가|는|를|와|랑|로|야|여)?(?![가-힣])|" + re.escape(name) + r"(씨|님)?")
+
+        def sub(m: re.Match) -> str:
+            josa = m.group(2)
+            return label + (_AFTER_CONSONANT.get(josa, josa) if josa else "")
+
+        text = pattern.sub(sub, text)
+    return text
 
 
 class Merge:

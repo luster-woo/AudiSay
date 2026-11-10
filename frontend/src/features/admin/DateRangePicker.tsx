@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/components/ui/cn'
+import { useAnnouncer } from '@/features/announcer/context'
 import { rangeDays } from './stats'
 
 export interface DateRange {
@@ -61,6 +62,8 @@ export function DateRangePicker({ value, max, maxDays, onApply, className }: Dat
   const dialogId = useId()
   const titleId = useId()
   const rootRef = useRef<HTMLDivElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const { announce } = useAnnouncer()
   const triggerRef = useRef<HTMLButtonElement>(null)
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState<{ from: string; to: string | null }>(value)
@@ -81,6 +84,19 @@ export function DateRangePicker({ value, max, maxDays, onApply, className }: Dat
     setOpen(false)
     if (refocus) triggerRef.current?.focus()
   }
+
+  // 열리면 고른 시작 날짜(이 달에 없으면 끝 날짜) 버튼으로 포커스를 옮긴다. 키보드·낭독기 사용자가 달력이 열린 줄 알게
+  useEffect(() => {
+    if (!open) return
+    const panel = panelRef.current
+    const target =
+      panel?.querySelector<HTMLButtonElement>(`button[data-date="${value.from}"]:not(:disabled)`) ??
+      panel?.querySelector<HTMLButtonElement>(`button[data-date="${value.to}"]:not(:disabled)`) ??
+      panel?.querySelector<HTMLButtonElement>('button[data-date]:not(:disabled)')
+    target?.focus()
+    // 여는 순간 한 번만 (월을 넘기거나 날짜를 골라도 다시 옮기지 않는다)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
   // 바깥을 누르거나 Esc 면 닫는다
   useEffect(() => {
@@ -109,12 +125,17 @@ export function DateRangePicker({ value, max, maxDays, onApply, className }: Dat
     return true
   }
 
+  // 두 번 눌러 고르는 방식이라, 누를 때마다 무엇을 골랐고 다음에 무엇을 할지 알린다
   const pick = (date: string) => {
     if (!picking || date < draft.from) {
       setDraft({ from: date, to: null })
+      announce(`시작 ${shortLabel(date)}. 끝 날짜를 골라 주세요.`)
       return
     }
     setDraft({ from: draft.from, to: date })
+    announce(
+      `끝 ${shortLabel(date)}. ${rangeDays(draft.from, date)}일이에요. 확인을 누르면 조회해요.`,
+    )
   }
 
   // 칠할 범위: 끝까지 골랐으면 그 범위, 시작만 골랐으면 마우스가 있는 날까지 미리 보기
@@ -157,6 +178,7 @@ export function DateRangePicker({ value, max, maxDays, onApply, className }: Dat
 
       {open && (
         <div
+          ref={panelRef}
           id={dialogId}
           role="dialog"
           aria-labelledby={titleId}
@@ -228,8 +250,20 @@ export function DateRangePicker({ value, max, maxDays, onApply, className }: Dat
                           <button
                             type="button"
                             disabled={!allowed}
+                            data-date={date}
                             aria-pressed={isStart || date === draft.to}
-                            aria-label={`${parts(date)[0]}년 ${parts(date)[1]}월 ${parts(date)[2]}일 ${WEEKDAYS[weekday(date)]}요일${isToday ? ', 오늘' : ''}`}
+                            // 시작·끝·선택 범위를 이름에 붙인다 (눌림 상태만으로는 시작인지 끝인지 알 수 없다)
+                            aria-label={`${parts(date)[0]}년 ${parts(date)[1]}월 ${parts(date)[2]}일 ${WEEKDAYS[weekday(date)]}요일${
+                              isStart && date === draft.to
+                                ? ', 시작이자 끝'
+                                : isStart
+                                  ? ', 시작'
+                                  : date === draft.to
+                                    ? ', 끝'
+                                    : inside && draft.to
+                                      ? ', 선택 범위'
+                                      : ''
+                            }${isToday ? ', 오늘' : ''}`}
                             onClick={() => pick(date)}
                             onPointerEnter={() => setHover(date)}
                             className={cn(

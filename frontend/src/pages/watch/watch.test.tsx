@@ -65,6 +65,7 @@ vi.mock('@/features/player/usePlayerSource', () => ({
       ended: false,
       currentMs: 0,
       durationMs: durSec * 1000,
+      error: null,
     })
     useEffect(() => {
       setPlayerState = (p) => setState((s) => ({ ...s, ...p }))
@@ -265,18 +266,25 @@ test('요약 듣고 시작(Enter): 창과 버튼은 그대로 두고 요약을 �
   await waitFor(() => expect(band()).toHaveTextContent('30초 요약을 들을까요?'))
   const listen = within(dialog).getByRole('button', { name: '요약 듣고 시작' })
   await waitFor(() => expect(listen).toHaveFocus())
+  // 요약 소리가 끝나는 때를 테스트가 정한다
+  let finish: (ok: boolean) => void = () => {}
+  say.mockImplementationOnce(() => new Promise<boolean>((r) => (finish = r)))
   await user.keyboard('{Enter}')
 
-  // 화면은 그대로: 같은 창, 같은 버튼, 포커스도 그대로
+  // 듣는 동안 화면은 그대로: 같은 창, 같은 버튼, 포커스도 그대로
   expect(dialog).toHaveAttribute('open')
   expect(listen).toHaveFocus()
   expect(within(dialog).getByRole('button', { name: '건너뛰기' })).toBeInTheDocument()
   // Enter 를 누르면 기다리지 않고 바로 요약 소리를 낸다 (안내를 읽느라 몇 초 조용하면 Enter 가 안 먹은 것처럼 느껴진다)
   expect(say).toHaveBeenCalledWith(expect.objectContaining({ text: '그래프 수업 요약이에요.' }))
-  // 다 들으면 창을 닫고 재생 버튼에서 기다린다 (재생은 하지 않는다)
+  // 다 들어도 창은 그대로
   await waitFor(() =>
-    expect(band()).toHaveTextContent('요약이 끝났어요. Space를 누르면 재생해요.'),
+    expect(band()).toHaveTextContent('요약이 끝났어요. 다시 들으려면 Enter, 닫으려면 Esc.'),
   )
+  expect(dialog).toHaveAttribute('open')
+  expect(within(dialog).getByRole('button', { name: '요약 듣고 시작' })).toBeInTheDocument()
+
+  await user.click(within(dialog).getByRole('button', { name: '건너뛰기' }))
   await waitFor(() => expect(dialog).not.toHaveAttribute('open'))
   expect(screen.getByRole('button', { name: '재생' })).toHaveFocus()
   expect(controls.play).not.toHaveBeenCalled()
@@ -411,9 +419,9 @@ test('상세도는 누적이다: 기본은 1·2단계, 자세히를 고르면 3�
   expect(await screen.findByRole('heading', { name: /^해설 문장, ?2개$/ })).toBeInTheDocument()
   expect(screen.queryByText('가운데가 가장 높아요.')).not.toBeInTheDocument()
 
-  await user.click(screen.getByRole('radio', { name: '자세한 해설' }))
+  await user.click(screen.getByRole('radio', { name: '3 자세한 해설' }))
   expect(usersApi.updateSettings).toHaveBeenCalledWith({ detailLevel: 3 })
-  await waitFor(() => expect(band()).toHaveTextContent('해설 상세도 자세한 해설.'))
+  await waitFor(() => expect(band()).toHaveTextContent('해설 상세도 3 자세한 해설.'))
   expect(await screen.findByRole('heading', { name: /^해설 문장, ?3개$/ })).toBeInTheDocument()
   const texts = screen
     .getAllByText(/칠판이 보여요|세 개의 막대가|가운데가 가장 높아요/)
@@ -424,7 +432,7 @@ test('상세도는 누적이다: 기본은 1·2단계, 자세히를 고르면 3�
     '가운데가 가장 높아요.',
   ])
 
-  await user.click(screen.getByRole('radio', { name: '짧은 해설' }))
+  await user.click(screen.getByRole('radio', { name: '1 짧은 해설' }))
   expect(await screen.findByRole('heading', { name: /^해설 문장, ?1개$/ })).toBeInTheDocument()
 })
 
@@ -482,6 +490,7 @@ test('질문: 영상을 멈추고 답을 문장 단위로 읽은 뒤 끝났다�
     expect(subscribeSse).toHaveBeenCalledWith('/chat/messages/88/stream', expect.anything()),
   )
   expect(controls.pause).toHaveBeenCalled()
+  act(() => setPlayerState?.({ playing: false }))
   // 답을 받는 동안에도 포커스는 입력칸에 남는다 (disabled 면 본문으로 빠진다).
   // readOnly 도 켜지 않는다: 켜고 끌 때 낭독기가 '읽기 전용'을 읽어 답 소리와 겹친다
   expect(input).toHaveFocus()
@@ -516,11 +525,17 @@ test('질문: 영상을 멈추고 답을 문장 단위로 읽은 뒤 끝났다�
     expect(say).toHaveBeenCalledWith(expect.objectContaining({ audioUrl: 'https://s3/a.mp3' })),
   )
   // 답 본문은 우리 음성이 읽었으니 낭독기 안내에는 넣지 않는다 (두 번 읽힘 방지)
-  await waitFor(() => expect(band()).toHaveTextContent('답변이 끝났어요. 입력칸에 있어요.'))
+  // 영상은 멈춘 채로 두고 재생 방법을 알려 준다 (챗봇 응답 뒤 자동 재생 없음)
+  await waitFor(() =>
+    expect(band()).toHaveTextContent(
+      '답변이 끝났어요. 입력칸에 있어요. Alt+Shift+K를 누르면 재생해요.',
+    ),
+  )
   expect(band()).not.toHaveTextContent('막대 위에')
-  expect(controls.play).toHaveBeenCalled()
+  expect(controls.play).not.toHaveBeenCalled()
   expect(screen.getByRole('textbox', { name: '챗봇과 대화하기' })).toHaveFocus()
-  expect(screen.getByRole('heading', { name: /^질문 기록, ?2개$/ })).toBeInTheDocument()
+  // 질문 수를 센다 (말풍선 '나' + '답' 두 개가 아니라 질문 1개)
+  expect(screen.getByRole('heading', { name: /^질문 기록, ?1개$/ })).toBeInTheDocument()
   // 질문의 답에는 '다시 듣기'만 ('그 장면 보기'는 장면 이동에만)
   expect(screen.getByRole('button', { name: /^다시 듣기, AudiSay 답/ })).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: /^그 장면 보기/ })).not.toBeInTheDocument()
@@ -556,7 +571,7 @@ test('질문을 보낸 직후에는 낭독기가 읽을 시간만큼 기다렸�
   vi.mocked(screenReaderLeadMs).mockReturnValue(0)
 })
 
-test('재생 중 질문: 답이 끝나면 "답변이 끝났어요" 안내를 낭독기가 읽은 뒤에 이어서 재생한다', async () => {
+test('재생 중 질문: 답이 끝나도 이어서 재생하지 않고, 재생 방법을 알려 준다', async () => {
   const user = userEvent.setup()
   vi.mocked(chatApi.send).mockResolvedValue({
     chatLogId: 91,
@@ -584,13 +599,17 @@ test('재생 중 질문: 답이 끝나면 "답변이 끝났어요" 안내를 낭
     }),
   )
   act(() => sse().onClose('done'))
-  await waitFor(() => expect(band()).toHaveTextContent('답변이 끝났어요. 입력칸에 있어요.'))
+  await waitFor(() =>
+    expect(band()).toHaveTextContent(
+      '답변이 끝났어요. 입력칸에 있어요. Alt+Shift+K를 누르면 재생해요.',
+    ),
+  )
+  await new Promise((r) => setTimeout(r, 600))
   expect(controls.play).not.toHaveBeenCalled()
-  await waitFor(() => expect(controls.play).toHaveBeenCalledTimes(1))
   vi.mocked(screenReaderLeadMs).mockReturnValue(0)
 })
 
-test('장면 이동 후보가 여럿이면 번호를 읽어 주고, 고르면 그 시각으로 옮긴다', async () => {
+test('장면 이동 후보가 여럿이면 첫 후보로 포커스를 옮겨 묶음 이름으로 한 번만 읽고, 고르면 그 시각으로 옮긴다', async () => {
   const user = userEvent.setup()
   vi.mocked(chatApi.send).mockResolvedValue({
     chatLogId: 89,
@@ -622,15 +641,14 @@ test('장면 이동 후보가 여럿이면 번호를 읽어 주고, 고르면 �
     screen.getByRole('textbox', { name: '챗봇과 대화하기' }),
     'B반 나오는 장면으로 가 줘{Enter}',
   )
-  const group = await screen.findByRole('radiogroup', { name: '장면 후보' })
-  await waitFor(() =>
-    expect(band()).toHaveTextContent(
-      // 장면 이름이 같으면 찾은 문장으로 구분해 읽는다
-      '비슷한 장면이 2곳 있어요. 1번, B반 막대가 처음 나와요, 52초. 2번, 선생님이 B 막대를 가리켜요, 2분 21초. 번호를 고르세요.',
-    ),
-  )
+  const group = await screen.findByRole('radiogroup', { name: /^비슷한 장면 2곳/ })
   const first = within(group).getAllByRole('radio')[0]
   await waitFor(() => expect(first).toHaveFocus())
+  // 목록은 포커스(묶음 이름 + 첫 후보)로 읽힌다. 안내로 목록을 또 읽지 않는다 (원칙 1장)
+  expect(band()).not.toHaveTextContent('1번, ')
+  // 같은 장면(chapterId)에 후보가 둘이어도 둘 다 그린다
+  expect(within(group).getAllByRole('radio')).toHaveLength(2)
+  expect(screen.getByRole('button', { name: '둘 다 아니에요, 다시 말할게요' })).toBeInTheDocument()
   await user.keyboard('{ArrowDown}{Enter}')
   expect(controls.seek).toHaveBeenCalledWith(T(141))
   await waitFor(() => expect(band()).toHaveTextContent('막대그래프 비교, 2분 21초로 옮겼어요.'))
@@ -658,10 +676,7 @@ test('장면 후보를 읽어 준 뒤 "2번"이라고 말하거나 적으면 서
   renderRoute('/watch/15')
   await screen.findByRole('button', { name: '재생' })
   await ask(user, '골 장면')
-  await screen.findByRole('radiogroup', { name: '장면 후보' })
-  await waitFor(() =>
-    expect(band()).toHaveTextContent('1번, 첫 골, 52초. 2번, 두 번째 골, 2분 21초.'),
-  )
+  await screen.findByRole('radiogroup', { name: /^비슷한 장면 2곳/ })
 
   await ask(user, '3번')
   await waitFor(() =>
@@ -1231,6 +1246,8 @@ test('영상을 마우스로 누르면 재생 버튼과 같이 재생·멈춤하
   const user = userEvent.setup()
   renderRoute('/watch/15')
   await screen.findByRole('button', { name: '재생' })
+  // 시작 단계(요약 설정)가 정해진 뒤에 누른다
+  await waitFor(() => expect(band()).toHaveTextContent('영상 보기예요.'))
   const overlay = screen.getByTestId('video-click-overlay')
   expect(overlay.closest('[aria-hidden="true"]')).not.toBeNull()
   expect(overlay).not.toHaveAttribute('tabindex')
@@ -1276,7 +1293,7 @@ test('시청 화면 단축키: K 재생·멈춤, J/L 이동, P 위치, 1~3 상�
       expect.objectContaining({ detailLevel: 3 }),
     ),
   )
-  await waitFor(() => expect(band()).toHaveTextContent('해설 상세도 자세한 해설.'))
+  await waitFor(() => expect(band()).toHaveTextContent('해설 상세도 3 자세한 해설.'))
 
   // 한 글자 1/2/3 은 더 이상 상세도를 바꾸지 않는다 (낭독기 제목 이동 키와 겹침)
   vi.mocked(usersApi.updateSettings).mockClear()
@@ -1363,7 +1380,7 @@ test('Alt+Shift+/ 안내 창은 시청 화면에서 쓰는 키 8줄과 어디서
     '홈으로 가기',
     '방금 안내 스크린리더로 다시 듣기',
     '지금 화면의 단축키 보기',
-    '사용법 보기',
+    '튜토리얼 보기',
   ])
   expect(dialog).toHaveAccessibleDescription(/단축키 12개예요/)
 })
@@ -1373,7 +1390,9 @@ test('즐겨찾기를 바꾸면 내 영상(즐겨찾기 탭·요청한 영상)�
   vi.mocked(favoritesApi.add).mockResolvedValue({ videoId: 15, isFavorite: true })
   const invalidate = vi.spyOn(QueryClient.prototype, 'invalidateQueries')
   renderRoute('/watch/15')
-  await user.click(await screen.findByRole('button', { name: '즐겨찾기' }))
+  await screen.findByRole('button', { name: '재생' })
+  await waitFor(() => expect(band()).toHaveTextContent('영상 보기예요.'))
+  await user.click(screen.getByRole('button', { name: '즐겨찾기' }))
   // 안내는 앞선 진입 안내를 낭독기가 다 읽은 뒤에 나가므로(AnnouncerProvider) 기다리지 않고, 다시 받기 표시만 본다
   await waitFor(() => expect(favoritesApi.add).toHaveBeenCalled())
   await waitFor(() =>
@@ -1390,4 +1409,288 @@ test('즐겨찾기를 바꾸면 내 영상(즐겨찾기 탭·요청한 영상)�
     ]),
   )
   invalidate.mockRestore()
+})
+
+/* ── 점검 수정 (재생 화면) ── */
+
+/** 마이크·녹음기를 흉내 낸다. 끝나면 restore() */
+function fakeMic(heard: string) {
+  class FakeRecorder {
+    state = 'inactive'
+    mimeType = 'audio/webm'
+    stream = { getTracks: () => [{ stop: vi.fn() }] }
+    ondataavailable: ((e: { data: Blob }) => void) | null = null
+    onstop: (() => void) | null = null
+    start() {
+      this.state = 'recording'
+    }
+    stop() {
+      this.state = 'inactive'
+      this.ondataavailable?.({ data: new Blob(['x']) })
+      this.onstop?.()
+    }
+  }
+  vi.stubGlobal('MediaRecorder', FakeRecorder)
+  Object.defineProperty(navigator, 'mediaDevices', {
+    configurable: true,
+    value: { getUserMedia: vi.fn().mockResolvedValue({}) },
+  })
+  vi.mocked(sttApi.transcribe).mockResolvedValue({ text: heard, latencyMs: 1 })
+  return () => {
+    vi.unstubAllGlobals()
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: undefined })
+  }
+}
+const actionRes = (
+  chatLogId: number,
+  actionCode: string,
+  inputMode: 'TEXT' | 'VOICE' = 'TEXT',
+) => ({
+  chatLogId,
+  inputMode,
+  utterance: actionCode,
+  intent: 'ACTION' as const,
+  result: { actionCode: actionCode as never },
+})
+
+test('재생 중 말로 "멈춰": 듣기 전에 멈춘 영상을 다시 재생하지 않는다 (챗봇 응답 뒤 자동 재생 없음)', async () => {
+  const restore = fakeMic('멈춰')
+  vi.mocked(chatApi.send).mockResolvedValue(actionRes(120, 'PAUSE', 'VOICE'))
+  const user = userEvent.setup()
+  renderRoute('/watch/15')
+  await screen.findByRole('button', { name: '재생' })
+  act(() => setPlayerState?.({ playing: true, currentMs: T(30) }))
+  await user.click(screen.getByRole('button', { name: '음성 인식' }))
+  act(() => setPlayerState?.({ playing: false }))
+  vi.mocked(controls.play).mockClear()
+  await user.click(await screen.findByRole('button', { name: '말 끝내기' }))
+  await waitFor(() => expect(chatApi.send).toHaveBeenCalled())
+  const history = screen.getByRole('region', { name: /^질문 기록/ })
+  expect(await within(history).findByText('멈췄어요.')).toBeInTheDocument()
+  await new Promise((r) => setTimeout(r, 50))
+  expect(controls.play).not.toHaveBeenCalled()
+  restore()
+})
+
+test('재생 중 "도움말"을 적어도 뒤에서 영상이 재생되지 않는다', async () => {
+  vi.mocked(chatApi.send).mockResolvedValue(actionRes(121, 'HELP'))
+  const user = userEvent.setup()
+  renderRoute('/watch/15')
+  await screen.findByRole('button', { name: '재생' })
+  act(() => setPlayerState?.({ playing: true, currentMs: T(30) }))
+  await ask(user, '도움말')
+  await waitFor(() => expect(chatApi.send).toHaveBeenCalled())
+  await new Promise((r) => setTimeout(r, 50))
+  expect(controls.play).not.toHaveBeenCalled()
+})
+
+test('해설 때문에 잠깐 멈춘 동안: 재생 버튼은 일시정지 그대로이고, K 를 누르면 멈춘다(재생하지 않는다)', async () => {
+  mockAll({ narrationMode: 'PAUSE_AFTER' })
+  const user = userEvent.setup()
+  renderRoute('/watch/15')
+  await screen.findByRole('button', { name: '재생' })
+  act(() => setPlayerState?.({ playing: true, currentMs: T(7) }))
+  // 해설 문장(8초)을 읽느라 영상을 멈춘다. 읽기는 끝나지 않은 채로 둔다
+  say.mockImplementationOnce(() => new Promise<boolean>(() => {}))
+  act(() => setPlayerState?.({ currentMs: T(8.2) }))
+  await waitFor(() => expect(controls.pause).toHaveBeenCalled())
+  act(() => setPlayerState?.({ playing: false }))
+  expect(screen.getByRole('button', { name: '일시정지' })).toBeInTheDocument()
+  vi.mocked(controls.play).mockClear()
+  await user.keyboard(keys('K'))
+  expect(controls.play).not.toHaveBeenCalled()
+  await waitFor(() => expect(band()).toHaveTextContent('멈췄어요.'))
+  expect(screen.getByRole('button', { name: '재생' })).toBeInTheDocument()
+})
+
+test('보는 도중 요약 설정을 바꿔도 요약 창이 뜨거나 진입 안내가 다시 나오지 않는다', async () => {
+  vi.mocked(chatApi.send).mockResolvedValue({
+    chatLogId: 122,
+    inputMode: 'TEXT',
+    utterance: '요약 항상 물어봐',
+    intent: 'SETTING',
+    result: { settingKey: 'summaryMode', settingValue: 'ASK', message: null },
+  } as never)
+  const user = userEvent.setup()
+  renderRoute('/watch/15')
+  await screen.findByRole('button', { name: '재생' })
+  await waitFor(() => expect(band()).toHaveTextContent('재생 버튼에 있어요.'))
+  await ask(user, '요약 항상 물어봐')
+  await waitFor(() =>
+    expect(usersApi.updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ summaryMode: 'ASK' }),
+    ),
+  )
+  await new Promise((r) => setTimeout(r, 50))
+  expect(
+    screen.queryByRole('dialog', { name: '30초 요약을 먼저 들을까요?' }),
+  ).not.toBeInTheDocument()
+  expect(band()).not.toHaveTextContent('영상 보기예요.')
+  expect(screen.getByRole('textbox', { name: '챗봇과 대화하기' })).toHaveFocus()
+})
+
+test('답을 듣는 중 K 로 재생하면 답 스트림도 끊어 남은 문장을 읽지 않는다', async () => {
+  vi.mocked(chatApi.send).mockResolvedValue({
+    chatLogId: 123,
+    inputMode: 'TEXT',
+    utterance: '지금 뭐 나와?',
+    intent: 'QUESTION',
+    result: { answerStreamUrl: '/api/v1/chat/messages/123/stream' },
+  })
+  const user = userEvent.setup()
+  renderRoute('/watch/15')
+  await screen.findByRole('button', { name: '재생' })
+  await ask(user, '지금 뭐 나와?')
+  await waitFor(() =>
+    expect(subscribeSse).toHaveBeenCalledWith('/chat/messages/123/stream', expect.anything()),
+  )
+  const opts = vi
+    .mocked(subscribeSse)
+    .mock.calls.find(([path]) => path === '/chat/messages/123/stream')![1] as SseOptions
+  await user.keyboard(keys('K'))
+  expect(opts.signal?.aborted).toBe(true)
+  say.mockClear()
+  act(() =>
+    opts.onMessage({
+      event: 'sentence',
+      data: JSON.stringify({ text: '남은 문장', audioUrl: null }),
+    }),
+  )
+  await new Promise((r) => setTimeout(r, 30))
+  expect(say).not.toHaveBeenCalledWith(expect.objectContaining({ text: '남은 문장' }))
+  // 사용자가 한 조작(재생)의 안내를 덮지 않는다
+  await waitFor(() => expect(band()).toHaveTextContent('재생해요.'))
+  expect(band()).not.toHaveTextContent('답변을 멈췄어요')
+})
+
+test('답 스트림이 끝 신호 없이 닫히면 "답변이 끝났어요"가 아니라 끊겼다고 알린다', async () => {
+  vi.mocked(chatApi.send).mockResolvedValue({
+    chatLogId: 124,
+    inputMode: 'TEXT',
+    utterance: '지금 뭐 나와?',
+    intent: 'QUESTION',
+    result: { answerStreamUrl: '/api/v1/chat/messages/124/stream' },
+  })
+  const user = userEvent.setup()
+  renderRoute('/watch/15')
+  await screen.findByRole('button', { name: '재생' })
+  await ask(user, '지금 뭐 나와?')
+  await waitFor(() =>
+    expect(subscribeSse).toHaveBeenCalledWith('/chat/messages/124/stream', expect.anything()),
+  )
+  act(() => sse().onClose('timeout'))
+  await waitFor(() =>
+    expect(band()).toHaveTextContent('답을 받는 중에 연결이 끊겼어요. 다시 물어봐 주세요.'),
+  )
+  expect(band()).not.toHaveTextContent('답변이 끝났어요')
+})
+
+test('질문 보내기에 실패해도 적은 질문과 오류가 기록에 남는다', async () => {
+  vi.mocked(chatApi.send).mockRejectedValue(new Error('network'))
+  const user = userEvent.setup()
+  renderRoute('/watch/15')
+  await screen.findByRole('button', { name: '재생' })
+  await ask(user, '아주 긴 질문이에요')
+  const history = screen.getByRole('region', { name: /^질문 기록/ })
+  expect(await within(history).findByText('아주 긴 질문이에요')).toBeInTheDocument()
+  expect(within(history).getByText(/^\(보내지 못했어요\./)).toBeInTheDocument()
+  await waitFor(() => expect(band()).toHaveTextContent('보내지 못했어요.'))
+})
+
+test('기능 실행 답은 실제 결과를 말풍선에 남기고, 장면 이동이면 그 장면 보기를 단다', async () => {
+  mockAll({}, { isFavorite: true })
+  const user = userEvent.setup()
+  renderRoute('/watch/15')
+  await screen.findByRole('button', { name: '재생' })
+  const history = screen.getByRole('region', { name: /^질문 기록/ })
+
+  vi.mocked(chatApi.send).mockResolvedValueOnce(actionRes(125, 'FAVORITE_ADD'))
+  await ask(user, '즐겨찾기 해 줘')
+  expect(await within(history).findByText('이미 즐겨찾기에 있어요.')).toBeInTheDocument()
+  expect(within(history).queryByText('실행했어요.')).not.toBeInTheDocument()
+
+  vi.mocked(chatApi.send).mockResolvedValueOnce(actionRes(126, 'NEXT_SCENE'))
+  await ask(user, '다음 장면')
+  expect(await within(history).findByText('다음 장면, 막대그래프 비교, 48초.')).toBeInTheDocument()
+  expect(within(history).getByRole('button', { name: /그 장면 보기, 48초/ })).toBeInTheDocument()
+})
+
+test('장면 후보는 3개까지만 보인다', async () => {
+  vi.mocked(chatApi.send).mockResolvedValue({
+    chatLogId: 127,
+    inputMode: 'TEXT',
+    utterance: '골 장면',
+    intent: 'SEEK_SCENE',
+    result: {
+      targetMs: null,
+      chapterId: null,
+      candidates: [1, 2, 3, 4, 5].map((i) => ({
+        chapterId: i,
+        title: `골 ${i}`,
+        startMs: T(i * 10),
+        summary: null,
+      })),
+    },
+  } as never)
+  const user = userEvent.setup()
+  renderRoute('/watch/15')
+  await screen.findByRole('button', { name: '재생' })
+  await ask(user, '골 장면')
+  const group = await screen.findByRole('radiogroup', { name: /^비슷한 장면 3곳/ })
+  expect(within(group).getAllByRole('radio')).toHaveLength(3)
+  expect(screen.getByRole('button', { name: '모두 아니에요, 다시 말할게요' })).toBeInTheDocument()
+})
+
+test('즐겨찾기 저장에 실패하면 버튼을 원래대로 되돌린다', async () => {
+  vi.mocked(favoritesApi.add).mockRejectedValue(new Error('fail'))
+  const user = userEvent.setup()
+  renderRoute('/watch/15')
+  await screen.findByRole('button', { name: '재생' })
+  await waitFor(() => expect(band()).toHaveTextContent('영상 보기예요.'))
+  await user.click(screen.getByRole('button', { name: '즐겨찾기' }))
+  await waitFor(() => expect(band()).toHaveTextContent('즐겨찾기를 바꾸지 못했어요.'))
+  expect(screen.getByRole('button', { name: '즐겨찾기' })).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '즐겨찾기 해제' })).not.toBeInTheDocument()
+})
+
+test('영상을 재생할 수 없으면 이유를 알리고 재생 버튼을 막는다', async () => {
+  renderRoute('/watch/15')
+  await screen.findByRole('button', { name: '재생' })
+  act(() =>
+    setPlayerState?.({ error: '유튜브에서 영상이 지워졌거나 비공개로 바뀌어 재생할 수 없어요.' }),
+  )
+  expect(
+    await screen.findByText('유튜브에서 영상이 지워졌거나 비공개로 바뀌어 재생할 수 없어요.'),
+  ).toHaveAttribute('role', 'alert')
+  expect(screen.getByRole('button', { name: '재생' })).toHaveAttribute('aria-disabled', 'true')
+})
+
+test('신고 창을 열면 신고할 문장을 읽어 주고, 원래 멈춰 있었으면 멈췄다고 하지 않는다', async () => {
+  const user = userEvent.setup()
+  renderRoute('/watch/15')
+  await screen.findByRole('button', { name: '재생' })
+  act(() => setPlayerState?.({ currentMs: T(135) }))
+  await user.click(screen.getByRole('button', { name: '이 문장 신고' }))
+  await waitFor(() =>
+    expect(band()).toHaveTextContent('신고할 문장, 세 개의 막대가 있는 그래프예요.'),
+  )
+  expect(band()).not.toHaveTextContent('영상은 멈췄어요')
+})
+
+test('다시 듣기 중에는 그 자리에 멈추기가 생기고 Esc 로 멈출 수 있다', async () => {
+  vi.mocked(chatApi.send).mockResolvedValue(actionRes(128, 'CURRENT_POSITION'))
+  const user = userEvent.setup()
+  renderRoute('/watch/15')
+  await screen.findByRole('button', { name: '재생' })
+  await ask(user, '지금 어디야')
+  const history = screen.getByRole('region', { name: /^질문 기록/ })
+  const replay = await within(history).findByRole('button', { name: /^다시 듣기/ })
+  say.mockImplementationOnce(() => new Promise<boolean>(() => {}))
+  await user.click(replay)
+  expect(await within(history).findByRole('button', { name: '멈추기' })).toBeInTheDocument()
+  stopNarrator.mockClear()
+  await user.keyboard('{Escape}')
+  expect(stopNarrator).toHaveBeenCalled()
+  await waitFor(() => expect(band()).toHaveTextContent('다시 듣기를 멈췄어요.'))
+  expect(within(history).queryByRole('button', { name: '멈추기' })).not.toBeInTheDocument()
 })

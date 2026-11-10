@@ -17,7 +17,7 @@ public record ReportCreateRequest(
         @NotNull(message = "신고 사유를 선택해 주세요.")
         ReportReason reason,
 
-        @Size(max = 500, message = "신고 내용은 500자 이하여야 합니다.")
+        @Size(max = 500, message = "신고 내용은 500자 이하여야 해요.")
         String reasonDetail
 ) {
     @AssertTrue(message = "기타 사유는 내용을 입력해 주세요.")

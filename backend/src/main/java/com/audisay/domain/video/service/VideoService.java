@@ -9,6 +9,7 @@ import com.audisay.domain.video.dto.response.VideoSummaryResponse;
 import com.audisay.domain.video.dto.response.VisibilityResponse;
 import com.audisay.domain.video.entity.Category;
 import com.audisay.domain.video.entity.SourceType;
+import com.audisay.domain.video.entity.TranscodeStatus;
 import com.audisay.domain.video.entity.Video;
 import com.audisay.domain.video.entity.VideoUpload;
 import com.audisay.domain.video.repository.GenerationRequestRepository;
@@ -76,7 +77,7 @@ public class VideoService {
 
     /**
      * 유튜브 영상은 IFrame 플레이어용 영상 ID만 준다.
-     * 업로드 영상은 재생용 파일의 presigned GET 주소를 주고, 변환이 끝나지 않았으면 UPLOAD_006.
+     * 업로드 영상은 재생용 파일의 presigned GET 주소를 주고, 변환이 끝나지 않았으면 UPLOAD_006, 변환이 실패했으면 UPLOAD_007.
      */
     @Transactional(readOnly = true)
     public PlaybackResponse getPlayback(AuthUser authUser, Long videoId) {
@@ -85,8 +86,14 @@ public class VideoService {
             return PlaybackResponse.youtube(video.getYoutubeVideoId());
         }
         VideoUpload upload = videoUploadRepository.findById(videoId)
-                .filter(VideoUpload::isPlayable)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PLAYBACK_NOT_READY));
+        // 변환이 실패한 영상은 기다려도 재생할 수 없다. '만드는 중'이라고 하지 않고 따로 알린다
+        if (upload.getTranscodeStatus() == TranscodeStatus.FAILED) {
+            throw new BusinessException(ErrorCode.PLAYBACK_FAILED);
+        }
+        if (!upload.isPlayable()) {
+            throw new BusinessException(ErrorCode.PLAYBACK_NOT_READY);
+        }
         PresignedUrl url = s3StorageClient.presignGet(upload.getPlaybackKey(), s3Properties.playbackUrlExpiration());
         return PlaybackResponse.upload(url.url(), upload.getPlaybackFormat(), url.expiresAt());
     }
@@ -99,10 +106,10 @@ public class VideoService {
         Video video = videoRepository.findById(videoId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.VIDEO_NOT_FOUND));
         if (video.getSourceType() == SourceType.YOUTUBE) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "유튜브 영상은 공개 범위를 바꿀 수 없습니다.");
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "유튜브 영상은 공개 범위를 바꿀 수 없어요.");
         }
         if (!video.isUploadedBy(userId)) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "영상을 올린 회원만 바꿀 수 있습니다.");
+            throw new BusinessException(ErrorCode.FORBIDDEN, "영상을 올린 회원만 바꿀 수 있어요.");
         }
         video.changeVisibility(request.visibility());
         return VisibilityResponse.from(video);

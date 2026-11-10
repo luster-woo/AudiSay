@@ -101,6 +101,7 @@ function setup(settings: Partial<UserSettings> = {}, narrator = fakeNarrator()) 
     ended: false,
     currentMs: 0,
     durationMs: T(60),
+    error: null,
   }
   const hook = renderHook(
     ({ state }: { state: PlayerState }) =>
@@ -186,7 +187,14 @@ test('영상과 함께: 멈추지 않고, 읽는 중에 덜 중요한 문장이 
 
 test('0초 문장: 처음에 멈춰 있다가 재생하면 읽는다', () => {
   const narrator = fakeNarrator()
-  const base: PlayerState = { ready: true, playing: false, ended: false, currentMs: 0, durationMs: T(60) }
+  const base: PlayerState = {
+    ready: true,
+    playing: false,
+    ended: false,
+    currentMs: 0,
+    durationMs: T(60),
+    error: null,
+  }
   const hook = renderHook(
     ({ state }: { state: PlayerState }) =>
       useNarration({
@@ -348,6 +356,7 @@ test('부분 해설: 해설이 있는 구간 끝을 지나면 한 번만 알린�
     ended: false,
     currentMs: 0,
     durationMs: T(60),
+    error: null,
   }
   const hook = renderHook(
     ({ state }: { state: PlayerState }) =>

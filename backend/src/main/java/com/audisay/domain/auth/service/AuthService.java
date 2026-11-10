@@ -99,7 +99,9 @@ public class AuthService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.REFRESH_TOKEN_INVALID));
         // rotation: 이미 한 번 쓴 이전 토큰이면 저장된 값과 달라 거절된다
         if (!refreshTokenRepository.matches(claims.userId(), claims.sid(), refreshToken)) {
-            throw new BusinessException(ErrorCode.REFRESH_TOKEN_INVALID);
+            // 저장된 토큰은 있는데 값이 다르면 다른 탭·창이 먼저 바꾼 것이다. 동시 접속은 막되(로그아웃) 이유를 따로 알린다
+            throw new BusinessException(refreshTokenRepository.exists(claims.userId(), claims.sid())
+                    ? ErrorCode.REFRESH_TOKEN_REPLACED : ErrorCode.REFRESH_TOKEN_INVALID);
         }
         // 역할이 바뀌었을 수 있으므로(시각장애인 인증) 회원을 다시 읽어 새 역할을 담는다
         User user = userRepository.findById(claims.userId())

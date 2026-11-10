@@ -13,6 +13,7 @@ import { PickStep, type PickedFile } from './PickStep'
 import { TitleStep } from './TitleStep'
 import { UploadingStep } from './UploadingStep'
 import { VisibilityStep } from './VisibilityStep'
+import { QuotaState } from './QuotaState'
 
 type Step = 'pick' | 'title' | 'visibility' | 'uploading'
 
@@ -30,7 +31,14 @@ export default function RegisterPage() {
   const [title, setTitle] = useState('')
   const [submitError, setSubmitError] = useState<string>()
 
-  const { data: quota, isFetched } = useQuery({
+  const {
+    data: quota,
+    isFetched,
+    isError: quotaError,
+    error: quotaErr,
+    isFetching: quotaFetching,
+    refetch: refetchQuota,
+  } = useQuery({
     queryKey: queryKeys.quota,
     queryFn: usersApi.quota,
   })
@@ -87,7 +95,17 @@ export default function RegisterPage() {
     }
   }
 
-  if (!isFetched) return <p className="text-2xl">불러오는 중이에요.</p>
+  // 횟수를 받는 동안·받지 못했을 때도 제목과 안내를 준다. 실패를 '제한 없음'으로 보면 일반 회원에게 틀린 안내가 나가고
+  // 길이·용량 검사도 꺼져, 큰 파일을 다 올린 뒤에야 서버에서 거절된다
+  if (!isFetched || (quotaError && !quota))
+    return (
+      <QuotaState
+        loading={!isFetched}
+        error={quotaErr}
+        retrying={quotaFetching}
+        onRetry={() => void refetchQuota()}
+      />
+    )
 
   const remaining = quota?.upload.remaining ?? null
   const limits = {

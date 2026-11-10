@@ -72,7 +72,9 @@ describe('로그인', () => {
   })
 
   test('비밀번호가 틀리면 비밀번호 칸을 비우고 그 칸으로 옮긴다 (와이어프레임 login · 오류)', async () => {
-    vi.mocked(authApi.login).mockRejectedValue(new ApiError('AUTH_001', 401, ''))
+    vi.mocked(authApi.login).mockRejectedValue(
+      new ApiError('AUTH_001', 401, '이메일 또는 비밀번호가 맞지 않아요.'),
+    )
     renderRoute('/login')
     await userEvent.type(
       await screen.findByRole('textbox', { name: '이메일' }),
@@ -313,7 +315,7 @@ describe('시각장애인 인증', () => {
       new ApiError(
         'USER_006',
         422,
-        '서류의 글자를 읽지 못했습니다. 글자가 잘 보이게 밝은 곳에서 다시 찍어 주세요.',
+        '서류의 글자를 읽지 못했어요. 글자가 잘 보이게 밝은 곳에서 다시 찍어 주세요.',
       ),
     )
     renderRoute('/verify')
@@ -325,7 +327,8 @@ describe('시각장애인 인증', () => {
 
     expect(await screen.findByText('서류를 확인하지 못했어요')).toBeInTheDocument()
     expect(
-      screen.getAllByText(/글자를 읽지 못했습니다\. .*파일을 다시 골라 올려 주세요\./).length,
+      screen.getAllByText(/글자를 읽지 못했어요\. 글자가 잘 보이게 밝은 곳에서 다시 찍어 주세요\./)
+        .length,
     ).toBeGreaterThan(0)
     expect(screen.queryByText(/복지카드\.jpg/)).not.toBeInTheDocument()
     expect(input).toHaveFocus()

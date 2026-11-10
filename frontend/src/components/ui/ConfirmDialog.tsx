@@ -43,10 +43,11 @@ export function ConfirmDialog({
       initialFocusRef={cancelRef}
       footer={
         <>
-          <Button ref={cancelRef} variant="accent" onClick={onCancel}>
+          {/* 대화상자 버튼 규칙: 주 동작 = 노랑(accent), 취소·닫기 = 흰색(secondary), 위험 = 빨강(danger) */}
+          <Button ref={cancelRef} variant="secondary" onClick={onCancel}>
             {cancelLabel}
           </Button>
-          <Button variant={danger ? 'danger' : 'primary'} onClick={onConfirm}>
+          <Button variant={danger ? 'danger' : 'accent'} onClick={onConfirm}>
             {confirmLabel}
           </Button>
         </>

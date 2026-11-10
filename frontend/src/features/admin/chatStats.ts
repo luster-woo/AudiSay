@@ -36,8 +36,8 @@ export function formatVideoTime(ms: number | null): string {
   return h ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`
 }
 
-/** "2026-11-04 14:00" → "11-04 14:00" */
-export const formatShortDateTime = (s: string) => s.slice(5)
+/** 서버가 주는 "2026-11-04 14:00"(한국 시각)을 그대로 쓴다. 다른 관리자 표와 같은 'YYYY-MM-DD HH:mm' (format.ts) */
+export const formatShortDateTime = (s: string) => s
 
 const ratio = (part: number, whole: number) => (whole === 0 ? 0 : part / whole)
 

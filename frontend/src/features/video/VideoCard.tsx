@@ -30,9 +30,7 @@ export function VideoCard(props: VideoCardProps) {
     <h3
       className={cn(
         'font-bold',
-        centerDetails
-          ? 'text-2xl leading-8 break-keep [overflow-wrap:anywhere]'
-          : 'line-clamp-2 text-[1.375rem] leading-tight',
+        centerDetails ? 'text-2xl leading-8' : 'line-clamp-2 text-[1.375rem] leading-tight',
       )}
     >
       {subtitleAt > 0 ? (
@@ -63,13 +61,10 @@ export function VideoCard(props: VideoCardProps) {
       <div className="flex flex-col gap-4 rounded-lg border-2 border-line bg-paper px-5 py-4 sm:flex-row sm:items-center sm:gap-5">
         <Thumbnail src={thumbnailUrl} className="hidden w-40 shrink-0 rounded-md sm:block" />
         <div className="min-w-0 flex-1">
-          <h3
-            tabIndex={-1}
-            className="text-[1.375rem] leading-snug font-bold break-keep [overflow-wrap:anywhere] outline-none"
-          >
+          <h3 tabIndex={-1} className="text-[1.375rem] leading-snug font-bold outline-none">
             {title}
           </h3>
-          <div className="mt-1 break-keep [overflow-wrap:anywhere]">{details}</div>
+          <div className="mt-1">{details}</div>
         </div>
         {/* 버튼은 오른쪽에 같은 폭으로 세로로 쌓는다. 버튼 이름에는 영상 제목이 들어 있다 */}
         <div className="flex w-full shrink-0 flex-col gap-2 sm:w-[12rem] [&>*]:w-full [&>*]:flex-none">

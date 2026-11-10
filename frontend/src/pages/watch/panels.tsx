@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/Button'
 import { cn } from '@/components/ui/cn'
 import { formatClock, formatPositionSpoken } from '@/utils/time'
 import type { HistoryEntry } from './history'
-import type { FutureOffer } from './useAsk'
+import { MAX_CANDIDATES, type FutureOffer } from './useAsk'
 
 /** 시각 표기. 눈에는 '2:14', 낭독기에는 '2분 14초' */
 export function Clock({ ms, className }: { ms: number; className?: string }) {
@@ -36,7 +36,7 @@ function Dot() {
 }
 
 /** 패널 글자는 단어 단위로 줄을 바꾼다 (띄어쓰기 없는 아주 긴 글자만 어디서든 끊는다). 안쪽 글자에 그대로 이어진다 */
-const WRAP = 'break-keep [overflow-wrap:anywhere]'
+const WRAP = '[overflow-wrap:anywhere]'
 
 /* ───────────── 목차·해설: 같은 줄 모양 ───────────── */
 
@@ -334,6 +334,7 @@ export function HistoryPanel({
   offer = null,
   onAnswerOffer,
   answering = false,
+  replayingKey = null,
   onStop,
   tail,
 }: {
@@ -342,6 +343,8 @@ export function HistoryPanel({
   onGoTo: (ms: number) => void
   /** 답을 받거나 읽는 중이면 마지막 답의 '다시 듣기' 자리에 '답 멈추기' 버튼을 둔다 (Esc 와 같다) */
   answering?: boolean
+  /** '다시 듣기'로 읽는 중인 답의 key. 그 답의 '다시 듣기' 자리에 '멈추기'를 둔다 (Esc 와 같다) */
+  replayingKey?: string | null
   onStop?: () => void
   /** 마지막 항목이 "들으시겠어요?"를 물은 상태면 그 항목에 네/아니요 버튼을 단다 */
   offer?: FutureOffer | null
@@ -354,6 +357,8 @@ export function HistoryPanel({
   const lastKey = last?.key
   const lastText = last?.text
   const hasTail = tail != null && tail !== false
+  // '질문 기록 · N개'는 말풍선 수가 아니라 질문('나' 말풍선) 수다
+  const questionCount = entries.filter((e) => e.kind === 'me').length
   // 새 항목이 생기거나 답이 이어서 적히면 아래로 따라간다
   useEffect(() => {
     const list = listRef.current
@@ -366,7 +371,7 @@ export function HistoryPanel({
         <h3 id="history-title" className="text-base font-bold text-ink-muted">
           질문 기록
           <Dot />
-          {entries.length}개
+          {questionCount}개
         </h3>
         {entries.length > 1 && <p className="text-sm text-ink-muted">최근 것이 아래</p>}
       </div>
@@ -405,7 +410,8 @@ export function HistoryPanel({
             // 답을 읽는 중인데 끝에 "들으시겠어요?"를 물을 답이면, 처음부터 네/아니요 자리를 잡아 둔다
             const reading = !e.done && !!e.offering
             const offerWhat = offer?.kind === 'summary' ? '요약' : '뒤 내용'
-            const stopping = answering && !!onStop && isLast && !e.done
+            const replaying = !!onStop && replayingKey === e.key
+            const stopping = (answering && !!onStop && isLast && !e.done) || replaying
             // '그 장면 보기': 장면 이동의 답에만, 옮긴 시각으로. 질문·설정·기능 실행 등은 '다시 듣기'만
             const goTo = e.goToMs ?? null
             return (
@@ -460,7 +466,7 @@ export function HistoryPanel({
                               >
                                 <rect x="6" y="6" width="12" height="12" rx="2" />
                               </svg>
-                              답 멈추기
+                              {replaying ? '멈추기' : '답 멈추기'}
                             </Button>
                           ) : (
                             <Button
@@ -532,12 +538,14 @@ export function CandidatesPanel({
   const firstRef = useRef<HTMLButtonElement>(null)
   const refs = useRef<(HTMLButtonElement | null)[]>([])
   const [chosen, setChosen] = useState(0)
+  // 후보는 3개까지만 (useAsk·서버도 자르지만 여기서도 지킨다)
+  const shown = candidates.slice(0, MAX_CANDIDATES)
   useEffect(() => {
     firstRef.current?.focus()
   }, [])
 
   const onKey = (e: KeyboardEvent, i: number) => {
-    const n = candidates.length
+    const n = shown.length
     let next: number | null = null
     if (e.key === 'ArrowDown' || e.key === 'ArrowRight') next = (i + 1) % n
     if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') next = (i - 1 + n) % n
@@ -556,13 +564,21 @@ export function CandidatesPanel({
       </li>
       <li className="flex flex-col items-start">
         <Bubble who="answer" videoTimeMs={videoTimeMs}>
-          <p className="font-bold">비슷한 장면이 {candidates.length}곳 있어요. 번호를 고르세요.</p>
-          <div role="radiogroup" aria-label="장면 후보" className="mt-3 space-y-2">
-            {candidates.map((c, i) => {
+          {/* 글은 눈으로 보는 것. 낭독기는 첫 후보로 포커스가 가며 묶음 이름(아래 aria-label)을 한 번 읽는다 */}
+          <p aria-hidden="true" className="font-bold">
+            비슷한 장면이 {shown.length}곳 있어요. 번호를 고르세요.
+          </p>
+          <div
+            role="radiogroup"
+            aria-label={`비슷한 장면 ${shown.length}곳. 위·아래 화살표로 고르고 Enter로 이동해요. 번호를 말해도 돼요`}
+            className="mt-3 space-y-2"
+          >
+            {shown.map((c, i) => {
               const checked = i === chosen
               return (
                 <button
-                  key={c.chapterId}
+                  // 후보는 장면 단위라 chapterId 가 겹칠 수 있다. 시각까지 붙여 구분한다
+                  key={`${c.chapterId}-${c.startMs}`}
                   ref={(el) => {
                     refs.current[i] = el
                     if (i === 0) firstRef.current = el
@@ -606,11 +622,13 @@ export function CandidatesPanel({
                 onClick={onNone}
                 className={cn(ACTION, 'col-span-2')}
               >
-                둘 다 아니에요, 다시 말할게요
+                {shown.length === 2 ? '둘 다 아니에요' : '모두 아니에요'}, 다시 말할게요
               </Button>,
             ]}
           </ActionRow>
-          <p className="mt-2 text-base text-ink-muted">위·아래 화살표로 고르고 Enter로 이동해요.</p>
+          <p aria-hidden="true" className="mt-2 text-base text-ink-muted">
+            위·아래 화살표로 고르고 Enter로 이동해요.
+          </p>
         </Bubble>
       </li>
     </>

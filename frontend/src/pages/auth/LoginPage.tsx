@@ -97,7 +97,7 @@ export default function LoginPage() {
       ) : (
         signedUpEmail && (
           <Notice title="가입했어요" tone="success" className="mt-8 max-w-[35rem]">
-            비밀번호를 넣고 로그인하면 사용법 안내가 시작돼요.
+            비밀번호를 넣고 로그인하면 튜토리얼이 시작돼요.
           </Notice>
         )
       )}
@@ -142,7 +142,7 @@ export default function LoginPage() {
           처음이세요?
         </h2>
         <p className="mt-4 text-xl">
-          회원가입은 1분이면 끝나요. 가입하고 처음 로그인하면 사용법 안내가 바로 시작돼요.
+          회원가입은 1분이면 끝나요. 가입하고 처음 로그인하면 튜토리얼이 바로 시작돼요.
         </p>
         <ButtonLink to="/signup" size="lg" className="mt-4 min-w-[12.5rem]">
           회원가입하기

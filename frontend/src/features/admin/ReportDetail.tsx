@@ -1,4 +1,4 @@
-import { useState, type RefObject } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { adminApi } from '@/api/admin'
 import { toUserMessage } from '@/api/errors'
@@ -31,6 +31,9 @@ export interface ReportDetailProps {
  * 신고 처리 오른쪽: 장면 탭에서 문장을 고치고, 신고 탭에서 신고를 고른 뒤 아래 버튼으로 처리한다.
  * 문장이 바뀌면 부모가 key 로 새로 만들어 고치던 내용·선택이 섞이지 않게 한다.
  */
+/** 새 음성을 기다리며 검수 해설을 다시 받는 간격 */
+const AUDIO_POLL_MS = 3000
+
 export function ReportDetail({
   group,
   otherLines,
@@ -49,12 +52,26 @@ export function ReportDetail({
   const [draft, setDraft] = useState<string | null>(null)
   const [importance, setImportance] = useState<1 | 2 | 3 | null>(null)
 
+  // 음성을 다시 만드는 중이면, 새 음성이 생길 때까지 몇 초마다 다시 받는다 (저장 직후 한 번 받으면 음성이 비어 있어
+  // '다시 들어 보세요'를 눌러도 브라우저 음성만 나왔다)
+  const waitingAudioRef = useRef(false)
   const review = useQuery({
     queryKey: queryKeys.admin.review(first.videoId, first.descriptionId),
     queryFn: () =>
       adminApi.reviewDescription(first.videoId, { descriptionId: first.descriptionId }),
+    refetchInterval: (q) =>
+      waitingAudioRef.current &&
+      !q.state.data?.lines.find((l) => l.lineId === first.lineId)?.audioUrl
+        ? AUDIO_POLL_MS
+        : false,
   })
   const line = review.data?.lines.find((l) => l.lineId === first.lineId)
+  const audioUrl = line?.audioUrl
+  useEffect(() => {
+    if (!waitingAudioRef.current || !audioUrl) return
+    waitingAudioRef.current = false
+    announce('새 음성이 준비됐어요. 다시 들어 볼 수 있어요.')
+  }, [audioUrl, announce])
   const text = draft ?? line?.text ?? first.currentText
   const level = importance ?? line?.importance ?? 2
   const dirty = !!line && (text.trim() !== line.text || level !== line.importance)
@@ -68,10 +85,14 @@ export function ReportDetail({
         text: text.trim(),
         importance: line && level !== line.importance ? level : undefined,
       }),
-    onSuccess: () => {
+    onSuccess: (res) => {
       setDraft(null)
       setImportance(null)
-      announce('해설 문장을 저장했어요. 음성을 다시 만드는 중이에요.')
+      // 중요도만 바꿨으면 음성은 그대로다 (서버도 다시 만들지 않는다)
+      if (res.audioRegenerating) {
+        waitingAudioRef.current = true
+        announce('해설 문장을 저장했어요. 음성을 다시 만드는 중이에요.')
+      } else announce('중요도를 저장했어요. 음성은 그대로예요.')
       void refresh()
     },
     onError: fail,
@@ -80,7 +101,8 @@ export function ReportDetail({
   const remakeAudio = useMutation({
     mutationFn: () => adminApi.regenerateLineAudio(first.lineId),
     onSuccess: () => {
-      announce('음성을 다시 만드는 중이에요. 잠시 뒤 다시 들어 보세요.')
+      waitingAudioRef.current = true
+      announce('음성을 다시 만드는 중이에요. 다 되면 알려 드려요.')
       void refresh()
     },
     onError: fail,

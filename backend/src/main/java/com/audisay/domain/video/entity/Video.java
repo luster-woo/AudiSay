@@ -127,6 +127,23 @@ public class Video {
         return status != VideoStatus.UNAVAILABLE;
     }
 
+    /**
+     * 유튜브에서 지워졌거나 비공개로 바뀌었다(다시 요청할 때 확인했거나, 작업이 VIDEO_UNAVAILABLE로 실패).
+     * 즐겨찾기·내 영상 목록에서 '볼 수 없음'으로 보인다
+     */
+    public void markUnavailable() {
+        if (sourceType == SourceType.YOUTUBE) {
+            this.status = VideoStatus.UNAVAILABLE;
+        }
+    }
+
+    /** 다시 확인해 보니 볼 수 있다 (비공개였다가 다시 공개됨) */
+    public void markAvailable() {
+        if (status == VideoStatus.UNAVAILABLE) {
+            this.status = VideoStatus.REGISTERED;
+        }
+    }
+
     public void changeVisibility(Visibility visibility) {
         this.visibility = visibility;
     }
@@ -135,7 +152,7 @@ public class Video {
         this.category = category;
     }
 
-    /** 파일을 다 올렸다. 해설이 완성되면 READY가 된다 */
+    /** 파일을 다 올렸다. (VideoStatus.READY는 쓰지 않는다: 해설이 있는지는 해설 상태(DescriptionStateReader)로 본다) */
     public void finishUpload() {
         this.status = VideoStatus.REGISTERED;
     }

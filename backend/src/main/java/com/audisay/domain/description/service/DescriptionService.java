@@ -96,7 +96,7 @@ public class DescriptionService {
 
     private Description getPublishedDescription(Long videoId) {
         return descriptionRepository.findByVideo_IdAndStatus(videoId, DescriptionStatus.PUBLISHED)
-                .orElseThrow(() -> new BusinessException(ErrorCode.DESCRIPTION_NOT_FOUND, "아직 해설이 없습니다."));
+                .orElseThrow(() -> new BusinessException(ErrorCode.DESCRIPTION_NOT_FOUND, "아직 해설이 없어요."));
     }
 
     /**

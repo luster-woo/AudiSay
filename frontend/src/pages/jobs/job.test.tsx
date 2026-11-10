@@ -1,6 +1,7 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { axe } from 'vitest-axe'
+import { ApiError } from '@/api/errors'
 import { reissueAccessToken } from '@/api/client'
 import { usersApi } from '@/api/users'
 import { jobsApi } from '@/api/jobs'
@@ -174,9 +175,8 @@ test('SSE 진행률은 10% 단위로만 읽고, 완료되면 준비 창의 지�
   await waitFor(() =>
     expect(within(dialog).getByRole('button', { name: '지금 보기' })).toHaveFocus(),
   )
-  await waitFor(() =>
-    expect(band()).toHaveTextContent('해설이 준비됐어요. 지금 보기 버튼에 있어요.'),
-  )
+  // 창 이름과 포커스(지금 보기)로 알린다. 같은 문장을 안내로 또 읽지 않는다 (원칙 2장)
+  expect(band()).not.toHaveTextContent('해설이 준비됐어요.')
   expect(await screen.findByText('다 만들었어요 · 2분 12초 걸렸어요')).toBeInTheDocument()
 
   // 해설이 생겼으니 영상 정보도 바뀐다 (시청 화면이 해설 없음으로 보고 되돌려보내지 않게)
@@ -220,9 +220,7 @@ test('실패(다시 요청 가능): 다시 요청하면 새 작업 화면으로 
   await waitFor(() =>
     expect(within(dialog).getByRole('button', { name: '다시 요청' })).toHaveFocus(),
   )
-  await waitFor(() =>
-    expect(band()).toHaveTextContent('해설을 만들지 못했어요. 다시 요청 버튼에 있어요.'),
-  )
+  expect(band()).not.toHaveTextContent('해설을 만들지 못했어요.')
 
   // Esc 로는 닫히지 않는다
   await user.keyboard('{Escape}')
@@ -237,7 +235,12 @@ test('실패(다시 요청 가능): 다시 요청하면 새 작업 화면으로 
 
 test('실패(다시 요청 불가): 이유를 보여 주고 홈으로 가기가 먼저', async () => {
   vi.mocked(jobsApi.get).mockResolvedValue(
-    job({ status: 'FAILED', errorCode: 'TRANSCODE_FAILED', retryable: false }),
+    job({
+      status: 'FAILED',
+      errorCode: 'TRANSCODE_FAILED',
+      retryable: false,
+      errorMessage: '영상 파일을 읽을 수 없어요.',
+    }),
   )
   renderRoute('/jobs/51')
   const dialog = await screen.findByRole('alertdialog', { name: '해설을 만들지 못했어요.' })
@@ -377,4 +380,26 @@ test('실패하면 멈춘 단계를 알려 준다', async () => {
   renderRoute('/jobs/51')
   await screen.findByRole('heading', { level: 1, name: '해설을 만들지 못했어요' })
   expect(screen.getByText('해설을 합치고 다듬는 중에 멈췄어요')).toBeInTheDocument()
+})
+
+test('작업 스트림이 끝 이벤트 없이 닫히면 진행 화면이 멈추지 않게 GET 으로 따라간다', async () => {
+  vi.mocked(jobsApi.get).mockResolvedValue(job({ progress: 40, currentStage: 'DESCRIBE' }))
+  renderRoute('/jobs/51')
+  await screen.findByRole('heading', { name: '해설을 만들고 있어요' })
+  await waitFor(() => expect(subscribeSse).toHaveBeenCalled())
+  const calls = vi.mocked(jobsApi.get).mock.calls.length
+  // 서버가 completed·failed 없이 연결을 정상 종료(배포·재시작)
+  act(() => sse().onClose('done'))
+  await waitFor(() => expect(vi.mocked(jobsApi.get).mock.calls.length).toBeGreaterThan(calls))
+  // 이어서 따라간다(5초마다): 끝난 것으로 보지 않는다
+  expect(screen.getByRole('heading', { name: '해설을 만들고 있어요' })).toBeInTheDocument()
+})
+
+test('다른 회원이 요청한 영상의 작업(403)은 홈으로 튕기지 않고 만드는 중이라고 알린다', async () => {
+  vi.mocked(jobsApi.get).mockRejectedValue(new ApiError('COMMON_003', 403, '권한이 없습니다.'))
+  renderRoute('/jobs/51')
+  expect(await screen.findByRole('heading', { name: '해설을 만드는 중이에요' })).toBeInTheDocument()
+  expect(
+    screen.getByText(/다른 회원이 요청한 영상이라 진행 상황은 볼 수 없어요/),
+  ).toBeInTheDocument()
 })

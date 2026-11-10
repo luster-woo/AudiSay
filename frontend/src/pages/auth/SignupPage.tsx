@@ -10,7 +10,7 @@ import { Notice } from '@/components/ui/Notice'
 import { PasswordField } from '@/components/ui/PasswordField'
 import { TextField } from '@/components/ui/TextField'
 import { TermsAgreement, type Agreement } from '@/features/terms/TermsAgreement'
-import { isEmail, isValidPassword } from '@/utils/validation'
+import { isEmail, isValidPassword, PASSWORD_RULE } from '@/utils/validation'
 
 type Field = 'name' | 'email' | 'password' | 'confirm' | 'terms'
 type Errors = Partial<Record<Field, string>>
@@ -48,13 +48,18 @@ export default function SignupPage() {
   const setError = (field: Field, message?: string) =>
     setErrors((prev) => ({ ...prev, [field]: message }))
 
-  /** 이메일 칸을 벗어날 때 미리 확인한다. 결과는 칸 아래 문구 + 안내 띠로 알린다 */
-  const checkEmail = async (value = email): Promise<boolean> => {
+  /**
+   * 이메일 칸을 벗어날 때 미리 확인한다. 결과는 칸 아래 문구 + 안내 띠로 알린다.
+   * 'error'(네트워크 오류 등)는 '이미 사용 중'과 다르다: 새 이메일인데 바꾸라고 하지 않게 이유를 그대로 알린다
+   */
+  const checkEmail = async (
+    value = email,
+  ): Promise<'available' | 'taken' | 'invalid' | 'error'> => {
     const v = value.trim()
-    if (!v) return false
+    if (!v) return 'invalid'
     if (!isEmail(v)) {
       setError('email', '이메일 형식이 아니에요. 예: haneul@example.com')
-      return false
+      return 'invalid'
     }
     setEmailCheck('checking')
     try {
@@ -62,11 +67,11 @@ export default function SignupPage() {
       setEmailCheck(available ? 'available' : 'taken')
       setError('email', available ? undefined : '이미 사용 중인 이메일이에요.')
       announce(available ? '사용할 수 있는 이메일이에요.' : '이미 사용 중인 이메일이에요.')
-      return available
+      return available ? 'available' : 'taken'
     } catch (err) {
       setEmailCheck('idle')
       setError('email', toUserMessage(err))
-      return false
+      return 'error'
     }
   }
 
@@ -78,8 +83,7 @@ export default function SignupPage() {
     else if (!isEmail(email)) next.email = '이메일 형식이 아니에요. 예: haneul@example.com'
     else if (emailCheck === 'taken') next.email = '이미 사용 중인 이메일이에요.'
     if (!password) next.password = '비밀번호를 입력해 주세요.'
-    else if (!isValidPassword(password))
-      next.password = '8~20자로, 영문·숫자·특수문자를 모두 넣어 주세요.'
+    else if (!isValidPassword(password)) next.password = PASSWORD_RULE
     if (!confirm) next.confirm = '비밀번호를 한 번 더 입력해 주세요.'
     else if (confirm !== password) next.confirm = '비밀번호가 서로 달라요.'
     if (!agreement.terms || !agreement.privacy)
@@ -110,8 +114,13 @@ export default function SignupPage() {
     if (Object.values(next).some(Boolean)) return fail(next)
 
     // 칸을 벗어나지 않고 바로 가입을 누른 경우 여기서 중복 확인
-    if (emailCheck !== 'available' && !(await checkEmail())) {
-      return fail({ email: '이미 사용 중인 이메일이에요.' })
+    if (emailCheck !== 'available') {
+      const checked = await checkEmail()
+      if (checked === 'taken') return fail({ email: '이미 사용 중인 이메일이에요.' })
+      if (checked === 'error')
+        return fail({ email: '이메일을 확인하지 못했어요. 잠시 뒤에 다시 시도해 주세요.' })
+      if (checked === 'invalid')
+        return fail({ email: '이메일 형식이 아니에요. 예: haneul@example.com' })
     }
 
     setSubmitting(true)
@@ -123,6 +132,13 @@ export default function SignupPage() {
       if (err instanceof ApiError && err.code === 'USER_001') {
         setEmailCheck('taken')
         fail({ email: '이미 사용 중인 이메일이에요.' })
+      } else if (
+        err instanceof ApiError &&
+        err.code === 'COMMON_001' &&
+        err.message.includes('비밀번호')
+      ) {
+        // 서버가 비밀번호 규칙으로 거절하면 비밀번호 칸에 이유를 보이고 그 칸으로 간다
+        fail({ password: toUserMessage(err) })
       } else {
         const msg = toUserMessage(err)
         setSummary(msg)
@@ -185,7 +201,7 @@ export default function SignupPage() {
           ref={passwordRef}
           label="비밀번호"
           required
-          hint="8~20자, 영문·숫자·특수문자를 모두 넣어요."
+          hint={PASSWORD_RULE}
           autoComplete="new-password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}

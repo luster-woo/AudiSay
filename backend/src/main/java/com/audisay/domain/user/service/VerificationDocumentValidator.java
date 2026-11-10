@@ -17,8 +17,8 @@ import java.util.List;
 @Component
 public class VerificationDocumentValidator {
     private static final long MAX_SIZE_BYTES = DataSize.ofMegabytes(10).toBytes();
-    private static final String TYPE_MESSAGE = "인증 서류는 PDF, JPG, PNG 파일만 올릴 수 있습니다.";
-    private static final String SIZE_MESSAGE = "인증 서류는 10MB 이하만 올릴 수 있습니다.";
+    private static final String TYPE_MESSAGE = "인증 서류는 PDF, JPG, PNG 파일만 올릴 수 있어요.";
+    private static final String SIZE_MESSAGE = "인증 서류는 10MB 이하만 올릴 수 있어요.";
 
     private static final List<FileType> ALLOWED_TYPES = List.of(
             new FileType("application/pdf", new byte[]{0x25, 0x50, 0x44, 0x46}),                         // %PDF

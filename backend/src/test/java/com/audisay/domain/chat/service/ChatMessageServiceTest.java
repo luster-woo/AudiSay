@@ -152,6 +152,20 @@ class ChatMessageServiceTest {
     }
 
     @Test
+    void 장면_후보는_3개까지만_준다() {
+        when(sceneSeeker.seek(eq(2L), eq(500L), any(), eq(CHAT_LOG_ID), eq(0), any())).thenReturn(new SceneSeeker.Outcome(
+                List.of(hit(1, 10_000, "첫 골"), hit(2, 20_000, "두 번째 골"), hit(3, 30_000, "세 번째 골"),
+                        hit(4, 40_000, "네 번째 골"), hit(5, 50_000, "다섯 번째 골")),
+                SeekSource.KEYWORD));
+
+        ChatMessageResponse response = service.receive(USER, inVideo("골 넣는 장면으로 가 줘", 0));
+
+        assertThat(response.result().targetMs()).isNull();
+        assertThat(response.result().candidates()).extracting(ChatResult.SceneCandidate::startMs)
+                .containsExactly(10_000, 20_000, 30_000);
+    }
+
+    @Test
     void 장면을_못_찾으면_안내한다() {
         ChatMessageResponse response = service.receive(USER, inVideo("도루하는 장면으로 가 줘", 1000));
 

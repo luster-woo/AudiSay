@@ -7,11 +7,10 @@ import { Button } from '@/components/ui/Button'
 import { AdminPagination } from '@/features/admin/AdminPagination'
 import { RoleFilter } from '@/features/admin/RoleFilter'
 import {
-  fetchAllUsers,
   formatJoinedAt,
   ROLE_LABELS,
   ROLE_MARK,
-  sortUsers,
+  SERVER_SORT,
   USER_SORT_OPTIONS,
   type UserSort,
 } from '@/features/admin/users'
@@ -37,71 +36,36 @@ export default function UsersPage() {
   const [page, setPage] = useState(0)
   const [sort, setSort] = useState<UserSort>('default')
 
-  // 기본: 서버 순서(가입 최신순) 그대로 쪽마다 받는다
-  const serverSorted = sort === 'default'
-  const params = { role, keyword: keyword || undefined, page, size: PAGE_SIZE }
-  const paged = useQuery({
+  // 서버가 거르고·정렬하고·쪽을 나눈 그대로 보인다 (관리자 회원도 빼지 않는다, 쪽 수도 서버 값 그대로).
+  // 예전에는 '전체'에서 관리자를 화면에서만 빼고 쪽 수를 다시 계산해 마지막 쪽 회원을 볼 수 없었다
+  const params = {
+    role,
+    keyword: keyword || undefined,
+    sort: SERVER_SORT[sort],
+    page,
+    size: PAGE_SIZE,
+  }
+  const {
+    data,
+    isError,
+    isFetching: fetching,
+  } = useQuery({
     queryKey: queryKeys.admin.users(params),
     queryFn: () => adminApi.users(params),
+    // 역할·정렬·쪽을 바꾸는 동안 이전 표를 그대로 둔다 (표가 잠깐 사라지지 않게)
     placeholderData: keepPreviousData,
-    enabled: serverSorted,
   })
-  // 그 밖의 정렬: 서버(GET /admin/users)에 정렬 값이 없어 같은 조건의 회원을 모두 받아 화면에서 정렬·쪽 나눔
-  const allParams = { role, keyword: keyword || undefined }
-  const all = useQuery({
-    queryKey: [...queryKeys.admin.users(allParams), 'all'],
-    queryFn: () => fetchAllUsers(allParams),
-    placeholderData: keepPreviousData,
-    enabled: !serverSorted,
-  })
-  const localPage = (() => {
-    if (serverSorted || !all.data) return undefined
-    const list = sortUsers(
-      all.data.filter((u) => role !== undefined || u.role !== 'ADMIN'),
-      sort,
-    )
-    const totalPages = Math.max(1, Math.ceil(list.length / PAGE_SIZE))
-    const number = Math.min(page, totalPages - 1)
-    return {
-      content: list.slice(number * PAGE_SIZE, (number + 1) * PAGE_SIZE),
-      page: {
-        number,
-        size: PAGE_SIZE,
-        totalElements: list.length,
-        totalPages,
-        first: number === 0,
-        last: number >= totalPages - 1,
-      },
-    }
-  })()
-  const data = serverSorted ? paged.data : localPage
-  const isError = serverSorted ? paged.isError : all.isError
-  const isFetching = serverSorted ? paged.isFetching : all.isFetching
-
-  // '전체'는 서버가 관리자까지 세어 준다. 관리자는 목록에서 빼기로 해서(Figma)
-  // 같은 검색어의 관리자 수를 따로 받아 줄과 인원수에서 뺀다
-  const hideAdmin = role === undefined && serverSorted
-  const adminParams = { role: 'ADMIN' as const, keyword: params.keyword, size: 1 }
-  const admins = useQuery({
-    queryKey: queryKeys.admin.users(adminParams),
-    queryFn: () => adminApi.users(adminParams),
-    enabled: role === undefined,
-  })
-  const adminCount = hideAdmin ? (admins.data?.page.totalElements ?? 0) : 0
-  const pageInfo = data && {
-    ...data.page,
-    totalElements: data.page.totalElements - adminCount,
-    totalPages: Math.max(1, Math.ceil((data.page.totalElements - adminCount) / data.page.size)),
-  }
-  const fetching = isFetching || (hideAdmin && admins.isFetching)
+  const pageInfo = data?.page
   const total = pageInfo?.totalElements
 
-  // 처음 한 번만 제목으로 포커스를 옮긴다. 이전 결과를 붙잡고 있어 역할·쪽을 바꿔도 data 는 비지 않는다
+  // 화면 진입(제목 포커스·안내)은 처음 한 번만. 정렬·역할을 바꾸며 데이터가 다시 비어도 제목으로 튀지 않게 고정한다
+  const [entered, setEntered] = useState(false)
+  if (!entered && (data !== undefined || isError)) setEntered(true)
   usePageEntry({
     title: '회원',
     announce: '회원 화면이에요. 역할로 거르거나 이메일·이름으로 찾을 수 있어요.',
     focusRef: headingRef,
-    ready: data !== undefined || isError,
+    ready: entered,
   })
 
   // 역할·검색어를 바꾸면 결과가 도착한 뒤 몇 명인지 읽어 준다
@@ -120,6 +84,8 @@ export default function UsersPage() {
   const changeSort = (next: UserSort) => {
     setSort(next)
     setPage(0)
+    // 포커스는 정렬 칸에 그대로 두고, 결과만 알린다
+    pendingAnnounce.current = true
   }
   const search = (e: FormEvent) => {
     e.preventDefault()
@@ -132,7 +98,7 @@ export default function UsersPage() {
     listHeadingRef.current?.focus()
   }
 
-  const users: AdminUser[] = (data?.content ?? []).filter((u) => !hideAdmin || u.role !== 'ADMIN')
+  const users: AdminUser[] = data?.content ?? []
 
   // 치수는 Figma /admin/users 프레임 기준 (관리자 글자 크기 15px = 1rem)
   return (

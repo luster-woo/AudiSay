@@ -8,7 +8,7 @@ import jakarta.validation.constraints.Size;
  */
 public record YoutubeSearchRequest(
         @NotBlank(message = "검색어를 입력해 주세요.")
-        @Size(max = 100, message = "검색어는 100자 이하여야 합니다.")
+        @Size(max = 100, message = "검색어는 100자 이하여야 해요.")
         String q,
 
         String pageToken

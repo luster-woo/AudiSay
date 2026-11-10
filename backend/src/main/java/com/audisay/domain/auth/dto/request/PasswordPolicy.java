@@ -6,7 +6,7 @@ package com.audisay.domain.auth.dto.request;
 public final class PasswordPolicy {
     /** 8~20자, 영문·숫자·특수문자를 각각 하나 이상 포함, 공백 없음 */
     public static final String REGEX = "^(?=.*[A-Za-z])(?=.*\\d)(?=.*[^A-Za-z0-9\\s])\\S{8,20}$";
-    public static final String MESSAGE = "비밀번호는 8~20자의 영문, 숫자, 특수문자를 포함해야 합니다.";
+    public static final String MESSAGE = "비밀번호는 8~20자로, 영문·숫자·특수문자를 모두 넣고 띄어쓰기 없이 써 주세요.";
 
     private PasswordPolicy() {
     }

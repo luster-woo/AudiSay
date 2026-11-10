@@ -77,3 +77,21 @@ describe('401 처리', () => {
     expect(session).not.toHaveBeenCalled()
   })
 })
+
+describe('세션 끝 이유', () => {
+  test('다른 탭에서 로그인 정보가 바뀌어 재발급이 거절되면(AUTH_004) 그 이유로 알린다', async () => {
+    routes['/videos'] = [fail(401, 'AUTH_003')]
+    routes['/auth/reissue'] = [fail(401, 'AUTH_004')]
+    await expect(request({ url: '/videos' })).rejects.toMatchObject({ code: 'AUTH_004' })
+    expect(session).toHaveBeenCalledWith('replaced')
+  })
+
+  test('관리자 화면이 아닌 403 은 홈으로 보내지 않고 화면이 처리한다', async () => {
+    routes['/jobs/5'] = [fail(403, 'COMMON_003')]
+    await expect(request({ url: '/jobs/5' })).rejects.toMatchObject({ code: 'COMMON_003' })
+    expect(session).not.toHaveBeenCalled()
+    routes['/admin/users'] = [fail(403, 'COMMON_003')]
+    await expect(request({ url: '/admin/users' })).rejects.toMatchObject({ code: 'COMMON_003' })
+    expect(session).toHaveBeenCalledWith('forbidden')
+  })
+})

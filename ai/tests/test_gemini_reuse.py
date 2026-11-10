@@ -42,3 +42,14 @@ def test_cache_key_has_prompt_version():
     from app.pipeline.narration_schema import PROMPT_VERSION
 
     assert gemini_cache_key("to3sjq-CAvA") == f"cache/gemini/to3sjq-CAvA_p{PROMPT_VERSION}.json"
+
+
+async def test_regenerate_skips_cache_and_overwrites_it(tmp_path):
+    """관리자 '해설 다시 만들기'(BE skipCache)는 예전 Gemini 결과(캐시·시드)를 쓰지 않고 새로 부른다 (2026-11-10 점검)."""
+    storage, gms = LocalStorage(str(tmp_path)), FakeGms()
+    # 데모 시드가 있는 영상이라도 다시 만들기면 Gemini를 부르고, 그 결과를 캐시에 남긴다
+    regen = env(31, "https://www.youtube.com/watch?v=to3sjq-CAvA")
+    regen.payload["skipCache"] = True
+    await Prepare(storage, gms)(regen, FakeEvents())
+    assert gms.calls == 1
+    assert (tmp_path / gemini_cache_key("to3sjq-CAvA")).exists()

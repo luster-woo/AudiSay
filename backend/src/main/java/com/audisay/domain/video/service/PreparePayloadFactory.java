@@ -47,6 +47,6 @@ public class PreparePayloadFactory {
         if (upload.getPlaybackKey() != null && s3StorageClient.exists(upload.getPlaybackKey())) {
             return upload.getPlaybackKey();
         }
-        throw new BusinessException(ErrorCode.JOB_NOT_RETRYABLE, "분석할 영상 파일이 남아 있지 않아 다시 만들 수 없습니다.");
+        throw new BusinessException(ErrorCode.JOB_NOT_RETRYABLE, "분석할 영상 파일이 남아 있지 않아 다시 만들 수 없어요.");
     }
 }

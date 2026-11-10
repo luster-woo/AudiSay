@@ -10,7 +10,7 @@ import jakarta.validation.constraints.Size;
  */
 public record LineUpdateRequest(
         @NotBlank(message = "해설 문장을 입력해 주세요.")
-        @Size(max = 500, message = "해설 문장은 500자 이하여야 합니다.")
+        @Size(max = 500, message = "해설 문장은 500자 이하여야 해요.")
         String text,
 
         @Min(value = 1, message = "중요도는 1~3이어야 합니다.")

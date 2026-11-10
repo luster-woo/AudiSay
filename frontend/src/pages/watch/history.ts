@@ -1,6 +1,6 @@
 import type { ChatIntent } from '@/api/types'
 import { withRo } from '@/utils/korean'
-import { formatClock } from '@/utils/time'
+import { formatPositionSpoken } from '@/utils/time'
 
 /**
  * 질문 기록 패널의 항목 하나. 질문이든 명령(이동·설정·기능)이든 모두 같은 모양이다:
@@ -24,10 +24,13 @@ export type HistoryEntry =
       goToMs?: number | null
     }
 
-/** 명령(이동·설정·기능)에 대한 답 문장 */
+/**
+ * 명령(이동·설정·기능)에 대한 답 문장. 말풍선 글은 낭독기와 '다시 듣기'가 그대로 읽으므로 시각은 말로 쓴다
+ * ('1:30으로'는 '한 시 삼십 분으로' 등으로 잘못 읽힌다 → '1분 30초로')
+ */
 export function commandReply(intent: ChatIntent, targetMs: number | null) {
   if ((intent === 'SEEK_TIME' || intent === 'SEEK_SCENE') && targetMs != null) {
-    return `${targetMs === 0 ? '처음으로' : withRo(formatClock(targetMs))} 옮겼어요.`
+    return `${targetMs === 0 ? '처음으로' : withRo(formatPositionSpoken(targetMs))} 옮겼어요.`
   }
   if (intent === 'SEEK_TIME' || intent === 'SEEK_SCENE') return '장면을 찾지 못했어요.'
   if (intent === 'SETTING') return '설정을 바꿨어요.'

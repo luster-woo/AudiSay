@@ -12,6 +12,8 @@ export interface SeekBarProps {
   onSeekSettled?: (ms: number) => void
   /** 검은 바탕(전체 화면 하단 바) 위에 놓을 때 dark */
   tone?: 'light' | 'dark'
+  /** 요약을 묻거나 듣는 중처럼 옮기면 안 될 때. 포커스는 받되 옮기지 않는다 */
+  disabled?: boolean
   className?: string
 }
 
@@ -26,6 +28,7 @@ export function SeekBar({
   onSeek,
   onSeekSettled,
   tone = 'light',
+  disabled = false,
   className,
 }: SeekBarProps) {
   const dark = tone === 'dark'
@@ -60,6 +63,7 @@ export function SeekBar({
   )
 
   const go = (ms: number) => {
+    if (disabled) return
     const next = Math.min(max, Math.max(0, Math.round(ms)))
     setPending(next)
     setSpokenMs(next)
@@ -113,6 +117,7 @@ export function SeekBar({
           role="slider"
           tabIndex={0}
           aria-label="재생 위치"
+          aria-disabled={disabled || undefined}
           aria-valuemin={0}
           aria-valuemax={durationMs}
           aria-valuenow={ariaMs}

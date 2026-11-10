@@ -52,7 +52,7 @@ export function NarrationBox({
       <p
         className={cn(
           // 한국어는 단어 중간에서 끊지 않는다. 띄어쓰기 없는 아주 긴 글자(주소 등)만 어디서든 끊는다
-          'leading-snug font-bold break-keep text-yellow [overflow-wrap:anywhere]',
+          'leading-snug font-bold text-yellow [overflow-wrap:anywhere]',
           size,
           // 전체 화면: 2줄 자리를 늘 잡아 두어 1~2줄 해설에서는 영상 크기가 출렁이지 않는다
           fullscreen && 'min-h-[2.75em]',

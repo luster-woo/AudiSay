@@ -71,6 +71,9 @@ def read_number(num: str, counter: str = "") -> str:
         a, b = num.split(".", 1)
         return sino(int(a)) + " 점 " + "".join(DIGITS[int(c)] for c in b)
     n = int(num)
+    # '30대 남성'처럼 10 단위 수 + 대는 나이대라 한자어로 읽는다(서른 대 → 삼십 대). '3대의 차'는 그대로 세 대
+    if counter == "대" and n >= 10 and n % 10 == 0:
+        return sino(n)
     if counter and any(counter.startswith(c) for c in NATIVE_COUNTERS) and 0 < n <= NATIVE_MAX:
         if counter.startswith("번째") and n == 1:
             return "첫"
@@ -188,7 +191,11 @@ def transliterate(word: str) -> str:
 UNITS = {"GB": "기가바이트", "MB": "메가바이트", "KB": "킬로바이트", "km": "킬로미터", "kg": "킬로그램",
          "cm": "센티미터", "mm": "밀리미터", "ms": "밀리초", "fps": "프레임"}
 
-COUNTER_RE = "|".join(sorted(NATIVE_COUNTERS + ["년", "월", "일", "분", "초", "원", "층", "강", "위", "점", "회", "학년", "도", "곳", "번"], key=len, reverse=True))
+# 단위 뒤 글자까지 본다: '3단계'의 '단'·'3대학'의 '대'는 단위가 아니다 (2026-11-10 점검: '상세도 3단계'를 '세 단계'로 읽음)
+_COUNTER_NOT_BEFORE = {"단": "계", "대": "학|회|표|형|륙|기|상"}
+COUNTER_RE = "|".join(f"{c}(?!{_COUNTER_NOT_BEFORE[c]})" if c in _COUNTER_NOT_BEFORE else c
+                      for c in sorted(NATIVE_COUNTERS + ["년", "월", "일", "분", "초", "원", "층", "강", "위", "점", "회", "학년", "도", "곳", "번"],
+                                      key=len, reverse=True))
 
 
 KEY_NAMES = {"alt": "알트", "shift": "시프트", "ctrl": "컨트롤", "control": "컨트롤", "enter": "엔터", "tab": "탭", "esc": "이스케이프",
@@ -235,14 +242,18 @@ def normalize_ko(text: str) -> str:
     # 단축키: "Alt+Shift+Q" → "알트 시프트 큐"(+는 읽지 않음)
     t = re.sub(r"\b(alt|shift|ctrl|control)\s*\+\s*", lambda m: KEY_NAMES[m.group(1).lower()] + " ", t, flags=re.I)
     t = re.sub(r"\b(enter|tab|esc|escape|space|home|end|delete|backspace)(?![a-z])", lambda m: KEY_NAMES[m.group(1).lower()], t, flags=re.I)
-    t = t.replace("%", " 퍼센트").replace("·", ", ").replace("~", "에서 ").replace("&", " 앤 ")
+    t = t.replace("%", "퍼센트").replace("·", ", ").replace("&", " 앤 ")
+    # '~'는 숫자 사이(1~3초)일 때만 '에서'로 읽는다. '반가워요~'의 물결은 읽지 않는다
+    t = re.sub(r"([\d½⅓⅔¼¾])\s*~\s*(?=[\d½⅓⅔¼¾])", r"\1에서 ", t)
+    t = t.replace("~", " ")
     t = read_fractions(t)
     t = re.sub(r"(\d)\s*°C", r"\1도", t)
     # 영문 단위 (숫자 뒤): 6GB → 6 기가바이트
     for u, k in UNITS.items():
         t = re.sub(rf"(\d)\s*{u}\b", rf"\1 {k}", t)
     # 숫자 + 단위
-    t = re.sub(rf"(\d[\d,]*(?:\.\d+)?)\s*({COUNTER_RE})?",
+    # 쉼표는 천 단위 자리(10,000)일 때만 수에 넣는다('1, 2, 3'을 '일이삼'으로 붙여 읽던 것). 띄어쓰기는 뒤에 단위가 있을 때만 먹는다
+    t = re.sub(rf"(\d{{1,3}}(?:,\d{{3}})+(?:\.\d+)?|\d+(?:\.\d+)?)(?:\s*({COUNTER_RE}))?",
                lambda m: read_number(m.group(1), m.group(2) or "") + (" " + m.group(2) if m.group(2) else ""), t)
     # 영어
     t = re.sub(r"[A-Za-z]+", lambda m: read_english(m.group()), t)

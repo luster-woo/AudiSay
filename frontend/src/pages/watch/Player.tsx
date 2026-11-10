@@ -6,7 +6,7 @@ import { favoritesApi } from '@/api/favorites'
 import { queryKeys } from '@/api/queryKeys'
 import { videosApi } from '@/api/videos'
 import { ApiError, toUserMessage } from '@/api/errors'
-import type { ChatActionCode, NarrationLine, VideoDetail } from '@/api/types'
+import type { ChatActionCode, NarrationLine, UserSettings, VideoDetail } from '@/api/types'
 import { Button } from '@/components/ui/Button'
 import { ChoiceGroup } from '@/components/ui/ChoiceGroup'
 import { cn } from '@/components/ui/cn'
@@ -18,6 +18,7 @@ import { SeekBar } from '@/features/player/SeekBar'
 import { sceneAtMs, useNarration } from '@/features/player/useNarration'
 import { usePlayerSource } from '@/features/player/usePlayerSource'
 import { useSettings } from '@/features/settings/context'
+import { DETAIL_LABELS } from '@/features/settings/labels'
 import { useShortcutEntry, useShortcuts } from '@/features/shortcuts/context'
 import { withRo } from '@/utils/korean'
 import { formatDurationSpoken, formatPositionSpoken } from '@/utils/time'
@@ -31,14 +32,17 @@ import { CandidatesPanel, ChaptersPanel, HistoryPanel, ScriptPanel } from './pan
 import { useAsk } from './useAsk'
 import { VideoStage } from './VideoStage'
 
-const DETAIL_OPTIONS: { value: 1 | 2 | 3; label: string }[] = [
-  { value: 1, label: '짧은 해설' },
-  { value: 2, label: '기본 해설' },
-  { value: 3, label: '자세한 해설' },
-]
+/** 상세도 버튼 이름: 재생 설정 창·챗봇 답과 같다 ('1 짧은 해설') */
+const DETAIL_OPTIONS = DETAIL_LABELS
 type Tab = 'chapters' | 'script'
 /** 영상을 열고 요약을 어떻게 할지 정하는 단계 */
 type SummaryPhase = 'loading' | 'asking' | 'playing' | 'done'
+type SummaryMode = UserSettings['summaryMode']
+/** 기능 실행 결과: 실제로 한 일을 말하는 문장과, 장면 이동이면 옮긴 시각 */
+export interface ActionResult {
+  said: string
+  goToMs: number | null
+}
 
 const isTyping = (el: EventTarget | null) =>
   el instanceof HTMLElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName)
@@ -62,7 +66,7 @@ export function Player({ video }: { video: VideoDetail }) {
   const videoId = video.videoId
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { settings, update } = useSettings()
+  const { settings, update, isLoaded: settingsLoaded } = useSettings()
   const { announce, bindVoice } = useAnnouncer()
   const { setHelpOpen } = useShortcuts()
   const [narrator] = useState(() => new Narrator())
@@ -126,7 +130,31 @@ export function Player({ video }: { video: VideoDetail }) {
     refreshAudioUrl,
     announce,
   })
-  const { holdWhile, interrupt, currentLine, lines, markSeek, readLine } = narration
+  const {
+    holdWhile,
+    interrupt: stopNarration,
+    holding,
+    currentLine,
+    lines,
+    markSeek,
+    readLine,
+  } = narration
+  // 사용자 입장의 '재생 중': 해설·답을 읽느라 잠깐 멈춰 둔 상태도 재생 중으로 본다
+  const playingNow = state.playing || holding
+
+  // 답을 듣는 중(useAsk)이면 그 답 스트림도 함께 끊는다. useAsk 는 아래에서 만들어지므로 ref 로 잇는다
+  const stopAnswerRef = useRef<(opts?: { quiet?: boolean }) => boolean>(() => false)
+  /**
+   * 사용자가 직접 재생·멈춤·이동하거나 창을 열 때: 읽던 해설·답 소리와 걸어 둔 멈춤을 거두고,
+   * 받는 중인 답 스트림도 끊는다(남은 문장이 영상 소리 위로 이어서 읽히지 않게, 원칙 1장)
+   */
+  const interrupt = useCallback(
+    (resume = true) => {
+      stopAnswerRef.current({ quiet: true })
+      return stopNarration(resume)
+    },
+    [stopNarration],
+  )
 
   /* ── 화면 상태 ── */
   const [startedFlag, setStarted] = useState(false)
@@ -146,17 +174,26 @@ export function Player({ video }: { video: VideoDetail }) {
 
   /* ── 재생 조작 ── */
   const toggle = useCallback(() => {
-    if (state.playing) {
+    if (playingNow) {
+      // 해설 때문에 잠깐 멈춰 둔 상태여도 '멈춤'이다: 읽던 소리를 거두고 멈춘 채로 둔다
       interrupt(false)
       controls.pause()
       announce('멈췄어요.')
-    } else {
-      interrupt(false)
-      setStarted(true)
-      controls.play()
-      announce('재생해요.')
+      return
     }
-  }, [state.playing, interrupt, controls, announce])
+    if (state.error) {
+      announce(state.error, { politeness: 'assertive' })
+      return
+    }
+    if (!state.ready) {
+      announce('영상을 불러오는 중이에요. 잠시 뒤에 다시 눌러 주세요.')
+      return
+    }
+    interrupt(false)
+    setStarted(true)
+    controls.play()
+    announce('재생해요.')
+  }, [playingNow, state.error, state.ready, interrupt, controls, announce])
 
   // 이동하기 전 위치 ('되돌려 줘' 명령용). 재생바를 연달아 누르는 동안에는 처음 위치만 남긴다
   const beforeSeekRef = useRef<number | null>(null)
@@ -208,32 +245,41 @@ export function Player({ video }: { video: VideoDetail }) {
   // 요약을 들려줄 때마다 올라가는 번호. 멈추거나 처음부터 다시 들으면 올라가서, 이전 요약의 남은 단계를 건너뛴다
   const summaryGenRef = useRef(0)
   /**
-   * 요약을 들려준다. 끝까지 들었으면 true, 중간에 멈췄으면(건너뛰기·다시 듣기) false.
+   * 요약을 들려준다.
+   * - 'done': 끝까지 들었다
+   * - 'stopped': 건너뛰기·다시 듣기로 멈췄다 (그쪽에서 처리한다)
+   * - 'cut': 다른 소리·조작(음성 질문, 재생바 이동, 급한 안내)에 끊겼다. '요약이 끝났어요'라고 하지 않는다
    * said 가 없으면(요약 창에서 Enter·버튼으로 직접 고름) 안내 없이 바로 요약 소리를 낸다:
-   * 안내를 낭독기가 다 읽을 때까지 3초쯤 기다리면 Enter 가 안 먹은 것처럼 느껴지고, 그사이 다시 누르면 처음부터 또 기다린다
+   * 안내를 낭독기가 다 읽을 때까지 3초쯤 기다리면 Enter 가 안 먹은 것처럼 느껴지고, 그사이 다시 누르면 처음부터 또 기다린다.
+   * resume:false 면 다 듣고 이어서 재생하지 않는다 (챗봇 명령으로 들을 때)
    */
   const playSummary = useCallback(
-    async (said: string | null) => {
+    async (
+      said: string | null,
+      { resume = true }: { resume?: boolean } = {},
+    ): Promise<'done' | 'stopped' | 'cut'> => {
       if (!summary) {
         announce('이 영상은 요약이 없어요.')
-        return false
+        return 'stopped'
       }
       const gen = ++summaryGenRef.current
       if (said) announce(said)
+      let played = false
       const say = async () => {
         // 안내를 다 들은 뒤에 요약 소리를 낸다. 기다리는 중 멈췄으면 요약은 내지 않는다
         if (said) await waitForReader(said)
         if (summaryGenRef.current !== gen) return
-        await narrator.say({
+        played = await narrator.say({
           text: summary.summary.text,
           audioUrl: summary.summary.audioUrl,
           rate: settings.speechRate,
           refreshUrl: async () => (await summaryQ.refetch()).data?.summary.audioUrl ?? null,
         })
       }
-      if (started) await holdWhile(say)
+      if (started) await holdWhile(say, { resume })
       else await say()
-      return summaryGenRef.current === gen
+      if (summaryGenRef.current !== gen) return 'stopped'
+      return played ? 'done' : 'cut'
     },
     [summary, narrator, settings.speechRate, summaryQ, started, holdWhile, announce, waitForReader],
   )
@@ -270,18 +316,34 @@ export function Player({ video }: { video: VideoDetail }) {
 
   // 요약을 받은 뒤 설정(묻기 / 항상 / 안 듣기)대로 시작 단계가 정해진다. 사용자가 고르면 decided 가 앞선다
   const summarySettled = summaryQ.isSuccess || summaryQ.isError
-  const summaryMode = summaryQ.isSuccess ? settings.summaryMode : 'NEVER'
-  const phase: SummaryPhase = !summarySettled
-    ? 'loading'
-    : (decided ??
-      (summaryMode === 'ASK' ? 'asking' : summaryMode === 'ALWAYS' ? 'playing' : 'done'))
+  /*
+   * 시작 단계는 화면에 들어올 때의 설정으로 한 번만 정한다. 보는 도중 재생 설정 창이나 챗봇('요약 항상 들려줘')으로
+   * 요약 설정을 바꿔도 요약 창이 뜨거나, 요약이 저절로 읽히거나, 진입 안내가 다시 나오지 않게 한다
+   */
+  // 내 설정을 받기 전(기본값 '묻기')에 정해 버리지 않게, 설정을 받은 뒤에 정한다
+  const [startMode, setStartMode] = useState<SummaryMode | null>(null)
+  if (summarySettled && settingsLoaded && startMode === null)
+    setStartMode(summaryQ.isSuccess ? settings.summaryMode : 'NEVER')
+  const summaryMode = startMode ?? 'NEVER'
+  const phase: SummaryPhase =
+    !summarySettled || startMode === null
+      ? 'loading'
+      : (decided ??
+        (summaryMode === 'ASK' ? 'asking' : summaryMode === 'ALWAYS' ? 'playing' : 'done'))
   const autoSummaryRef = useRef(false)
   useEffect(() => {
     if (phase !== 'playing' || decided !== null || autoSummaryRef.current) return
     autoSummaryRef.current = true
-    void playSummary('30초 요약을 먼저 들려 드려요. Esc를 누르면 건너뛰어요.').then((done) =>
-      waitAtPlay(done ? '요약이 끝났어요. Space를 누르면 재생해요.' : 'Space를 누르면 재생해요.'),
-    )
+    void playSummary('30초 요약을 먼저 들려 드려요. Esc를 누르면 건너뛰어요.').then((end) => {
+      if (end === 'cut') {
+        // 다른 소리·조작에 끊겼다: 끝났다고 하지 않고, 포커스도 옮기지 않는다 (음성 질문을 녹음하는 중일 수 있다)
+        setDecided('done')
+        return
+      }
+      waitAtPlay(
+        end === 'done' ? '요약이 끝났어요. Space를 누르면 재생해요.' : 'Space를 누르면 재생해요.',
+      )
+    })
   }, [phase, decided, playSummary, waitAtPlay])
 
   // 요약 듣고 시작: 창과 버튼은 그대로. 듣는 중에 다시 누르면 처음부터 다시 들려준다
@@ -291,8 +353,8 @@ export function Player({ video }: { video: VideoDetail }) {
     setSummaryInDialog(true)
     void playSummary(null).then((done) => {
       if (!done) return // 건너뛰기·다시 듣기로 멈췄으면 그쪽에서 처리한다
-      // 다 들었으면 창을 닫고 재생 버튼에서 기다린다 (재생은 하지 않는다)
-      waitAtPlay('요약이 끝났어요. Space를 누르면 재생해요.')
+      setDecided('done')
+      announce('요약이 끝났어요. 다시 들으려면 Enter, 닫으려면 Esc.')
     })
   }
   // 건너뛰기(Esc): 듣는 중이면 요약을 멈추고, 창을 닫아 재생 버튼에서 기다린다. 재생은 하지 않는다
@@ -304,39 +366,44 @@ export function Player({ video }: { video: VideoDetail }) {
   useEffect(() => {
     if (phase !== 'playing' || summaryInDialog) return
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' && !e.defaultPrevented) {
         e.preventDefault()
         stopSummary()
       }
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    // 캡처: 아래 화면 Esc(크게 보기 끄기 등)보다 먼저 받아, 그쪽이 같은 Esc 를 또 처리하지 않게 한다
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
   }, [phase, summaryInDialog, stopSummary])
 
   /* ── 화면 진입 ── */
   const ready = summarySettled && descriptionQ.isFetched
   const dur = formatDurationSpoken(video.durationSec)
+  // 진입 안내·포커스도 시작할 때의 요약 설정(startMode)으로 정한다 (보는 도중 설정을 바꿔도 다시 나오지 않게)
   const entryText =
     `영상 보기예요. ${video.title}, ${dur}. ` +
-    (settings.summaryMode === 'ASK' && summaryQ.isSuccess
+    (summaryMode === 'ASK'
       ? '30초 요약을 들을까요? Enter는 듣기, Esc는 건너뛰기.'
-      : settings.summaryMode === 'ALWAYS' && summaryQ.isSuccess
+      : summaryMode === 'ALWAYS'
         ? '30초 요약을 먼저 들려 드려요.'
         : '재생 버튼에 있어요. Space로 재생해요.')
   usePageEntry({
     title: video.title,
     announce: entryText,
-    focusRef: settings.summaryMode === 'NEVER' || !summaryQ.isSuccess ? playRef : headingRef,
-    ready,
+    focusRef: summaryMode === 'NEVER' ? playRef : headingRef,
+    ready: ready && startMode !== null,
   })
 
   /* ── 즐겨찾기 (상세 캐시를 먼저 바꾸고 실패하면 되돌린다) ── */
   const favorite = useMutation({
     mutationFn: () => (video.isFavorite ? favoritesApi.remove(videoId) : favoritesApi.add(videoId)),
+    // 바꾸기 전 값을 context 로 넘긴다. onError 에서 video.isFavorite 를 읽으면 이미 뒤집힌 값이라 되돌리지 못한다
     onMutate: () => {
+      const prev = queryClient.getQueryData<VideoDetail>(queryKeys.video(videoId))?.isFavorite
       queryClient.setQueryData<VideoDetail>(queryKeys.video(videoId), (old) =>
         old ? { ...old, isFavorite: !old.isFavorite } : old,
       )
+      return { prev }
     },
     onSuccess: (res) => {
       announce(res.isFavorite ? '즐겨찾기에 넣었어요.' : '즐겨찾기에서 뺐어요.')
@@ -346,10 +413,12 @@ export function Player({ video }: { video: VideoDetail }) {
       void queryClient.invalidateQueries({ queryKey: ['favorites'] })
       void queryClient.invalidateQueries({ queryKey: ['me', 'videos'] })
     },
-    onError: (e) => {
-      queryClient.setQueryData<VideoDetail>(queryKeys.video(videoId), (old) =>
-        old ? { ...old, isFavorite: video.isFavorite } : old,
-      )
+    onError: (e, _vars, context) => {
+      const prev = context?.prev
+      if (prev !== undefined)
+        queryClient.setQueryData<VideoDetail>(queryKeys.video(videoId), (old) =>
+          old ? { ...old, isFavorite: prev } : old,
+        )
       announce(`즐겨찾기를 바꾸지 못했어요. ${toUserMessage(e)}`, { politeness: 'assertive' })
     },
   })
@@ -358,14 +427,18 @@ export function Player({ video }: { video: VideoDetail }) {
   const reportResume = useRef(false)
   const openReport = useCallback(() => {
     // 해설을 읽느라 잠깐 멈춰 둔 상태도 '재생 중'으로 본다
-    const holding = interrupt(false)
-    reportResume.current = state.playing || holding
+    const wasHolding = interrupt(false)
+    const wasPlaying = state.playing || wasHolding
+    reportResume.current = wasPlaying
     controls.pause()
     setReport({ line: currentLine, ms: state.currentMs })
+    // 창이 열리면 포커스가 첫 사유(라디오)로 가서 문장 글은 읽히지 않는다. 신고할 문장을 안내로 먼저 읽어 준다.
+    // 원래 멈춰 있던 영상이면 '멈췄어요'라고 하지 않는다
     announce(
-      currentLine
-        ? '이 문장 신고 창이에요. 문장을 먼저 읽어 드려요. 영상은 멈췄어요.'
-        : '이 문장 신고 창이에요. 아직 읽은 문장이 없어요.',
+      (currentLine
+        ? `이 문장 신고 창이에요. 신고할 문장, ${currentLine.text}`
+        : '이 문장 신고 창이에요. 아직 읽은 문장이 없어요.') +
+        (wasPlaying ? ' 영상은 멈췄어요.' : ''),
     )
   }, [state.playing, state.currentMs, currentLine, interrupt, controls, announce])
   const closeReport = () => {
@@ -378,8 +451,8 @@ export function Player({ video }: { video: VideoDetail }) {
    * 창 안의 안내를 낭독기가 읽는 동안 영상·해설 소리가 겹치지 않게 한다 (원칙 1장, 2026-11-06 변경) */
   const settingsResume = useRef(false)
   const openSettings = useCallback(() => {
-    const holding = interrupt(false)
-    const wasPlaying = state.playing || holding
+    const wasHolding = interrupt(false)
+    const wasPlaying = state.playing || wasHolding
     settingsResume.current = wasPlaying
     if (wasPlaying) {
       controls.pause()
@@ -396,11 +469,28 @@ export function Player({ video }: { video: VideoDetail }) {
     settingsResume.current = false
   }
 
+  /*
+   * 다시 듣기·요약·장면 설명·자세히 읽기처럼 영상을 멈추고 따로 읽는 소리. 읽는 동안에는 Esc('답 멈추기')로 멈출 수 있다.
+   * resume:false 면 다 읽은 뒤 이어서 재생하지 않는다 (챗봇 명령으로 읽을 때: 챗봇 응답 뒤에는 자동 재생하지 않는다)
+   */
+  const asideRef = useRef(0)
+  const readAside = useCallback(
+    async (fn: () => Promise<unknown>, opts?: { resume?: boolean }) => {
+      asideRef.current += 1
+      try {
+        return await holdWhile(fn, opts)
+      } finally {
+        asideRef.current -= 1
+      }
+    },
+    [holdWhile],
+  )
+
   /* ── 지금 장면 설명 (ASK-03, Alt+Shift+D) ── */
   const describeScene = useCallback(async () => {
     try {
       const s = await videosApi.sceneAt(videoId, state.currentMs)
-      await holdWhile(() =>
+      await readAside(() =>
         narrator.say({ text: `${s.title} 장면. ${s.sceneDescription}`, rate: settings.speechRate }),
       )
     } catch (e) {
@@ -411,105 +501,134 @@ export function Player({ video }: { video: VideoDetail }) {
         { politeness: 'assertive' },
       )
     }
-  }, [videoId, state.currentMs, holdWhile, narrator, settings.speechRate, announce])
+  }, [videoId, state.currentMs, readAside, narrator, settings.speechRate, announce])
 
-  /* ── 챗봇 명령 → 기능 실행 (CTL-04). 처리하지 못한 기능이면 false ── */
+  /**
+   * 기능 실행 (CTL-04). 처리하지 못한 기능이면 null.
+   * 처리했으면 실제 결과 문장(said)과 '그 장면 보기'로 갈 시각(goToMs, 장면 이동일 때)을 돌려준다.
+   * 안내(전광판)는 여기서 하고, 챗봇은 같은 문장을 답 말풍선·'다시 듣기'에 쓴다.
+   * fromChat: 챗봇 명령이면 읽은 뒤 이어서 재생하지 않는다 (챗봇 응답 뒤 자동 재생 없음)
+   */
   const runAction = useCallback(
-    (code: ChatActionCode): boolean => {
+    (
+      code: ChatActionCode,
+      { fromChat = false }: { fromChat?: boolean } = {},
+    ): ActionResult | null => {
       const scenes = description?.scenes ?? []
+      const resume = !fromChat
+      const tell = (said: string, goToMs: number | null = null): ActionResult => {
+        announce(said)
+        return { said, goToMs }
+      }
       switch (code) {
         case 'PLAY':
-          if (!state.playing) toggle()
-          return true
+          if (playingNow) return tell('이미 재생 중이에요.')
+          toggle()
+          return {
+            said: state.error ?? (state.ready ? '재생해요.' : '영상을 불러오는 중이에요.'),
+            goToMs: null,
+          }
         case 'PAUSE':
-          if (state.playing) toggle()
-          return true
+          // 말로 물을 때는 듣기 시작에서 이미 멈춰 두었다. 그래도 사용자 입장에선 '멈췄다'가 결과다
+          if (playingNow) toggle()
+          else announce('멈췄어요.')
+          return { said: '멈췄어요.', goToMs: null }
         case 'CURRENT_POSITION':
-          announce(
-            `${formatPositionSpoken(state.currentMs)}. ${scene ? `${scene.title} 장면.` : ''}`,
+          return tell(
+            `${formatPositionSpoken(state.currentMs)}.${scene ? ` ${scene.title} 장면.` : ''}`,
           )
-          return true
         case 'NEXT_SCENE': {
           const next = scenes.find((s) => s.startMs > state.currentMs)
-          if (next)
-            seekTo(next.startMs, `다음 장면, ${next.title}, ${formatPositionSpoken(next.startMs)}.`)
-          else announce('마지막 장면이에요.')
-          return true
+          if (!next) return tell('마지막 장면이에요.')
+          const said = `다음 장면, ${next.title}, ${formatPositionSpoken(next.startMs)}.`
+          seekTo(next.startMs, said)
+          return { said, goToMs: next.startMs }
         }
         case 'PREV_SCENE': {
           const prev = [...scenes].reverse().find((s) => s.startMs < state.currentMs - 1500)
-          if (prev)
-            seekTo(prev.startMs, `이전 장면, ${prev.title}, ${formatPositionSpoken(prev.startMs)}.`)
-          else seekTo(0, '처음으로 옮겼어요.')
-          return true
+          const said = prev
+            ? `이전 장면, ${prev.title}, ${formatPositionSpoken(prev.startMs)}.`
+            : '처음으로 옮겼어요.'
+          const to = prev?.startMs ?? 0
+          seekTo(to, said)
+          return { said, goToMs: to }
         }
-        case 'PLAY_SUMMARY':
-          void playSummary('30초 요약을 들려 드릴게요.')
-          return true
+        case 'PLAY_SUMMARY': {
+          if (!summary) return tell('이 영상은 요약이 없어요.')
+          const said = '30초 요약을 들려 드릴게요.'
+          asideRef.current += 1
+          void playSummary(said, { resume }).finally(() => {
+            asideRef.current -= 1
+          })
+          return { said, goToMs: null }
+        }
         case 'READ_DETAIL':
-          if (!narration.readDetail()) announce('지금 화면에 긴 글이 없어요.')
-          return true
+          return narration.readDetail({ resume, hold: readAside })
+            ? { said: '화면 글자를 자세히 읽어 드릴게요.', goToMs: null }
+            : tell('지금 화면에 긴 글이 없어요.')
         case 'HELP':
+          // 도움말 창이 열리며 창 이름을 읽으므로 따로 안내하지 않는다
           setHelpOpen(true)
-          return true
+          return { said: '단축키 도움말을 열었어요.', goToMs: null }
         case 'OPEN_CHAPTERS':
           // 크게 보기에는 목차 탭이 없으니 작게 보기로 돌아가 연다
           setEnlarged(false)
           setTab('chapters')
           // 포커스는 입력칸에 둔다 (원칙 9장). 목차가 어디 있는지 말로 알려 준다: 입력칸 → 보내기 → 음성 인식 → 목차 탭
-          announce('장면 목차를 열었어요. 입력칸에서 Tab을 세 번 누르면 목차 탭이에요.')
-          return true
+          return tell('장면 목차를 열었어요. 입력칸에서 Tab을 세 번 누르면 목차 탭이에요.')
         case 'OPEN_SCRIPT':
           setEnlarged(false)
           setTab('script')
-          announce('해설 문장을 열었어요. 입력칸에서 Tab을 세 번 누르면 해설 탭이에요.')
-          return true
+          return tell('해설 문장을 열었어요. 입력칸에서 Tab을 세 번 누르면 해설 탭이에요.')
         case 'OPEN_HISTORY':
           // 질문 기록은 대화 칸에 늘 보인다
-          announce('질문 기록은 질문 입력칸 위 대화 칸에 있어요.')
-          return true
+          return tell('질문 기록은 질문 입력칸 위 대화 칸에 있어요.')
         case 'FAVORITE_ADD':
-          if (!video.isFavorite) favorite.mutate()
-          else announce('이미 즐겨찾기에 있어요.')
-          return true
+          if (video.isFavorite) return tell('이미 즐겨찾기에 있어요.')
+          // 결과 안내('즐겨찾기에 넣었어요' / 실패)는 저장이 끝나면 한다
+          favorite.mutate()
+          return { said: '즐겨찾기에 넣을게요.', goToMs: null }
         case 'FAVORITE_REMOVE':
-          if (video.isFavorite) favorite.mutate()
-          else announce('즐겨찾기에 없는 영상이에요.')
-          return true
+          if (!video.isFavorite) return tell('즐겨찾기에 없는 영상이에요.')
+          favorite.mutate()
+          return { said: '즐겨찾기에서 뺄게요.', goToMs: null }
         case 'REPLAY_TUTORIAL':
           navigate('/tutorial/1')
-          return true
+          return { said: '튜토리얼로 이동해요.', goToMs: null }
         case 'REPEAT_LAST': {
-          // 방금 읽은 해설·답변을 다시 (영상은 멈추고 읽은 뒤 이어서)
+          // 방금 읽은 해설·답변을 다시 (영상은 멈추고 읽는다)
           const last = narrator.last
-          if (!last) announce('다시 들을 문장이 없어요.')
-          else void holdWhile(() => narrator.say({ ...last, skipIfBusy: false }))
-          return true
+          if (!last) return tell('다시 들을 문장이 없어요.')
+          void readAside(() => narrator.say({ ...last, skipIfBusy: false }), { resume })
+          return { said: '방금 읽은 문장을 다시 들려 드릴게요.', goToMs: null }
         }
         case 'UNDO_SEEK': {
           const back = beforeSeekRef.current
-          if (back == null) announce('되돌릴 이동이 없어요.')
-          else seekTo(back, `이동하기 전 위치, ${withRo(formatPositionSpoken(back))} 돌아왔어요.`)
-          return true
+          if (back == null) return tell('되돌릴 이동이 없어요.')
+          const said = `이동하기 전 위치, ${withRo(formatPositionSpoken(back))} 돌아왔어요.`
+          seekTo(back, said)
+          return { said, goToMs: back }
         }
         case 'STOP_SPEAKING':
-          // 읽던 소리만 멈춘다. 해설 때문에 영상을 멈춰 뒀으면 이어서 재생한다
-          interrupt()
-          announce('읽던 소리를 멈췄어요.')
-          return true
+          // 읽던 소리만 멈춘다. 해설 때문에 영상을 멈춰 뒀으면 이어서 재생한다 (챗봇 명령이면 멈춘 채로 둔다)
+          interrupt(resume)
+          return tell('읽던 소리를 멈췄어요.')
         default:
-          return false
+          return null
       }
     },
     [
       description,
-      state.playing,
+      playingNow,
       state.currentMs,
+      state.error,
+      state.ready,
       scene,
+      summary,
       toggle,
       seekTo,
       narrator,
-      holdWhile,
+      readAside,
       interrupt,
       playSummary,
       narration,
@@ -555,10 +674,10 @@ export function Player({ video }: { video: VideoDetail }) {
       narrator,
       speechRate: settings.speechRate,
       getCurrentMs: () => state.currentMs,
-      holdWhile,
-      resumePlayback: () => {
-        if (!state.ended) controls.play()
-      },
+      // 다시 듣기도 Esc('답 멈추기')로 멈출 수 있게 readAside 로 읽는다
+      holdWhile: readAside,
+      // 렌더를 기다리지 않는 값: 답이 끝나 멈춤을 막 거둔 순간에도 맞게 본다
+      isPlaying: () => state.playing || narration.isHoldingNow(),
       seekTo,
       updateSettings: update,
       runAction,
@@ -567,7 +686,10 @@ export function Player({ video }: { video: VideoDetail }) {
         navigate(`/search?q=${encodeURIComponent(query)}`)
       },
       announce,
-      focusInput: () => inputRef.current?.focus(),
+      // 전체 화면에서는 질문 칸이 보이지 않는다. 포커스를 옮기면 '전체 화면 끝내기'로 튕기므로 그대로 둔다
+      focusInput: () => {
+        if (!document.fullscreenElement) inputRef.current?.focus()
+      },
       // 질문 기록은 대화 칸에 늘 보여서 따로 열 것이 없다
       showHistory: () => {},
     },
@@ -575,27 +697,35 @@ export function Player({ video }: { video: VideoDetail }) {
     NO_HISTORY,
   )
 
-  // 말로 질문: 듣는 동안 영상을 멈추고, 취소하면 이어서 재생. 답이 끝나면 '답변이 끝났어요' 안내 뒤에 useAsk 가 이어서 재생한다
+  useEffect(() => {
+    stopAnswerRef.current = ask.stopAnswer
+  }, [ask.stopAnswer])
+
+  /*
+   * 말로 질문: 듣는 동안 영상을 멈추고, 취소하면 이어서 재생한다.
+   * 질문을 보낸 뒤에는 답(또는 명령 실행)이 끝나도 이어서 재생하지 않는다. 듣기 전에 재생 중이었든 멈춰 있었든
+   * 영상은 멈춘 채로 두고 '재생하려면 Alt+Shift+K' 를 알려 준다 (챗봇 응답 뒤 자동 재생 없음)
+   */
   const onListenStart = useCallback(() => {
-    if (resumeAfterVoice.current == null) resumeAfterVoice.current = state.playing
-    interrupt(false)
+    // 해설을 읽느라 잠깐 멈춰 둔 상태도 '재생 중'으로 본다 (취소하면 이어서 재생)
+    const wasHolding = interrupt(false)
+    if (resumeAfterVoice.current == null) resumeAfterVoice.current = state.playing || wasHolding
     controls.pause()
   }, [state.playing, interrupt, controls])
+  /** 듣기를 취소했거나 알아듣지 못함: 원래 재생 중이었으면 이어서 재생한다. 재생했으면 true */
   const onListenAbort = useCallback(() => {
-    if (resumeAfterVoice.current) controls.play()
+    const resume = resumeAfterVoice.current === true && !state.ended
+    if (resume) controls.play()
     resumeAfterVoice.current = null
-  }, [controls])
+    return resume
+  }, [controls, state.ended])
   const onAsk = useCallback(
     (text: string, mode: 'TEXT' | 'VOICE') => {
       // 질문이든 명령(장면 이동·설정)이든 대화 칸의 질문 기록에 쌓인다. 포커스는 입력칸에 그대로 둔다
-      const resume = resumeAfterVoice.current
       resumeAfterVoice.current = null
-      void ask.send(text, mode, resume === true).finally(() => {
-        // 질문이 아닌 명령(이동·설정)이면 holdWhile 을 거치지 않으므로 여기서 이어서 재생한다
-        if (resume && !state.ended) controls.play()
-      })
+      void ask.send(text, mode)
     },
-    [ask, controls, state.ended],
+    [ask],
   )
 
   /* ── 크게 보기 / Esc ── */
@@ -663,9 +793,17 @@ export function Player({ video }: { video: VideoDetail }) {
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (e.key !== 'Escape' || document.querySelector('dialog[open]')) return
+      // 음성 질문 취소·요약 건너뛰기가 먼저 받은 Esc 면 여기서는 하지 않는다 (크게 보기까지 함께 꺼지지 않게)
+      if (e.defaultPrevented) return
       // 전체 화면의 Esc 는 브라우저가 '전체 화면 끝내기'로 쓴다
       if (document.fullscreenElement) return
       if (ask.stopAnswer()) return
+      // 다시 듣기·요약·장면 설명·자세히 읽기를 듣는 중이면 그 소리를 멈춘다 ('Esc 답 멈추기')
+      if (asideRef.current > 0 && narrator.busy) {
+        narrator.stop()
+        announce('읽던 소리를 멈췄어요.')
+        return
+      }
       if (enlarged) {
         setEnlarged(false)
         announce('작게 보기로 돌아왔어요. 목차와 해설이 다시 보여요.')
@@ -673,7 +811,7 @@ export function Player({ video }: { video: VideoDetail }) {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [enlarged, ask, announce])
+  }, [enlarged, ask, announce, narrator])
 
   // 플레이어 영역 안에서 버튼이 아닌 곳에 있을 때 Space 로 재생·멈춤.
   // 1/2/3·F 같은 한 글자 키는 낭독기의 제목·입력칸 이동 키와 겹쳐 빼고 Alt+Shift 단축키로 옮겼다 (원칙 5장)
@@ -695,7 +833,7 @@ export function Player({ video }: { video: VideoDetail }) {
   const onPickLine = (l: NarrationLine) => {
     const willRead = settings.soundMix !== 'DIALOGUE_ONLY'
     const at = formatPositionSpoken(l.startMs)
-    seekTo(l.startMs, willRead ? `${at}로 옮겼어요.` : `${at}. ${l.text}`)
+    seekTo(l.startMs, willRead ? `${withRo(at)} 옮겼어요.` : `${at}. ${l.text}`)
     readLine(l)
   }
 
@@ -711,6 +849,7 @@ export function Player({ video }: { video: VideoDetail }) {
       offer={ask.offer}
       onAnswerOffer={(reply) => onAsk(reply === 'yes' ? '네' : '아니요', 'TEXT')}
       answering={ask.busy}
+      replayingKey={ask.replayingKey}
       onStop={() => {
         // 버튼이 사라지며 포커스가 본문으로 빠지지 않게 입력칸으로 (Esc 로 멈출 때와 같은 자리)
         if (ask.stopAnswer()) inputRef.current?.focus()
@@ -774,6 +913,11 @@ export function Player({ video }: { video: VideoDetail }) {
             }}
           />
           <div className={cn(fullscreen && 'shrink-0 px-6 pb-5')}>
+            {!fullscreen && !playbackError && state.error && (
+              <p role="alert" className="mt-3 text-lg text-danger">
+                {state.error}
+              </p>
+            )}
             {!fullscreen && playbackError && (
               <p role="alert" className="mt-3 text-lg text-danger">
                 영상을 불러오지 못했어요. {toUserMessage(playbackError)}
@@ -799,13 +943,14 @@ export function Player({ video }: { video: VideoDetail }) {
               <Button
                 ref={playRef}
                 // 재생 중(일시정지 버튼)은 흰 바탕으로 바꿔 글자뿐 아니라 모양으로도 상태가 보이게 한다
-                variant={state.playing ? 'secondary' : 'primary'}
+                // 해설을 읽느라 잠깐 멈춘 동안에도 '일시정지'로 둔다 (문장마다 글자가 바뀌지 않게)
+                variant={playingNow ? 'secondary' : 'primary'}
                 onClick={toggle}
                 aria-keyshortcuts="Alt+Shift+K Space"
-                disabled={phase === 'asking' || phase === 'playing'}
-                className={cn(CONTROL, state.playing && 'text-[#1f2a44]! hc:text-navy!')}
+                disabled={phase === 'asking' || phase === 'playing' || state.error !== null}
+                className={cn(CONTROL, playingNow && 'text-[#1f2a44]! hc:text-navy!')}
               >
-                {state.playing ? '일시정지' : '재생'}
+                {playingNow ? '일시정지' : '재생'}
               </Button>
               <SeekBar
                 currentMs={state.currentMs}
@@ -826,6 +971,8 @@ export function Player({ video }: { video: VideoDetail }) {
                   )
                 }}
                 tone={fullscreen ? 'dark' : 'light'}
+                // 요약을 묻거나 듣는 동안에는 J·L 처럼 재생바도 막는다 (요약이 끊기지 않게)
+                disabled={summaryBusy}
                 className="min-w-[14rem] flex-1"
               />
               {/* 화면 크기 버튼 둘은 아래 줄의 신고·설정 버튼과 같은 크기·간격이라 세로로 줄이 맞는다 */}
@@ -868,7 +1015,7 @@ export function Player({ video }: { video: VideoDetail }) {
               options={DETAIL_OPTIONS}
               value={settings.detailLevel}
               onChange={setDetail}
-              optionClassName="w-[6.5rem] px-2 text-base"
+              optionClassName="w-[7.5rem] px-2 text-base"
             />
             <div className="flex flex-wrap gap-2">
               <Button
@@ -913,6 +1060,12 @@ export function Player({ video }: { video: VideoDetail }) {
           onSubmit={onAsk}
           onListenStart={onListenStart}
           onListenAbort={onListenAbort}
+          // 전체 화면에서는 질문 칸이 보이지 않아 녹음·답 흐름의 포커스가 튕긴다. 말로 묻기 전에 전체 화면을 끝내게 한다
+          askBlockedReason={
+            fullscreen
+              ? '전체 화면에서는 질문할 수 없어요. Esc로 전체 화면을 끝낸 뒤 Alt+Shift+Q를 눌러 주세요.'
+              : null
+          }
           keyHint={!enlarged}
           // 넓은 화면: 스크롤해 붙었을 때 창 높이를 거의 다 쓰도록 길게 (처음 열면 아랫부분은 스크롤해서 본다)
           className="h-[44rem] lg:h-[clamp(36rem,calc(100dvh-3rem),64rem)]"

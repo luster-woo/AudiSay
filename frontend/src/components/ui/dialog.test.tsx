@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Button } from './Button'
 import { Dialog } from './Dialog'
@@ -60,4 +60,23 @@ test('확인창은 alertdialog 이고 처음 포커스는 취소', async () => {
   expect(screen.getByRole('button', { name: '취소' })).toHaveFocus()
   await userEvent.click(screen.getByRole('button', { name: '다시 만들기' }))
   expect(onConfirm).toHaveBeenCalledOnce()
+})
+test('브라우저가 창을 강제로 닫으면(close 이벤트) 닫지 않는 창은 다시 띄우고, 닫는 창은 부모 상태도 닫힌다', async () => {
+  const stay = vi.fn()
+  const { unmount } = render(
+    <Dialog open onClose={stay} title="업로드가 끊겼어요" hideCloseButton>
+      <p>내용</p>
+    </Dialog>,
+  )
+  const el = screen.getByRole('dialog', { name: '업로드가 끊겼어요' }) as HTMLDialogElement
+  el.close() // 크롬 CloseWatcher 가 강제로 닫은 것과 같다
+  expect(stay).toHaveBeenCalled()
+  expect(el.open).toBe(true)
+  unmount()
+
+  render(<SettingsDemo />)
+  await userEvent.click(screen.getByRole('button', { name: '재생 설정' }))
+  act(() => (screen.getByRole('dialog') as HTMLDialogElement).close())
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(screen.getByRole('button', { name: '재생 설정' })).toHaveFocus()
 })

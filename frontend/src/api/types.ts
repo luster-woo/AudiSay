@@ -142,6 +142,8 @@ export interface Job {
   coveredUntilMs: number | null
   errorCode: JobErrorCode | null
   retryable: boolean | null
+  /** 실패했을 때 서버가 주는 안내 문구 (작업 실패 원인 코드 표). 실패가 아니면 null */
+  errorMessage?: string | null
   queuedAt: string
   startedAt: string | null
   finishedAt: string | null
@@ -208,10 +210,11 @@ export type YoutubeRejectReason =
 /** POST /videos/youtube/check — 확인만 하고 횟수는 쓰지 않는다 */
 export interface YoutubeCheck {
   youtubeVideoId: string
-  title: string
-  channelTitle: string
+  /** 지워졌거나 비공개라 찾지 못한 영상(rejectReason NOT_FOUND)이면 제목·채널·길이가 없다 */
+  title: string | null
+  channelTitle: string | null
   thumbnailUrl: string | null
-  durationSec: number
+  durationSec: number | null
   available: boolean
   rejectReason: YoutubeRejectReason | null
   videoId: number | null
@@ -408,6 +411,8 @@ export interface LineUpdateResult {
   text: string
   audioUrl: string | null
   updatedAt: string
+  /** 문장 글자가 바뀌어 음성을 다시 만드는 중이면 true. 중요도만 바꿨으면 false(음성 그대로) */
+  audioRegenerating: boolean
 }
 
 /** POST /admin/lines/{lineId}/audio (202) */

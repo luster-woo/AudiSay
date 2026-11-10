@@ -46,7 +46,7 @@ export function VideoListRow({
     >
       <Thumbnail src={thumbnailUrl} className="hidden w-40 shrink-0 rounded-md sm:block" />
       <div className="min-w-0 flex-1">
-        <h3 className="text-[1.375rem] leading-snug font-bold break-keep [overflow-wrap:anywhere]">
+        <h3 className="text-[1.375rem] leading-snug font-bold">
           <Link
             ref={linkRef}
             to={to}
@@ -56,7 +56,7 @@ export function VideoListRow({
             {title}
           </Link>
         </h3>
-        <p id={metaId} className="mt-1 text-xl break-keep [overflow-wrap:anywhere]">
+        <p id={metaId} className="mt-1 text-xl">
           {source} · {formatDurationShort(durationSec)}
         </p>
       </div>
@@ -64,7 +64,8 @@ export function VideoListRow({
         <p
           id={statusId}
           className={cn(
-            'max-w-[40%] shrink-0 text-right text-xl font-bold break-keep',
+            // 고정 폭: 상태 글자 길이('해설 있음' / '해설 만들 수 없음, 10분 넘음')와 상관없이 줄마다 제목 폭이 같게
+            'w-[12rem] max-w-[40%] shrink-0 text-right text-xl font-bold',
             tone === 'danger' ? 'text-danger' : 'text-navy',
           )}
         >

@@ -49,6 +49,18 @@ function setup() {
 beforeEach(() => vi.useFakeTimers())
 afterEach(() => vi.useRealTimers())
 
+test('키를 누르면 낭독기가 읽던 말을 멈추므로, 우리 음성은 더 기다리지 않는다', () => {
+  const { api, voice } = setup()
+  act(() => api().announce('영상 보기예요. 30초 요약을 들을까요? Enter는 듣기, Esc는 건너뛰기.'))
+  wait(20)
+  expect(voice.quietWait!()).toBeGreaterThan(0)
+  // 수식키만 누른 것은 그대로
+  act(() => void window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift' })))
+  expect(voice.quietWait!()).toBeGreaterThan(0)
+  act(() => void window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' })))
+  expect(voice.quietWait!()).toBe(0)
+})
+
 test('우리 음성이 말하지 않을 때는 바로 읽고, 우리 음성은 안내 길이만큼 기다린다', () => {
   const { api, voice } = setup()
   act(() => api().announce('재생해요.'))

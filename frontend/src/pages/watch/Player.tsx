@@ -135,6 +135,7 @@ export function Player({ video }: { video: VideoDetail }) {
     interrupt: stopNarration,
     holding,
     currentLine,
+    currentScriptLine,
     lines,
     markSeek,
     readLine,
@@ -1115,7 +1116,8 @@ export function Player({ video }: { video: VideoDetail }) {
                 <ScriptPanel
                   lines={lines}
                   dubIds={dubIds}
-                  current={currentLine}
+                  // 대본의 '지금 문장'은 외국어 대사 번역도 포함한다 (대사를 누르면 그 줄이 노랗게)
+                  current={currentScriptLine}
                   onPick={onPickLine}
                 />
               ),

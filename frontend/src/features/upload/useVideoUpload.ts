@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { uploadsApi } from '@/api/uploads'
 import type { UploadCompleteResult, Visibility } from '@/api/types'
 import { contentTypeOf } from './fileRules'
+import { holdUploadLock, uploadActiveElsewhere } from './uploadLock'
 import { uploadParts } from './uploadParts'
 
 export interface UploadDraft {
@@ -12,26 +13,33 @@ export interface UploadDraft {
 }
 
 /**
- * 올리는 중인 업로드 번호를 브라우저에 적어 둔다. 탭이 닫혀 중단 요청(pagehide)이 못 갔으면, 다음에 올릴 때 먼저 정리한다.
+ * 올리는 중인 업로드 번호들을 브라우저에 적어 둔다. 탭이 닫혀 중단 요청(pagehide)이 못 갔으면, 다음에 올릴 때 먼저 정리한다.
  * (정리하지 않으면 서버가 24시간 동안 '올리는 중'으로 붙잡아 일반 회원은 그날 다시 올릴 수 없다)
+ * 여러 탭이 함께 쓰므로 목록으로 적고, 다른 탭이 지금 올리는 업로드(uploadLock)는 정리하지 않는다
  */
 const PENDING_KEY = 'audisay:pending-upload'
-function readPending(): number | null {
+function readPending(): number[] {
   try {
-    const v = Number(localStorage.getItem(PENDING_KEY))
-    return Number.isInteger(v) && v > 0 ? v : null
+    const raw = localStorage.getItem(PENDING_KEY)
+    if (!raw) return []
+    // 예전에는 번호 하나만 적었다
+    const parsed: unknown = JSON.parse(raw)
+    const ids = Array.isArray(parsed) ? parsed : [parsed]
+    return ids.filter((v): v is number => Number.isInteger(v) && (v as number) > 0)
   } catch {
-    return null
+    return []
   }
 }
-function writePending(videoId: number | null) {
+function savePending(ids: number[]) {
   try {
-    if (videoId == null) localStorage.removeItem(PENDING_KEY)
-    else localStorage.setItem(PENDING_KEY, String(videoId))
+    if (ids.length === 0) localStorage.removeItem(PENDING_KEY)
+    else localStorage.setItem(PENDING_KEY, JSON.stringify(ids))
   } catch {
     /* 저장할 수 없는 브라우저면 pagehide 중단 요청만 쓴다 */
   }
 }
+const addPending = (id: number) => savePending([...readPending().filter((v) => v !== id), id])
+const removePending = (id: number) => savePending(readPending().filter((v) => v !== id))
 
 /** idle → starting(사전 검사) → uploading → completing → done(서버가 해설 만들기 시작) / failed(연결 끊김) */
 export type UploadPhase = 'idle' | 'starting' | 'uploading' | 'completing' | 'done' | 'failed'
@@ -47,6 +55,8 @@ export function useVideoUpload(onDone: (result: UploadCompleteResult) => void) {
   const controllerRef = useRef<AbortController | null>(null)
   const videoIdRef = useRef<number | null>(null)
   const draftRef = useRef<UploadDraft | null>(null)
+  /** 이 탭이 쥔 업로드 잠금을 푼다 (다 올렸거나 지웠을 때) */
+  const releaseLockRef = useRef<() => void>(() => {})
   const onDoneRef = useRef(onDone)
   useEffect(() => {
     onDoneRef.current = onDone
@@ -76,7 +86,9 @@ export function useVideoUpload(onDone: (result: UploadCompleteResult) => void) {
         setPhase('completing')
         const result = await uploadsApi.complete(videoId, parts)
         videoIdRef.current = null
-        writePending(null)
+        removePending(videoId)
+        releaseLockRef.current()
+        releaseLockRef.current = () => {}
         setPhase('done')
         onDoneRef.current(result)
       } catch {
@@ -95,11 +107,15 @@ export function useVideoUpload(onDone: (result: UploadCompleteResult) => void) {
       setLoaded(0)
       setEtaSec(null)
       try {
-        // 지난번에 탭을 닫아 끝나지 않은 업로드가 남아 있으면 먼저 정리한다 (안 하면 '올리는 중인 영상이 있어' 거절)
-        const leftover = readPending()
-        if (leftover != null) {
-          await uploadsApi.abort(leftover).catch(() => undefined)
-          writePending(null)
+        // 지난번에 탭을 닫아 끝나지 않은 업로드가 남아 있으면 먼저 정리한다 (안 하면 '올리는 중인 영상이 있어' 거절).
+        // 다른 탭에서 지금 올리는 중인 것은 건드리지 않는다
+        for (const leftover of readPending()) {
+          if (await uploadActiveElsewhere(leftover)) continue
+          const ok = await uploadsApi.abort(leftover).then(
+            () => true,
+            () => false,
+          )
+          if (ok) removePending(leftover)
         }
         const started = await uploadsApi.start({
           title: draft.title,
@@ -111,7 +127,9 @@ export function useVideoUpload(onDone: (result: UploadCompleteResult) => void) {
           copyrightAgreed: true,
         })
         videoIdRef.current = started.videoId
-        writePending(started.videoId)
+        // 잠금을 먼저 쥔 뒤에 적는다 (적힌 번호를 다른 탭이 보고 지우지 않게)
+        releaseLockRef.current = await holdUploadLock(started.videoId)
+        addPending(started.videoId)
         setPhase('uploading')
         void transfer(started.videoId, draft, started.partSizeBytes, started.partCount)
       } catch (err) {
@@ -133,8 +151,11 @@ export function useVideoUpload(onDone: (result: UploadCompleteResult) => void) {
         () => true,
         () => false,
       )
-      if (ok) writePending(null)
+      if (ok) removePending(id)
     }
+    // 이 탭은 더 이상 올리지 않는다. 중단이 실패했어도 잠금은 풀어야 다음 업로드 때 정리된다
+    releaseLockRef.current()
+    releaseLockRef.current = () => {}
   }, [])
 
   /** '업로드 멈추기' → 확인 → 멈추기 */

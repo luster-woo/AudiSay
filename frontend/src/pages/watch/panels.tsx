@@ -260,7 +260,9 @@ export function ScriptPanel({
                   label={`${formatPositionSpoken(l.startMs)}${isCurrent ? ', 지금 문장' : ''}${isDub ? ', 대사 번역' : ''}. ${l.text}`}
                 >
                   {isDub && (
-                    <span className="mr-2 rounded-sm border border-navy px-1.5 text-sm font-bold">
+                    // 해설 문장과 한눈에 갈리게: 굵은 테두리·넉넉한 안쪽 여백·굵은 글자 (글은 aria-label 이 읽는다).
+                    // 테두리는 글자색을 따른다: 고대비에서 지금 줄(노란 바탕)이 되어도 테두리가 바탕에 묻히지 않게
+                    <span className="mr-3 inline-block rounded-md border-2 border-current px-2.5 py-0.5 align-[0.0625rem] text-base leading-tight font-extrabold">
                       대사
                     </span>
                   )}

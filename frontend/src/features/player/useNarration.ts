@@ -105,6 +105,16 @@ export function useNarration({
     return found
   }, [lines, dubIds, state.currentMs])
 
+  /** 대본 탭에서 '지금 문장'으로 칠할 문장: 지금 시각을 지난 마지막 문장 (외국어 대사 번역도 포함) */
+  const currentScriptLine = useMemo<NarrationLine | null>(() => {
+    let found: NarrationLine | null = null
+    for (const l of lines) {
+      if (l.startMs > state.currentMs) break
+      found = l
+    }
+    return found
+  }, [lines, state.currentMs])
+
   // 1 을 빼 둔다: 처음 시각(0초)에 딱 맞춰 시작하는 문장도 '아직 안 지난 문장'이어야 읽힌다
   const lastMsRef = useRef(state.currentMs - 1)
   /** 지금 걸려 있는 멈춤의 표. 멈춤이 겹치면 맨 나중 것만 영상을 다시 재생한다 */
@@ -117,6 +127,11 @@ export function useNarration({
   /** 외국어 대사 번역을 겹쳐 읽는 중인 수 (겹치면 마지막 것이 끝날 때 영상 소리를 되돌린다) */
   const duckingRef = useRef(0)
   const originalVolume = settings.originalVolume
+  /** 다 읽고 되돌릴 볼륨은 그 순간의 설정값 (읽는 사이에 '원래 소리'를 바꿨을 수 있다) */
+  const originalVolumeRef = useRef(originalVolume)
+  useEffect(() => {
+    originalVolumeRef.current = originalVolume
+  }, [originalVolume])
   /**
    * 재생 중이던 영상을 해설(또는 답·요약)을 읽느라 잠깐 멈춰 둔 상태인지.
    * 사용자 입장에선 '재생 중'이다: 재생 버튼 글자·K·'멈춰' 판단에 state.playing 과 함께 쓴다
@@ -226,7 +241,7 @@ export function useNarration({
       }
       void narrator.say(item).finally(() => {
         speakingImportance.current = null
-        if (isDub && --duckingRef.current === 0) controls.setVolume(originalVolume)
+        if (isDub && --duckingRef.current === 0) controls.setVolume(originalVolumeRef.current)
       })
       return true
     },
@@ -328,6 +343,8 @@ export function useNarration({
   return {
     lines,
     currentLine,
+    /** 대본 탭의 '지금 문장' (외국어 대사 번역도 포함) */
+    currentScriptLine,
     /** 재생 중이던 영상을 해설·답 때문에 잠깐 멈춰 둔 상태 (사용자 입장에선 재생 중) */
     holding,
     /** holding 과 같지만 지금 이 순간의 값 (렌더를 기다리지 않는다) */

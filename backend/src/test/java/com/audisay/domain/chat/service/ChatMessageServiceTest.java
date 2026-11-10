@@ -153,7 +153,7 @@ class ChatMessageServiceTest {
 
     @Test
     void 장면_후보는_3개까지만_준다() {
-        when(sceneSeeker.seek(eq(2L), eq(500L), eq("골 넣는"), eq(CHAT_LOG_ID), eq(0), any())).thenReturn(new SceneSeeker.Outcome(
+        when(sceneSeeker.seek(eq(2L), eq(500L), any(), eq(CHAT_LOG_ID), eq(0), any())).thenReturn(new SceneSeeker.Outcome(
                 List.of(hit(1, 10_000, "첫 골"), hit(2, 20_000, "두 번째 골"), hit(3, 30_000, "세 번째 골"),
                         hit(4, 40_000, "네 번째 골"), hit(5, 50_000, "다섯 번째 골")),
                 SeekSource.KEYWORD));

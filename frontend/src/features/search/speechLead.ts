@@ -18,3 +18,16 @@ const SCREEN_CHANGE_MS = 800
 export function afterScreenChangeMs(text: string) {
   return screenReaderLeadMs(text) + SCREEN_CHANGE_MS
 }
+
+/**
+ * '띠' 소리 전 기다림 (홈 음성 검색 · 영상 화면의 말로 질문하기). 위의 어림은 느린 낭독 속도 기준이라 '띠'까지 3~4초가 걸려
+ * 너무 늦다는 의견이 있었다. 짧은 안내 한 줄만 읽으면 되므로 보통 속도 기준으로 짧게 어림한다
+ */
+const BEEP_FOCUS_MS = 400
+const BEEP_PER_CHAR_MS = 70
+const BEEP_MAX_MS = 2500
+
+export function beepLeadMs(text: string) {
+  const chars = text.replace(/\s/g, '').length
+  return Math.min(BEEP_MAX_MS, BEEP_FOCUS_MS + chars * BEEP_PER_CHAR_MS)
+}

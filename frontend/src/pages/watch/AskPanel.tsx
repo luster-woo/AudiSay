@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/Button'
 import { cn } from '@/components/ui/cn'
 import { useAnnouncer } from '@/features/announcer/context'
 import { MIC_MESSAGES } from '@/features/search/micPermission'
-import { screenReaderLeadMs } from '@/features/search/speechLead'
+import { beepLeadMs } from '@/features/search/speechLead'
 import { MAX_RECORD_SEC, VOICE_LABEL, useVoiceRecorder } from '@/features/search/useVoiceRecorder'
 import { useShortcutEntry } from '@/features/shortcuts/context'
 import { formatClock } from '@/utils/time'
@@ -61,7 +61,8 @@ export function AskPanel({
 
   const voice = useVoiceRecorder({
     onResult: (heard) => {
-      setText(heard)
+      // 알아들은 말은 입력칸에 남기지 않고 바로 보낸다 (보낸 말은 대화 칸 '나' 말풍선에 보인다)
+      setText('')
       onSubmit(heard, 'VOICE')
     },
     onUnavailable: (reason) => {
@@ -87,7 +88,7 @@ export function AskPanel({
       prepare: () => {
         onListenStart()
         announce(intro)
-        return screenReaderLeadMs(intro)
+        return beepLeadMs(intro)
       },
     })
   }, [busy, voice, onListenStart, announce])
@@ -257,9 +258,10 @@ export function AskPanel({
                 취소
               </Button>
             </div>
-            <p className="mt-4 text-ink-muted">
-              1분이 지나면 자동으로 끝나요. 말을 마치면 질문으로 보내고, 답이 끝나면 영상을 다시
-              재생해요.
+            <p className="mt-4 break-keep text-ink-muted">
+              {
+                '1분이 지나면 자동으로 끝나요. 말을 마치면 질문으로 보내고, 답이 끝나면 영상을 다시 재생해요.'
+              }
             </p>
           </div>
         )}

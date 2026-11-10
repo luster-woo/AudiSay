@@ -207,18 +207,22 @@ export function Player({ video }: { video: VideoDetail }) {
   /* ── 30초 요약 (NAV-06) ── */
   // 요약을 들려줄 때마다 올라가는 번호. 멈추거나 처음부터 다시 들으면 올라가서, 이전 요약의 남은 단계를 건너뛴다
   const summaryGenRef = useRef(0)
-  /** 요약을 들려준다. 끝까지 들었으면 true, 중간에 멈췄으면(건너뛰기·다시 듣기) false */
+  /**
+   * 요약을 들려준다. 끝까지 들었으면 true, 중간에 멈췄으면(건너뛰기·다시 듣기) false.
+   * said 가 없으면(요약 창에서 Enter·버튼으로 직접 고름) 안내 없이 바로 요약 소리를 낸다:
+   * 안내를 낭독기가 다 읽을 때까지 3초쯤 기다리면 Enter 가 안 먹은 것처럼 느껴지고, 그사이 다시 누르면 처음부터 또 기다린다
+   */
   const playSummary = useCallback(
-    async (said: string) => {
+    async (said: string | null) => {
       if (!summary) {
         announce('이 영상은 요약이 없어요.')
         return false
       }
       const gen = ++summaryGenRef.current
-      announce(said)
+      if (said) announce(said)
       const say = async () => {
         // 안내를 다 들은 뒤에 요약 소리를 낸다. 기다리는 중 멈췄으면 요약은 내지 않는다
-        await waitForReader(said)
+        if (said) await waitForReader(said)
         if (summaryGenRef.current !== gen) return
         await narrator.say({
           text: summary.summary.text,
@@ -285,7 +289,7 @@ export function Player({ video }: { video: VideoDetail }) {
     if (phase === 'playing') stopSummary()
     setDecided('playing')
     setSummaryInDialog(true)
-    void playSummary('요약을 들려 드릴게요.').then((done) => {
+    void playSummary(null).then((done) => {
       if (!done) return // 건너뛰기·다시 듣기로 멈췄으면 그쪽에서 처리한다
       setDecided('done')
       announce('요약이 끝났어요. 다시 들으려면 Enter, 닫으려면 Esc.')
@@ -458,7 +462,7 @@ export function Player({ video }: { video: VideoDetail }) {
         case 'OPEN_SCRIPT':
           setEnlarged(false)
           setTab('script')
-          announce('해설 대본을 열었어요. 입력칸에서 Tab을 세 번 누르면 대본 탭이에요.')
+          announce('해설 문장을 열었어요. 입력칸에서 Tab을 세 번 누르면 해설 탭이에요.')
           return true
         case 'OPEN_HISTORY':
           // 질문 기록은 대화 칸에 늘 보인다
@@ -652,8 +656,8 @@ export function Player({ video }: { video: VideoDetail }) {
     setEnlarged((v) => !v)
     announce(
       enlarged
-        ? '작게 보기로 돌아왔어요. 목차와 대본이 다시 보여요.'
-        : '크게 보기로 바꿨어요. 목차와 대본은 숨기고 질문만 오른쪽에 남겼어요. Esc를 누르면 원래대로 돌아가요.',
+        ? '작게 보기로 돌아왔어요. 목차와 해설이 다시 보여요.'
+        : '크게 보기로 바꿨어요. 목차와 해설은 숨기고 질문만 오른쪽에 남겼어요. Esc를 누르면 원래대로 돌아가요.',
     )
   }
   useEffect(() => {
@@ -664,7 +668,7 @@ export function Player({ video }: { video: VideoDetail }) {
       if (ask.stopAnswer()) return
       if (enlarged) {
         setEnlarged(false)
-        announce('작게 보기로 돌아왔어요. 목차와 대본이 다시 보여요.')
+        announce('작게 보기로 돌아왔어요. 목차와 해설이 다시 보여요.')
       }
     }
     window.addEventListener('keydown', onKey)
@@ -698,15 +702,8 @@ export function Player({ video }: { video: VideoDetail }) {
   const descError = descriptionQ.error
   const playbackError = playbackQ.error
 
-  const historyPanel = ask.pending ? (
-    <CandidatesPanel
-      utterance={ask.pending.utterance}
-      videoTimeMs={ask.pending.videoTimeMs}
-      candidates={ask.pending.candidates}
-      onChoose={ask.chooseCandidate}
-      onNone={ask.dismissCandidates}
-    />
-  ) : (
+  // 장면 후보를 고르는 중이면 질문 기록 끝에 같은 모양(나 + AudiSay 답)으로 붙는다
+  const historyPanel = (
     <HistoryPanel
       entries={ask.entries}
       onReplay={ask.replay}
@@ -718,6 +715,18 @@ export function Player({ video }: { video: VideoDetail }) {
         // 버튼이 사라지며 포커스가 본문으로 빠지지 않게 입력칸으로 (Esc 로 멈출 때와 같은 자리)
         if (ask.stopAnswer()) inputRef.current?.focus()
       }}
+      tail={
+        ask.pending && (
+          <CandidatesPanel
+            key={ask.pending.chatLogId}
+            utterance={ask.pending.utterance}
+            videoTimeMs={ask.pending.videoTimeMs}
+            candidates={ask.pending.candidates}
+            onChoose={ask.chooseCandidate}
+            onNone={ask.dismissCandidates}
+          />
+        )
+      }
     />
   )
 
@@ -732,8 +741,8 @@ export function Player({ video }: { video: VideoDetail }) {
         'lg:grid-rows-[auto_auto_1fr]',
         // 크게 보기: 화면 양옆 여백까지 써서 영상을 넓게
         enlarged
-          ? 'gap-x-[49px] gap-y-5 lg:-mx-10 lg:grid-cols-[minmax(0,1fr)_380px]'
-          : 'gap-x-10 gap-y-5 lg:grid-cols-[minmax(0,1fr)_30rem]',
+          ? 'gap-x-[49px] gap-y-5 lg:-mx-10 lg:grid-cols-[minmax(0,1fr)_28rem]'
+          : 'gap-x-10 gap-y-5 lg:grid-cols-[minmax(0,1fr)_36rem]',
       )}
     >
       {/* 제목: 두 칸 위에 걸쳐 있어 아래 영상과 대화 칸의 윗선이 맞는다 */}
@@ -912,10 +921,10 @@ export function Player({ video }: { video: VideoDetail }) {
         </AskPanel>
       </aside>
 
-      {/* 목차와 대본: 눈으로는 영상 바로 아래(왼쪽 3행), 읽는 순서는 대화 칸 뒤. 두 목록은 같은 줄 모양(왼쪽 시각 · 오른쪽 글 · 지금은 노랑)이다 */}
+      {/* 목차와 해설: 눈으로는 영상 바로 아래(왼쪽 3행), 읽는 순서는 대화 칸 뒤. 두 목록은 같은 줄 모양(왼쪽 시각 · 오른쪽 글 · 지금은 노랑)이다 */}
       {!enlarged && (
         <Tabs
-          label="목차와 대본"
+          label="목차와 해설"
           appearance="buttons"
           value={tab}
           onChange={setTab}
@@ -941,7 +950,7 @@ export function Player({ video }: { video: VideoDetail }) {
             },
             {
               value: 'script',
-              label: '대본',
+              label: '해설',
               panel: <ScriptPanel lines={lines} current={currentLine} onPick={onPickLine} />,
             },
           ]}

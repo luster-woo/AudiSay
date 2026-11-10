@@ -32,7 +32,7 @@ public class LlmIntentClassifier {
             - SEEK_SCENE: 장면 내용으로 찾아 이동. slots {"query": 찾을 장면을 짧게}
             - SETTING: 재생 설정 변경. 값을 말했으면 {"settingKey": ..., "settingValue": 문자열}, 올리기·내리기만 말했으면 {"settingKey": ..., "direction": "UP" 또는 "DOWN"}
               숫자(direction 가능): detailLevel 1~3(해설 상세도, 자세히 UP·간단히 DOWN) / speechRate 0.5~2.5(말하기 속도, 빠르게 UP·천천히 DOWN) / originalVolume 0~100(영상 소리 크기) / fontSizeLevel 1~5(글자 크기)
-              값 고르기: narrationMode AUTO·WITH_VIDEO(영상과 함께 읽기)·PAUSE_AFTER(영상을 멈추고 읽기) / soundMix DIALOGUE_ONLY(해설 끄기)·DIALOGUE_AND_NARRATION(해설 켜기) / subtitleReading ALL·DIFFERENT_ONLY·OFF(자막 읽기) / seekStepSec 5·10·30(이동 단위 초) / summaryMode ASK·ALWAYS·NEVER(시작할 때 30초 요약) / highContrast true·false(고대비 화면)
+              값 고르기: narrationMode AUTO·WITH_VIDEO(영상과 함께 읽기)·PAUSE_AFTER(영상을 멈추고 읽기) / soundMix DIALOGUE_ONLY(해설 끄기)·DIALOGUE_AND_NARRATION(해설 켜기) / subtitleReading ALL·DIFFERENT_ONLY·OFF(자막 읽기) / translationReading true·false(외국어 대사 번역 읽기) / seekStepSec 5·10·30(이동 단위 초) / summaryMode ASK·ALWAYS·NEVER(시작할 때 30초 요약) / highContrast true·false(고대비 화면)
             - ACTION: 기능 실행. slots {"actionCode": ...}
               PLAY, PAUSE, CURRENT_POSITION(지금 위치·몇 분인지·얼마나 남았는지), NEXT_SCENE, PREV_SCENE, PLAY_SUMMARY(영상 전체 30초 요약 듣기), READ_DETAIL(화면 글자 자세히), HELP(도움말·쓸 수 있는 말), OPEN_CHAPTERS, OPEN_SCRIPT, OPEN_HISTORY, FAVORITE_ADD, FAVORITE_REMOVE, REPLAY_TUTORIAL, REPEAT_LAST(방금 읽은 해설·답변 다시), UNDO_SEEK(이동 전 위치로 되돌리기), STOP_SPEAKING(읽는 음성만 멈춤)
             - SEARCH_VIDEO: 지금 영상이 아닌 다른 영상을 찾아 달라는 말. slots {"query": 검색어만}

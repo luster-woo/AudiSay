@@ -10,6 +10,7 @@ public record LineResponse(
         Integer gapEndMs,
         Integer importance,
         String text,
+        String lineType,
         String audioUrl,
         Integer audioDurationMs
 ) {
@@ -22,6 +23,7 @@ public record LineResponse(
                 line.getGapEndMs(),
                 line.getImportance().intValue(),
                 line.getText(),
+                line.getLineType().name(),
                 audioUrl,
                 line.getAudioDurationMs()
         );

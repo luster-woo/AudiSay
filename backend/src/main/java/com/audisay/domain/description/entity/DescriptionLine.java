@@ -2,6 +2,8 @@ package com.audisay.domain.description.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -50,6 +52,11 @@ public class DescriptionLine {
     @Column(nullable = false)
     private String text;
 
+    /** 화면 해설(NARRATION) / 외국어 대사 번역(DIALOGUE). 칸이 생기기 전 해설은 모두 NARRATION(DubLines가 글로 한 번 더 가른다) */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 10)
+    private LineType lineType = LineType.NARRATION;
+
     @Column(length = 500)
     private String audioKey;
 
@@ -87,4 +94,4 @@ public class DescriptionLine {
         this.audioKey = null;
         this.audioDurationMs = null;
     }
-}
+}

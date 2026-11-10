@@ -163,3 +163,12 @@ def test_spread_does_not_push_a_line_into_the_middle_of_dialogue():
     spread(lines, talk, 60_000)
     assert lines[1]["startMs"] == 8000
     assert lines[1]["gapEndMs"] == 60_000
+
+
+def test_dub_lines_are_stored_as_dialogue_type():
+    from app.pipeline.merge import line_type
+    f = normalize(_foreign_raw(), 15, "gemini-3.5-flash", 190_000)
+    plan = assemble(f, [{**build_chunk(f, 0, 0, 190_000), "chunkIndex": 0}])
+    types = {x["text"]: line_type(x) for x in plan.lines}
+    assert types["총독: 금일 5월 15일."] == "DIALOGUE"
+    assert {t for x, t in types.items() if "DIALOGUE_DUB" not in next(y for y in plan.lines if y["text"] == x)["flags"]} == {"NARRATION"}

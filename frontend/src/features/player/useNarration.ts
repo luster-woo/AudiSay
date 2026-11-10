@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import type { Description, NarrationLine, Scene, ScreenText, UserSettings } from '@/api/types'
+import { dubEndMs, isDubLine } from './dubLines'
 import { estimateSpeechMs, type Narrator } from './Narrator'
 import type { PlayerControls, PlayerState } from './usePlayerSource'
+
+/** 외국어 대사 번역은 원래 대사 끝을 이만큼 넘겨 읽어도 영상을 멈추지 않는다 (번역이 원문보다 조금 길다) */
+const DUB_SLACK_MS = 1500
+/** 외국어 대사 번역을 겹쳐 읽는 동안 영상 소리를 이만큼으로 줄인다 (원래 대사가 뒤에서 작게 들리게) */
+const DUB_DUCK_RATIO = 0.3
 
 /** 시각을 넘어선 것으로 치지 않을 큰 이동(재생바 조작) 기준 */
 const JUMP_MS = 2000
@@ -64,20 +70,40 @@ export function useNarration({
         .sort((a, b) => a.startMs - b.startMs || a.detailLevel - b.detailLevel),
     [description, level],
   )
+  /**
+   * 외국어 대사를 읽어 주는 문장(해설이 아님) → 겹쳐 읽을 수 있는 끝 시각(원래 대사 끝).
+   * '해설' 설정 대신 '외국어 번역 읽기' 설정을 따르고, 해설 상자에는 띄우지 않는다
+   */
+  const dubEnds = useMemo(() => {
+    const dialogues = description?.dialogues ?? []
+    return new Map(
+      lines.filter((l) => isDubLine(l, dialogues)).map((l) => [l.lineId, dubEndMs(l, dialogues)]),
+    )
+  }, [description, lines])
+  const dubIds = useMemo(() => new Set(dubEnds.keys()), [dubEnds])
+  /** 이 문장을 지금 설정에서 읽는가 */
+  const willRead = useCallback(
+    (line: NarrationLine) =>
+      // 설정 칸이 없는 서버(배포 전)에서는 기본값(켜기)
+      dubIds.has(line.lineId)
+        ? settings.translationReading !== false
+        : settings.soundMix !== 'DIALOGUE_ONLY',
+    [dubIds, settings.translationReading, settings.soundMix],
+  )
   const screenTexts = useMemo(
     () => [...(description?.screenTexts ?? [])].sort((a, b) => a.startMs - b.startMs),
     [description],
   )
 
-  /** 화면 '해설' 상자에 보일 문장: 지금 시각을 지난 마지막 문장 */
+  /** 화면 '해설' 상자에 보일 문장: 지금 시각을 지난 마지막 해설 문장 (외국어 대사 번역은 해설이 아니라 뺀다) */
   const currentLine = useMemo<NarrationLine | null>(() => {
     let found: NarrationLine | null = null
     for (const l of lines) {
       if (l.startMs > state.currentMs) break
-      found = l
+      if (!dubIds.has(l.lineId)) found = l
     }
     return found
-  }, [lines, state.currentMs])
+  }, [lines, dubIds, state.currentMs])
 
   // 1 을 빼 둔다: 처음 시각(0초)에 딱 맞춰 시작하는 문장도 '아직 안 지난 문장'이어야 읽힌다
   const lastMsRef = useRef(state.currentMs - 1)
@@ -88,6 +114,9 @@ export function useNarration({
   const playingRef = useRef(state.playing)
   const speakingImportance = useRef<number | null>(null)
   const coveredWarned = useRef(false)
+  /** 외국어 대사 번역을 겹쳐 읽는 중인 수 (겹치면 마지막 것이 끝날 때 영상 소리를 되돌린다) */
+  const duckingRef = useRef(0)
+  const originalVolume = settings.originalVolume
   /**
    * 재생 중이던 영상을 해설(또는 답·요약)을 읽느라 잠깐 멈춰 둔 상태인지.
    * 사용자 입장에선 '재생 중'이다: 재생 버튼 글자·K·'멈춰' 판단에 state.playing 과 함께 쓴다
@@ -151,27 +180,38 @@ export function useNarration({
   )
 
   /**
-   * 문장 하나를 해설 방식대로 읽는다. 읽기 시작했으면 true, '대사만' 설정이라 읽지 않으면 false.
+   * 문장 하나를 해설 방식대로 읽는다. 읽기 시작했으면 true, 설정상 읽지 않으면 false
+   * (해설은 '해설 끄기', 외국어 대사 번역은 '외국어 번역 읽기 끄기').
    * onTick 이 시각을 지날 때 부르고, 대본에서 문장을 골랐을 때(readLine)도 같은 길을 탄다.
    */
   const speakLine = useCallback(
     (line: NarrationLine): boolean => {
-      if (settings.soundMix === 'DIALOGUE_ONLY') return false
+      if (!willRead(line)) return false
       // 이 문장은 지금 읽으므로, 다음 tick 이 시각을 지났다고 또 읽지 않게 센 자리를 넘겨 둔다
       lastMsRef.current = Math.max(lastMsRef.current, line.startMs)
       const rate = settings.speechRate
       const needMs = (line.audioDurationMs ?? estimateSpeechMs(line.text)) / rate
       const gapMs = line.gapEndMs == null ? 0 : line.gapEndMs - line.startMs
       const mode = settings.narrationMode
-      const mustPause = mode === 'PAUSE_AFTER' || (mode === 'AUTO' && needMs > gapMs + 300)
+      // 외국어 대사 번역: 빈 구간이 아니라 원래 대사 위에 겹쳐 읽는다(더빙). 대사 끝을 크게 넘을 때만 멈춘다
+      const isDub = dubEnds.has(line.lineId)
+      const dubEnd = dubEnds.get(line.lineId)
+      const fits = isDub
+        ? dubEnd != null && needMs <= dubEnd - line.startMs + DUB_SLACK_MS
+        : needMs <= gapMs + 300
+      // '멈추고'도 번역은 대사 흐름에 맞춰 겹쳐 읽는다(너무 길 때만 멈춤). 해설만 문장마다 멈춘다
+      const mustPause = isDub
+        ? mode !== 'WITH_VIDEO' && !fits
+        : mode === 'PAUSE_AFTER' || (mode === 'AUTO' && !fits)
       const item = {
         text: line.text,
         audioUrl: line.audioUrl,
         rate,
         refreshUrl: () => refreshAudioUrl(line.lineId),
       }
-      // 자동: 앞 문장을 아직 읽는 중이면(1초 간격·같은 시각 문장) 버리지 않고, 영상을 멈춘 채 이어서 읽는다
-      if (mustPause || (mode === 'AUTO' && narrator.busy)) {
+      // 자동(번역은 '멈추고'도): 앞 문장을 아직 읽는 중이면(1초 간격·같은 시각 문장) 버리지 않고, 영상을 멈춘 채 이어서 읽는다
+      const queueWhenBusy = mode === 'AUTO' || (isDub && mode === 'PAUSE_AFTER')
+      if (mustPause || (queueWhenBusy && narrator.busy)) {
         void holdWhile(() => narrator.say(item), { queue: true })
         return true
       }
@@ -180,13 +220,21 @@ export function useNarration({
         narrator.stop()
       }
       speakingImportance.current = line.importance
+      // 영상 위에 겹쳐 읽는 번역은 그동안 영상 소리를 줄인다
+      if (isDub && duckingRef.current++ === 0) {
+        controls.setVolume(Math.round(originalVolume * DUB_DUCK_RATIO))
+      }
       void narrator.say(item).finally(() => {
         speakingImportance.current = null
+        if (isDub && --duckingRef.current === 0) controls.setVolume(originalVolume)
       })
       return true
     },
     [
-      settings.soundMix,
+      willRead,
+      dubEnds,
+      controls,
+      originalVolume,
       settings.speechRate,
       settings.narrationMode,
       holdWhile,
@@ -288,7 +336,11 @@ export function useNarration({
     interrupt,
     readDetail,
     markSeek,
-    /** 사용자가 고른 문장을 지금 읽는다 (대본 탭). 해설 방식을 따르고, 다음 tick 이 또 읽지 않는다. '대사만'이면 false */
+    /** 사용자가 고른 문장을 지금 읽는다 (대본 탭). 해설 방식을 따르고, 다음 tick 이 또 읽지 않는다. 설정상 안 읽으면 false */
     readLine: speakLine,
+    /** 이 문장을 지금 설정에서 읽는가 (해설 끄기·외국어 번역 읽기 끄기면 false) */
+    willRead,
+    /** 외국어 대사를 한국어로 읽어 주는 문장 id (대본에서 '대사'로 보인다) */
+    dubIds,
   }
 }

@@ -343,7 +343,9 @@ describe('음성 검색', () => {
       await screen.findByText(/"오리 영상 찾아 줘"처럼 문장으로 말해도 돼요/),
     ).toBeInTheDocument()
     await userEvent.click(await screen.findByRole('button', { name: '말 끝내기' }))
-    await waitFor(() => expect(router.state.location.search).toBe('?q=%EA%B3%A0%EC%96%91%EC%9D%B4'))
+    await waitFor(() =>
+      expect(router.state.location.search).toBe(`?q=${encodeURIComponent('오리')}`),
+    )
     expect(chatApi.send).toHaveBeenCalledWith(
       expect.objectContaining({
         videoId: null,

@@ -102,3 +102,34 @@ def test_spread_moves_lines_past_previous_reading():
     assert starts[2] == starts[1] + 1000 and lines[2]["gapEndMs"] is None  # 2번은 빈 구간에 안 들어가 멈추고 읽음 → 1초 뒤(틈 0.26초)
     assert starts[3:] == [120_000, 121_000]  # 같은 시각 두 문장을 띄운다
     assert all(a < b for a, b in zip(starts, starts[1:]))
+
+
+def _foreign_raw():
+    return {**RAW, "dialogue": [
+        {"start": "00:05", "end": "00:09", "speaker": "김철수", "text": "오늘은 라면을 끓여 볼게요.", "language": "ko", "translation": None},
+        {"start": "00:20", "end": "00:24", "speaker": "총독", "text": "本日は五月十五日。", "language": "ja", "translation": "금일 5월 15일."},
+        {"start": "00:30", "end": "00:50", "speaker": "태웅 (통역관)", "text": "His Excellency would like to make a toast. ...",
+         "language": "en", "translation": "총독 각하의 건배사입니다. 조선 최초의 기송관이 성공적으로 개통되었습니다. "
+                                          "이는 조선 근대화의 새로운 이정표이며 만선 번영의 첫걸음이 될 것입니다."},
+        {"start": "00:50", "end": "00:52", "speaker": "태웅 (통역관)", "text": "Thank you.", "language": "en", "translation": "이상입니다."},
+        {"start": "00:55", "end": "00:56", "speaker": "총독", "text": "OK!", "language": "en", "translation": None},
+    ]}
+
+
+def test_foreign_dialogue_is_read_in_korean_at_its_time():
+    f = normalize(_foreign_raw(), 15, "gemini-3.5-flash", 190_000)
+    ja = f["dialogues"][1]
+    assert (ja["text"], ja["original"], ja["dub"]) == ("금일 5월 15일.", "本日は五月十五日。", True)
+    assert "dub" not in f["dialogues"][0] and "dub" not in f["dialogues"][4]  # 한국어, 번역 없는 한두 마디
+
+    lines = [x for x in build_chunk(f, 0, 0, 190_000)["lines"] if "DIALOGUE_DUB" in x["flags"]]
+    assert [(x["startMs"], x["text"]) for x in lines] == [
+        (20_000, "총독: 금일 5월 15일."),
+        (30_000, "태웅: 총독 각하의 건배사입니다. 조선 최초의 기송관이 성공적으로 개통되었습니다."),  # 60자 안에서 문장끼리 묶음
+        (40_123, "이는 조선 근대화의 새로운 이정표이며 만선 번영의 첫걸음이 될 것입니다."),
+        (50_000, "이상입니다."),  # 같은 사람이 이어 말하면 이름을 다시 붙이지 않는다
+    ]
+    assert all(x["detailLevel"] == 1 and x["gapEndMs"] is None for x in lines)
+    # 붙어 있어도 해설 문장과 한 문장으로 묶지 않는다
+    near = join_near([_ln(1, 19_500, "총독이 단상에 선다."), dict(lines[0])])
+    assert len(near) == 2

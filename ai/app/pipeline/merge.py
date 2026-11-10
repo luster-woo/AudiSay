@@ -26,7 +26,7 @@ from app.db import Db
 from app.errors import WorkerError
 from app.mq.envelope import Envelope
 from app.mq.worker import Events
-from app.pipeline.describe import join_near, spread
+from app.pipeline.describe import DUB_FLAG, join_near, spread
 from app.pipeline.keywords import extract
 from app.storage import Storage
 
@@ -145,8 +145,12 @@ def assemble(full: dict, chunks: list[dict], covered_until_ms: int | None = None
         x["lineIndex"] = i
     plan.lines = lines
 
+    # 외국어 대사를 읽어 주는 문장(DIALOGUE_DUB)은 해설이 아니라 대사 번역이다. 플레이어는 description_lines로 읽어 주지만
+    # 목차 요약·키워드·장면 설명에는 넣지 않는다(이 글들은 합쳐 저장돼 BE 챗봇이 나중에 가를 수 없다. 대사는 transcript_segments에 따로 있음)
+    narration = [x for x in lines if DUB_FLAG not in (x.get("flags") or [])]
+
     def chapter(idx: int, a: int, b: int, title: str) -> None:
-        in_range = [x for x in lines if a <= x["startMs"] < b]
+        in_range = [x for x in narration if a <= x["startMs"] < b]
         plan.chapters.append({"chapterIndex": idx, "startMs": a, "endMs": b, "title": title[:100],
                               "summary": " ".join(x["text"] for x in in_range if x["detailLevel"] <= 2) or None,
                               "keywords": extract(title, [x["text"] for x in in_range])})
@@ -169,7 +173,7 @@ def assemble(full: dict, chunks: list[dict], covered_until_ms: int | None = None
             continue
         n += 1
         prev_end = b
-        in_scene = [x for x in lines if a <= x["startMs"] < b]
+        in_scene = [x for x in narration if a <= x["startMs"] < b]
         people = []
         for p in s.get("people", []):
             name = p.get("name") if labels else trusted_name(p.get("name"), p.get("basis"))

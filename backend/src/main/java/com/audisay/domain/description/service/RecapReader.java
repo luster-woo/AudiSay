@@ -6,6 +6,7 @@ import com.audisay.domain.description.entity.DescriptionLine;
 import com.audisay.domain.description.repository.ChapterRepository;
 import com.audisay.domain.description.repository.DescriptionLineRepository;
 import com.audisay.domain.description.repository.DescriptionRepository;
+import com.audisay.domain.description.repository.TranscriptSegmentRepository;
 import com.audisay.domain.description.service.RecapContext.Part;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -31,6 +32,7 @@ public class RecapReader {
     private final DescriptionRepository descriptionRepository;
     private final ChapterRepository chapterRepository;
     private final DescriptionLineRepository descriptionLineRepository;
+    private final TranscriptSegmentRepository transcriptSegmentRepository;
 
     public Optional<RecapContext> read(Long descriptionId, int nowMs) {
         Optional<Description> description = descriptionRepository.findById(descriptionId);
@@ -47,7 +49,11 @@ public class RecapReader {
             if (chapter.getEndMs() <= now) {
                 parts.add(new Part(chapter.getStartMs(), chapter.getTitle(), cut(chapter.getSummary(), perPart)));
             } else {
-                List<DescriptionLine> lines = descriptionLineRepository.findInRange(descriptionId, chapter.getStartMs(), now);
+                // 외국어 대사를 읽어 주는 문장(DubLines)은 줄거리가 아니라 대사라 뺀다
+                List<DescriptionLine> lines = DubLines.remove(
+                        descriptionLineRepository.findInRange(descriptionId, chapter.getStartMs(), now),
+                        transcriptSegmentRepository.findInRangeWithCharacter(descriptionId,
+                                Math.max(0, chapter.getStartMs() - DubLines.LOOKBACK_MS), now));
                 String text = lines.stream().map(DescriptionLine::getText).collect(Collectors.joining(" "));
                 parts.add(new Part(chapter.getStartMs(), null, cut(text, perPart)));
             }

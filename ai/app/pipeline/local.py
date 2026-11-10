@@ -98,32 +98,76 @@ def make_files(original: Path, work: Path) -> dict:
     return {**info, "remuxed": simple, "playback": playback, "wav": wav, "thumb": thumb}
 
 
+def video_end_sec(path: Path) -> float | None:
+    """영상 트랙이 끝나는 시각. 소리 트랙이 더 길면 파일 길이(format)보다 짧다(데모 Hanbid: 파일 155.8초, 영상 154.8초)."""
+    r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=duration", "-of", "csv=p=0",
+                        str(path)], capture_output=True, text=True)
+    try:
+        return float(r.stdout.strip())
+    except ValueError:
+        return None
+
+
+GRAB_WORKERS = 8
+
+
+def _grab_all(grab, jobs: list) -> None:
+    """사진 한 장마다 ffmpeg 한 번(앞부분만 찾아 읽어 빠름)을 여러 개 동시에 돌린다.
+    차례로 하면 장당 약 0.12초라 150초 영상의 장면 사진 68장에 8초, 줄거리 사진 50장에 7초 걸렸다(2026-11-04 데모 실측)."""
+    with ThreadPoolExecutor(max_workers=GRAB_WORKERS) as pool:
+        list(pool.map(grab, jobs))
+
+
 def frames(playback: Path, work: Path, scenes: list[dict], per_scene=4) -> list[list[Path]]:
-    """장면마다 대표 프레임 n장. per_scene은 숫자 또는 (장면 길이 ms → 장 수) 함수."""
+    """장면마다 대표 프레임 n장. per_scene은 숫자 또는 (장면 길이 ms → 장 수) 함수.
+    영상 트랙이 끝난 뒤 시각은 뽑지 못하므로 끝 0.2초 앞까지로 자르고, 한 장이 실패하면 1초 앞에서 한 번 더 뽑는다.
+    그래도 실패한 사진은 건너뛴다(사진 한 장 때문에 작업 전체가 TRANSCODE_FAILED가 되던 것, 2026-11-02 데모 Hanbid).
+    사진이 하나도 없는 장면은 앞 장면의 마지막 사진을 쓴다."""
     out_dir = work / "frames"
     out_dir.mkdir(parents=True, exist_ok=True)
-    result = []
+    end = video_end_sec(playback)
+    plan: list[list[tuple[Path, float]]] = []
     for i, s in enumerate(scenes):
         a, b = s["startMs"] / 1000, s["endMs"] / 1000
-        paths = []
         n = per_scene(s["endMs"] - s["startMs"]) if callable(per_scene) else per_scene
+        shots = []
         for k in range(n):
             t = a + (b - a) * (k + 0.5) / n
-            p = out_dir / f"s{i:03d}_{n}_{k}.jpg"
-            if not p.exists():
-                _ff("-ss", f"{t:.2f}", "-i", str(playback), "-frames:v", "1", "-vf", "scale=768:-2", "-q:v", "4", str(p))
-            paths.append(p)
+            if end:
+                t = min(t, max(0.0, end - 0.2))
+            shots.append((out_dir / f"s{i:03d}_{n}_{k}.jpg", t))
+        plan.append(shots)
+
+    def grab(job: tuple[Path, float]) -> None:
+        p, t = job
+        for tt in (t, max(0.0, t - 1.0)):
+            if p.exists():
+                break
+            try:
+                _ff("-ss", f"{tt:.2f}", "-i", str(playback), "-frames:v", "1", "-vf", "scale=768:-2", "-q:v", "4", str(p))
+            except WorkerError:
+                p.unlink(missing_ok=True)
+
+    _grab_all(grab, [j for shots in plan for j in shots])
+    result: list[list[Path]] = []
+    for shots in plan:
+        paths = [p for p, _ in shots if p.exists()]
+        if not paths and result and result[-1]:
+            paths = [result[-1][-1]]
+        if not paths:
+            raise WorkerError("TRANSCODE_FAILED", "영상에서 장면 사진을 뽑지 못했어요")
         result.append(paths)
     return result
 
 
 def timeline_frames(playback: Path, work: Path, duration_ms: int, every_ms: int = 3000, limit: int = 72) -> list[tuple[int, Path]]:
     """영상 전체를 고르게 훑는 사진(줄거리 보기, H200 /story). 3초 간격, 많아야 72장(격자 8장 × 9칸).
-    영상이 길면 간격을 넓힌다. 실패한 시각(영상 트랙이 소리보다 먼저 끝난 끝부분 등)은 건너뛴다."""
+    영상이 길면 간격을 넓힌다. 영상 트랙이 끝난 뒤 시각은 넣지 않고, 실패한 시각은 건너뛴다."""
     out_dir = work / "timeline"
     out_dir.mkdir(parents=True, exist_ok=True)
+    end = video_end_sec(playback) or duration_ms / 1000
     step = max(every_ms, -(-duration_ms // limit))
-    plan = [(at, out_dir / f"t{at}.jpg") for at in range(step // 2, duration_ms, step)]
+    plan = [(at, out_dir / f"t{at}.jpg") for at in range(step // 2, int(end * 1000), step)]
 
     def grab(job: tuple[int, Path]) -> None:
         at, p = job
@@ -132,8 +176,7 @@ def timeline_frames(playback: Path, work: Path, duration_ms: int, every_ms: int 
         except WorkerError:
             p.unlink(missing_ok=True)
 
-    with ThreadPoolExecutor(max_workers=8) as pool:  # 사진 한 장에 ffmpeg 한 번(장당 약 0.1초)이라 여러 개를 함께 돌린다
-        list(pool.map(grab, plan))
+    _grab_all(grab, plan)
     return [(at, p) for at, p in plan if p.exists()]
 
 

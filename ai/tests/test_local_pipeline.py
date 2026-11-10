@@ -265,6 +265,35 @@ def test_engine_fallback_to_gemini_when_h200_fails(tmp_path):
         raise AssertionError("실패해야 함")
 
 
+def test_frames_survive_failed_shots(tmp_path, monkeypatch):
+    """영상 끝을 넘는 시각은 끝 0.2초 앞으로 당기고, 실패하면 1초 앞에서 한 번 더. 그래도 없으면 앞 장면의 마지막 사진을 쓴다."""
+    asked = []
+
+    def ff(*args):
+        t = float(args[1])
+        asked.append(t)
+        if t >= 8.7:  # 8.7초부터는 뽑히지 않는 영상
+            raise local.WorkerError("TRANSCODE_FAILED", "ffmpeg 실패")
+        Path(args[-1]).write_bytes(b"jpg")
+
+    monkeypatch.setattr(local, "_ff", ff)
+    monkeypatch.setattr(local, "video_end_sec", lambda path: 10.0)
+    scenes = [{"startMs": 0, "endMs": 8000}, {"startMs": 8000, "endMs": 10_000}, {"startMs": 10_000, "endMs": 12_000}]
+    shots = local.frames(tmp_path / "p.mp4", tmp_path, scenes, per_scene=2)
+    assert [len(g) for g in shots] == [2, 2, 1] and all(p.exists() for g in shots for p in g)
+    assert shots[2] == [shots[1][-1]] and max(asked) == 9.8  # 셋째 장면(영상 끝 뒤)은 둘째 장면의 마지막 사진
+    # 둘째 장면: 8.5초는 바로, 9.5초는 실패해 8.5초(1초 앞)에서 다시. 셋째 장면: 9.8초도 8.8초도 실패
+    assert sorted(asked) == [2.0, 6.0, 8.5, 8.5, 8.8, 8.8, 9.5, 9.8, 9.8]
+
+    monkeypatch.setattr(local, "_ff", lambda *a: (_ for _ in ()).throw(local.WorkerError("TRANSCODE_FAILED", "ffmpeg 실패")))
+    try:
+        local.frames(tmp_path / "p.mp4", tmp_path / "none", [{"startMs": 0, "endMs": 4000}])
+    except local.WorkerError as e:
+        assert e.code == "TRANSCODE_FAILED"
+    else:
+        raise AssertionError("실패해야 함")
+
+
 def test_small_playback_goes_to_gemini_as_is(tmp_path, monkeypatch):
     """한도 안의 재생용 파일은 사본을 만들지 않는다(ffmpeg를 부르지 않음). 넘으면 gemini.mp4 사본으로."""
     small = tmp_path / "playback.mp4"

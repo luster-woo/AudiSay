@@ -5,7 +5,7 @@
 >
 > | 데모(노트북) | 팀(EC2의 ai 컨테이너) |
 > |---|---|
-> | 노트북에서 `ssh -N h200`(LocalForward 127.0.0.1:8100) | EC2 호스트에서 같은 터널을 켜 둔다(`autossh` 또는 systemd). 컨테이너가 닿도록 docker 브리지 주소에 연다: `LocalForward 172.17.0.1:8100 127.0.0.1:8100`(0.0.0.0으로 열지 않는다). `docker-compose.prod.yml`의 ai에 `extra_hosts: ["host.docker.internal:host-gateway"]` |
+> | 노트북에서 `ssh -N h200`(LocalForward 127.0.0.1:8100) | EC2에서는 H200의 22번에 접속할 수 없어(교육장 내부망), **H200이 EC2로 접속하는 역방향 터널**을 켜 둔다: `ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -i ~/.ssh/ec2_tunnel -R 172.17.0.1:8100:127.0.0.1:8100 tunnel@13.124.245.3`. 리스너는 EC2의 docker 브리지 주소(172.17.0.1:8100)에만 연다(0.0.0.0으로 열지 않는다). EC2 쪽에는 전용 계정 `tunnel`, sshd `GatewayPorts clientspecified`, UFW 허용 규칙이 필요하다(포팅 매뉴얼 6-3). `docker-compose.prod.yml`의 ai에 `extra_hosts: ["host.docker.internal:host-gateway"]` |
 > | 노트북 `demo/.env` | 루트 `.env`: `INFERENCE_MODE=remote`, `H200_BASE_URL=http://host.docker.internal:8100`, `H200_TOKEN=<~/gpu_server/.secret 값>` |
 > | `scripts/check_h200.py` | `curl -H "Authorization: token $H200_TOKEN" $H200_BASE_URL/health` (ai 컨테이너 안에서) |
 >

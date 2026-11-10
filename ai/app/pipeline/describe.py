@@ -89,7 +89,9 @@ def dub_lines(dialogues: list[dict]) -> list[dict]:
         if not d.get("dub"):
             prev = None
             continue
-        speaker = (d.get("speaker") or "").split(" (")[0].strip() or None
+        # "김태웅(진영)" → "김태웅". Gemini가 모르는 사람을 문자열 "null"로 줄 때가 있다(2026-11-10 '100일의 거짓말')
+        speaker = re.sub(r"\s*\(.*?\)", "", d.get("speaker") or "").strip()
+        speaker = None if speaker.lower() in ("", "null", "none") else speaker
         parts: list[str] = []
         for s in SENTENCE_END.split(d["text"].strip()):
             if parts and len(parts[-1]) + 1 + len(s) <= MAX_CHARS:

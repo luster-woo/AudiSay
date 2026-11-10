@@ -109,11 +109,11 @@ def _foreign_raw():
     return {**RAW, "dialogue": [
         {"start": "00:05", "end": "00:09", "speaker": "김철수", "text": "오늘은 라면을 끓여 볼게요.", "language": "ko", "translation": None},
         {"start": "00:20", "end": "00:24", "speaker": "총독", "text": "本日は五月十五日。", "language": "ja", "translation": "금일 5월 15일."},
-        {"start": "00:30", "end": "00:50", "speaker": "태웅 (통역관)", "text": "His Excellency would like to make a toast. ...",
+        {"start": "00:30", "end": "00:50", "speaker": "태웅(진영)", "text": "His Excellency would like to make a toast. ...",
          "language": "en", "translation": "총독 각하의 건배사입니다. 조선 최초의 기송관이 성공적으로 개통되었습니다. "
                                           "이는 조선 근대화의 새로운 이정표이며 만선 번영의 첫걸음이 될 것입니다."},
         {"start": "00:50", "end": "00:52", "speaker": "태웅 (통역관)", "text": "Thank you.", "language": "en", "translation": "이상입니다."},
-        {"start": "00:55", "end": "00:56", "speaker": "총독", "text": "OK!", "language": "en", "translation": None},
+        {"start": "00:55", "end": "00:56", "speaker": "null", "text": "OK!", "language": "en", "translation": None},
     ]}
 
 
@@ -147,3 +147,9 @@ def test_dub_lines_are_read_but_kept_out_of_chapters_and_scenes():
     stored = [c["summary"] or "" for c in plan.chapters] + [s["sceneDescription"] for s in plan.scenes]
     assert stored and not any(d in t or d.split(": ", 1)[-1] in t for d in dubs for t in stored)
     assert not any("건배사" in k or "기송관" in k for c in plan.chapters for k in c["keywords"])
+
+
+def test_dub_speaker_drops_actor_name_and_null():
+    from app.pipeline.describe import dub_lines
+    d = lambda s, sp: {"startMs": s, "endMs": s + 1000, "speaker": sp, "text": "건배!", "dub": True}
+    assert [x["text"] for x in dub_lines([d(0, "김태웅(진영)"), d(2000, "null")])] == ["김태웅: 건배!", "건배!"]

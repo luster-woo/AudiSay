@@ -71,7 +71,7 @@ public class AnswerContextReader {
         int now = Math.max(0, nowMs);
         List<Scene> scenes = pick(sceneRepository.findByDescription_IdOrderBySceneIndexAsc(descriptionId), now);
         int from = scenes.isEmpty() ? now : Math.min(scenes.get(0).getStartMs(), now);
-        List<DescriptionLine> lines = descriptionLineRepository.findInRange(descriptionId, from, now);
+        List<DescriptionLine> lines = narrations(descriptionId, from, now);
         List<ScreenText> texts = screenTextRepository
                 .findByDescription_IdAndStartMsBetweenOrderByStartMsAsc(descriptionId, from, now);
         Set<ScreenText> appeared = hideUnfinishedTexts ? appeared(descriptionId, texts, now) : Set.of();
@@ -116,7 +116,7 @@ public class AnswerContextReader {
         List<Scene> scenes = sceneRepository.findByDescription_IdOrderBySceneIndexAsc(descriptionId).stream()
                 .filter(scene -> scene.getEndMs() > now)
                 .toList();
-        List<DescriptionLine> lines = descriptionLineRepository.findInRange(descriptionId, from, Integer.MAX_VALUE);
+        List<DescriptionLine> lines = narrations(descriptionId, from, Integer.MAX_VALUE);
         int textsFrom = scenes.isEmpty() ? from : Math.min(scenes.get(0).getStartMs(), from);
         List<ScreenText> texts = screenTextRepository
                 .findByDescription_IdAndStartMsBetweenOrderByStartMsAsc(descriptionId, textsFrom, Integer.MAX_VALUE).stream()
@@ -136,6 +136,19 @@ public class AnswerContextReader {
                         t.getText()))
                 .toList();
         return Optional.of(new FutureContext(description.get().getSummaryText(), sceneInfos, dialogues));
+    }
+
+    /**
+     * [fromMs, toMs]에서 시작하는 해설 문장. 외국어 대사를 한국어로 읽어 주는 문장(DubLines)은 대사와 같은 글이라 뺀다
+     * (지금 장면 해설 MAX_NARRATIONS 자리를 연설 번역이 다 차지해 화면 해설이 빠지지 않게. 대사는 dialogues로 따로 들어감)
+     */
+    private List<DescriptionLine> narrations(Long descriptionId, int fromMs, int toMs) {
+        List<DescriptionLine> lines = descriptionLineRepository.findInRange(descriptionId, fromMs, toMs);
+        if (lines.isEmpty()) {
+            return lines;
+        }
+        return DubLines.remove(lines, transcriptSegmentRepository.findInRangeWithCharacter(descriptionId,
+                Math.max(0, fromMs - DubLines.LOOKBACK_MS), toMs));
     }
 
     /** 질문한 시각에 끝나지 않은 화면 글자 중 해설·대사가 질문한 시각까지 읽은 것 */

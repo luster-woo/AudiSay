@@ -256,7 +256,7 @@ test('요약 묻기: 창이 열리고 요약 듣고 시작에 포커스. 건너�
   expect(say).not.toHaveBeenCalled()
 })
 
-test('요약 듣고 시작(Enter): 창과 버튼은 그대로 두고 요약을 바로 들려준다. 다 들은 뒤에도 창은 남고, 건너뛰기로 닫으면 재생 버튼에서 기다린다', async () => {
+test('요약 듣고 시작(Enter): 창과 버튼은 그대로 두고 요약을 바로 들려준다. 다 들으면 창을 닫고 재생 버튼에서 기다린다', async () => {
   const user = userEvent.setup()
   vi.mocked(afterScreenChangeMs).mockReturnValue(300)
   mockAll({ summaryMode: 'ASK' })
@@ -273,17 +273,12 @@ test('요약 듣고 시작(Enter): 창과 버튼은 그대로 두고 요약을 �
   expect(within(dialog).getByRole('button', { name: '건너뛰기' })).toBeInTheDocument()
   // Enter 를 누르면 기다리지 않고 바로 요약 소리를 낸다 (안내를 읽느라 몇 초 조용하면 Enter 가 안 먹은 것처럼 느껴진다)
   expect(say).toHaveBeenCalledWith(expect.objectContaining({ text: '그래프 수업 요약이에요.' }))
-  // 다 들어도 창은 그대로
+  // 다 들으면 창을 닫고 재생 버튼에서 기다린다 (재생은 하지 않는다)
   await waitFor(() =>
-    expect(band()).toHaveTextContent('요약이 끝났어요. 다시 들으려면 Enter, 닫으려면 Esc.'),
+    expect(band()).toHaveTextContent('요약이 끝났어요. Space를 누르면 재생해요.'),
   )
-  expect(dialog).toHaveAttribute('open')
-  expect(within(dialog).getByRole('button', { name: '요약 듣고 시작' })).toBeInTheDocument()
-
-  await user.click(within(dialog).getByRole('button', { name: '건너뛰기' }))
   await waitFor(() => expect(dialog).not.toHaveAttribute('open'))
   expect(screen.getByRole('button', { name: '재생' })).toHaveFocus()
-  await waitFor(() => expect(band()).toHaveTextContent('Space를 누르면 재생해요.'))
   expect(controls.play).not.toHaveBeenCalled()
   vi.mocked(afterScreenChangeMs).mockReturnValue(0)
 })

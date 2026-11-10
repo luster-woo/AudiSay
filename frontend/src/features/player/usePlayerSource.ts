@@ -77,6 +77,11 @@ export function usePlayerSource(
   const videoRef = useRef<HTMLVideoElement>(null)
   const ytHostRef = useRef<HTMLDivElement>(null)
   const ytRef = useRef<YT.Player | null>(null)
+  /**
+   * 유튜브를 한 번도 재생하지 않은 상태(시작 전·대기)에서 옮긴 위치. 이 상태의 seekTo 는 재생을 시작해 버리고,
+   * 곧바로 멈추면 이동이 무시돼 시각이 0으로 돌아온다. 그래서 위치만 기억해 두고 재생할 때 그 자리부터 튼다
+   */
+  const ytPendingSeekRef = useRef<number | null>(null)
   const [state, setState] = useState<PlayerState>({
     ready: false,
     playing: false,
@@ -177,6 +182,8 @@ export function usePlayerSource(
               durationMs: Math.round((player.getDuration() || fallbackDurationSec) * 1000),
             })
             poll = setInterval(() => {
+              // 재생 전에 옮겨 둔 위치가 있으면 그 시각을 그대로 보인다 (플레이어는 아직 0)
+              if (ytPendingSeekRef.current != null) return
               patch({ currentMs: Math.round(player.getCurrentTime() * 1000) })
             }, POLL_MS)
           },
@@ -184,6 +191,7 @@ export function usePlayerSource(
             const s = e.data
             // 자막 모듈은 재생이 시작될 때 다시 올라올 수 있어 그때마다 내린다
             if (s === YT.PlayerState.PLAYING) {
+              ytPendingSeekRef.current = null
               unloadCaptions(player)
               patch({ playing: true, ended: false })
             } else if (s === YT.PlayerState.ENDED) patch({ playing: false, ended: true })
@@ -204,6 +212,7 @@ export function usePlayerSource(
         /* 이미 지워진 iframe */
       }
       ytRef.current = null
+      ytPendingSeekRef.current = null
       host.replaceChildren()
     }
   }, [sourceType, youtubeVideoId, fallbackDurationSec, patch])
@@ -212,8 +221,13 @@ export function usePlayerSource(
   const controls = useMemo<PlayerControls>(
     () => ({
       play: () => {
-        if (sourceType === 'YOUTUBE') ytRef.current?.playVideo()
-        else void videoRef.current?.play().catch(() => undefined)
+        if (sourceType === 'YOUTUBE') {
+          const yt = ytRef.current
+          const pending = ytPendingSeekRef.current
+          // 재생 전에 옮겨 둔 위치부터 튼다 (시작 전 상태의 seekTo 는 그 자리에서 재생을 시작한다)
+          if (yt && pending != null) yt.seekTo(pending / 1000, true)
+          else yt?.playVideo()
+        } else void videoRef.current?.play().catch(() => undefined)
       },
       pause: () => {
         if (sourceType === 'YOUTUBE') ytRef.current?.pauseVideo()
@@ -225,9 +239,20 @@ export function usePlayerSource(
           const yt = ytRef.current
           // 유튜브 seekTo 는 끝남·대기 상태에서 부르면 재생까지 시작한다. 이동만 하고 멈춘 상태는 그대로 둔다
           const s = yt?.getPlayerState()
-          const wasPlaying = s === YT.PlayerState.PLAYING || s === YT.PlayerState.BUFFERING
-          yt?.seekTo(clamped / 1000, true)
-          if (yt && !wasPlaying) yt.pauseVideo()
+          const notStarted =
+            !yt ||
+            s == null ||
+            s === YT.PlayerState.UNSTARTED ||
+            s === YT.PlayerState.CUED ||
+            ytPendingSeekRef.current != null
+          if (notStarted) {
+            // 한 번도 재생하지 않았으면 플레이어는 건드리지 않고 위치만 기억한다 (재생할 때 그 자리부터)
+            ytPendingSeekRef.current = clamped
+          } else {
+            const wasPlaying = s === YT.PlayerState.PLAYING || s === YT.PlayerState.BUFFERING
+            yt.seekTo(clamped / 1000, true)
+            if (!wasPlaying) yt.pauseVideo()
+          }
         } else if (videoRef.current) videoRef.current.currentTime = clamped / 1000
         patch({ currentMs: clamped, ended: false })
       },

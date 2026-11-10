@@ -42,10 +42,12 @@ public class SceneTextReader {
         }
         List<Scene> scenes = sceneRepository.findByDescription_IdOrderBySceneIndexAsc(descriptionId);
         List<Moment> moments = new ArrayList<>();
-        for (DescriptionLine line : descriptionLineRepository.findAllByDescriptionId(descriptionId)) {
+        List<TranscriptSegment> segments = transcriptSegmentRepository.findAllWithCharacterByDescriptionId(descriptionId);
+        // 외국어 대사를 읽어 주는 문장(DubLines)은 대사와 같은 글이라 해설로 세지 않는다(근거 종류 가산점·대사 확인 건너뛰기 방지)
+        for (DescriptionLine line : DubLines.remove(descriptionLineRepository.findAllByDescriptionId(descriptionId), segments)) {
             moments.add(new Moment(line.getStartMs(), MomentType.NARRATION, line.getText()));
         }
-        for (TranscriptSegment segment : transcriptSegmentRepository.findAllWithCharacterByDescriptionId(descriptionId)) {
+        for (TranscriptSegment segment : segments) {
             moments.add(new Moment(segment.getStartMs(), MomentType.DIALOGUE, segment.getText()));
         }
         for (ScreenText text : screenTextRepository.findByDescription_IdOrderByStartMsAsc(descriptionId)) {

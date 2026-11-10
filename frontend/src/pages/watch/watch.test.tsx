@@ -16,6 +16,7 @@ import {
   type VideoDetail,
 } from '@/api/types'
 import type { PlayerControls, PlayerState } from '@/features/player/usePlayerSource'
+import { QueryClient } from '@tanstack/react-query'
 import { renderRoute } from '@/test/renderWithProviders'
 import { sttApi } from '@/api/stt'
 import { afterScreenChangeMs, screenReaderLeadMs } from '@/features/search/speechLead'
@@ -412,13 +413,13 @@ test('상세도는 누적이다: 기본은 1·2단계, 자세히를 고르면 3�
   renderRoute('/watch/15')
   await screen.findByRole('button', { name: '재생' })
   await user.click(screen.getByRole('tab', { name: '해설' }))
-  expect(await screen.findByRole('heading', { name: /^해설, ?2문장$/ })).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: /^해설 문장, ?2개$/ })).toBeInTheDocument()
   expect(screen.queryByText('가운데가 가장 높아요.')).not.toBeInTheDocument()
 
   await user.click(screen.getByRole('radio', { name: '자세한 해설' }))
   expect(usersApi.updateSettings).toHaveBeenCalledWith({ detailLevel: 3 })
   await waitFor(() => expect(band()).toHaveTextContent('해설 상세도 자세한 해설.'))
-  expect(await screen.findByRole('heading', { name: /^해설, ?3문장$/ })).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: /^해설 문장, ?3개$/ })).toBeInTheDocument()
   const texts = screen
     .getAllByText(/칠판이 보여요|세 개의 막대가|가운데가 가장 높아요/)
     .map((el) => el.textContent)
@@ -429,7 +430,7 @@ test('상세도는 누적이다: 기본은 1·2단계, 자세히를 고르면 3�
   ])
 
   await user.click(screen.getByRole('radio', { name: '짧은 해설' }))
-  expect(await screen.findByRole('heading', { name: /^해설, ?1문장$/ })).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: /^해설 문장, ?1개$/ })).toBeInTheDocument()
 })
 
 test('이 문장 신고: 지금 문장을 보여 주고 사유를 골라 보낸다. 여는 동안 영상을 멈춘다', async () => {
@@ -1366,4 +1367,28 @@ test('Alt+Shift+/ 안내 창은 시청 화면에서 쓰는 키 8줄과 어디서
     '사용법 보기',
   ])
   expect(dialog).toHaveAccessibleDescription(/단축키 12개예요/)
+})
+
+test('즐겨찾기를 바꾸면 내 영상(즐겨찾기 탭·요청한 영상)과 홈 목록을 새로 받게 한다 (뒤로 가기 때 옛 목록 방지)', async () => {
+  const user = userEvent.setup()
+  vi.mocked(favoritesApi.add).mockResolvedValue({ videoId: 15, isFavorite: true })
+  const invalidate = vi.spyOn(QueryClient.prototype, 'invalidateQueries')
+  renderRoute('/watch/15')
+  await user.click(await screen.findByRole('button', { name: '즐겨찾기' }))
+  // 안내는 앞선 진입 안내를 낭독기가 다 읽은 뒤에 나가므로(AnnouncerProvider) 기다리지 않고, 다시 받기 표시만 본다
+  await waitFor(() => expect(favoritesApi.add).toHaveBeenCalled())
+  await waitFor(() =>
+    expect(invalidate).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: ['me', 'videos'] }),
+    ),
+  )
+  const keys = invalidate.mock.calls.map(([f]) => JSON.stringify(f?.queryKey))
+  expect(keys).toEqual(
+    expect.arrayContaining([
+      JSON.stringify(['videos']),
+      JSON.stringify(['favorites']),
+      JSON.stringify(['me', 'videos']),
+    ]),
+  )
+  invalidate.mockRestore()
 })

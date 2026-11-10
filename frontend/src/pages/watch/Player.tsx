@@ -340,7 +340,11 @@ export function Player({ video }: { video: VideoDetail }) {
     },
     onSuccess: (res) => {
       announce(res.isFavorite ? '즐겨찾기에 넣었어요.' : '즐겨찾기에서 뺐어요.')
-      void queryClient.invalidateQueries({ queryKey: ['videos'], exact: false })
+      // 다른 화면의 목록도 새로 받게 표시한다: 홈·검색(['videos']), 내 영상의 즐겨찾기 탭·개수(['favorites']),
+      // 요청·올린 영상 목록의 즐겨찾기 표시(['me', 'videos']). 빠뜨리면 뒤로 가기 때 옛 목록이 보인다
+      void queryClient.invalidateQueries({ queryKey: ['videos'] })
+      void queryClient.invalidateQueries({ queryKey: ['favorites'] })
+      void queryClient.invalidateQueries({ queryKey: ['me', 'videos'] })
     },
     onError: (e) => {
       queryClient.setQueryData<VideoDetail>(queryKeys.video(videoId), (old) =>
@@ -458,7 +462,7 @@ export function Player({ video }: { video: VideoDetail }) {
         case 'OPEN_SCRIPT':
           setEnlarged(false)
           setTab('script')
-          announce('해설 목록을 열었어요. 입력칸에서 Tab을 세 번 누르면 해설 탭이에요.')
+          announce('해설 문장을 열었어요. 입력칸에서 Tab을 세 번 누르면 해설 탭이에요.')
           return true
         case 'OPEN_HISTORY':
           // 질문 기록은 대화 칸에 늘 보인다

@@ -49,115 +49,125 @@ function TutorialView({ step }: { step: number }) {
   }
 
   return (
-    <div className="grid gap-6 xl:-mx-12 xl:grid-cols-[minmax(0,56rem)_21rem] xl:justify-center">
-      <div className="min-w-0">
-        <TutorialStage screen={data.screen} target={data.target} />
-      </div>
-
-      <section
-        aria-labelledby="tutorial-title"
-        className="flex flex-col rounded-2xl border-2 border-line bg-paper p-6 shadow-[0_12px_32px_rgba(0,0,0,0.12)] xl:h-0 xl:min-h-full xl:overflow-y-auto"
-      >
-        {/* 머리: 마스코트 상자·단계 표시·제목 자리를 모든 단계에서 같은 크기로 (제목은 한 줄) */}
-        <div className="flex items-center gap-4">
-          <img
-            src={data.mascot}
-            alt=""
-            aria-hidden="true"
-            width={320}
-            height={400}
-            className="h-24 w-[4.8rem] shrink-0"
-          />
-          <p className="text-lg font-bold text-ink-muted">
-            <span aria-hidden="true">
-              {step} / {total} · {data.screen.name}
-            </span>
-            <span className="sr-only">
-              {total}단계 중 {step}단계, {data.screen.name} 화면
-            </span>
-          </p>
+    // 나란히 놓을지는 화면 폭이 아니라 이 영역의 폭으로 정한다(@container): 1100px 이상(예시 화면이 읽을 만한 크기)이고
+    // 52rem 이상(글자 크기 설정이 rem 을 바꾸므로, 글자를 키워 자리가 모자라면 위아래로 쌓인다). 예시 화면은 남는 폭을 다 쓰고, 강조 테두리는
+    // 그림에 대한 비율이라 어떤 폭에서도 같은 자리를 가리킨다
+    <div className="@container xl:-mx-12">
+      <div className="grid gap-6 @min-[52rem]:@min-[1100px]:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)]">
+        <div className="min-w-0 self-start">
+          <TutorialStage screen={data.screen} target={data.target} />
         </div>
-        <h1
-          ref={headingRef}
-          id="tutorial-title"
-          tabIndex={-1}
-          className="mt-3 text-[1.625rem] leading-snug font-bold break-keep outline-none"
+
+        <section
+          aria-labelledby="tutorial-title"
+          // 나란히 놓이면 예시 화면과 같은 높이로 늘어나고, 글이 더 길면(큰 글자) 안내창이 더 길어진다. 안쪽 스크롤로 버튼을 숨기지 않는다
+          className="flex min-w-0 flex-col rounded-2xl border-2 border-line bg-paper p-6 shadow-[0_12px_32px_rgba(0,0,0,0.12)]"
         >
-          {data.title}
-        </h1>
-        {/* 설명·사용 방법은 단계마다 같은 자리를 잡아 둔다 (설명 4줄, 사용 방법 3줄). 글이 짧아도 아래 점·버튼 위치가 같다 */}
-        <p className="mt-4 min-h-[calc(1.625em*4)] text-lg leading-relaxed text-pretty break-keep">
-          {data.body}
-        </p>
-        <p className="mt-2 min-h-[calc(1.625em*3)] text-base leading-relaxed text-pretty break-keep text-ink-muted">
-          <span className="sr-only">사용 방법: </span>
-          {data.keys}
-        </p>
+          {/* 머리: 마스코트 상자·단계 표시·제목 자리를 모든 단계에서 같은 크기로 (제목은 한 줄) */}
+          <div className="flex items-center gap-4">
+            <img
+              src={data.mascot}
+              alt=""
+              aria-hidden="true"
+              width={320}
+              height={400}
+              className="h-24 w-[4.8rem] shrink-0"
+            />
+            <p className="text-lg font-bold text-ink-muted">
+              <span aria-hidden="true">
+                {step} / {total} · {data.screen.name}
+              </span>
+              <span className="sr-only">
+                {total}단계 중 {step}단계, {data.screen.name} 화면
+              </span>
+            </p>
+          </div>
+          <h1
+            ref={headingRef}
+            id="tutorial-title"
+            tabIndex={-1}
+            className="mt-3 text-[1.625rem] leading-snug font-bold break-keep outline-none"
+          >
+            {data.title}
+          </h1>
+          {/* 설명·사용 방법은 단계마다 같은 자리를 잡아 둔다 (설명 4줄, 사용 방법 3줄). 글이 짧아도 아래 점·버튼 위치가 같다 */}
+          <p className="mt-4 min-h-[calc(1.625em*4)] text-lg leading-relaxed text-pretty break-keep">
+            {data.body}
+          </p>
+          <p className="mt-2 min-h-[calc(1.625em*3)] text-base leading-relaxed text-pretty break-keep text-ink-muted">
+            <span className="sr-only">사용 방법: </span>
+            {data.keys}
+          </p>
 
-        {/* 진행 점: 안내창 폭에 고르게 펼친 원, 지난 단계와 지금 단계는 색칠 (숫자로 이미 읽으므로 낭독기에는 숨긴다) */}
-        <div className="mt-auto pt-5">
-          <ol aria-hidden="true" className="flex items-center justify-between">
-            {TUTORIAL_STEPS.map((s, i) => (
-              <li
-                key={s.title}
-                className={cn('size-3 rounded-full', i < step ? 'bg-navy' : 'bg-line')}
-              />
-            ))}
-          </ol>
+          {/* 진행 점: 안내창 폭에 고르게 펼친 원, 지난 단계와 지금 단계는 색칠 (숫자로 이미 읽으므로 낭독기에는 숨긴다) */}
+          <div className="mt-auto pt-5">
+            <ol aria-hidden="true" className="flex items-center justify-between">
+              {TUTORIAL_STEPS.map((s, i) => (
+                <li
+                  key={s.title}
+                  className={cn('size-3 rounded-full', i < step ? 'bg-navy' : 'bg-line')}
+                />
+              ))}
+            </ol>
 
-          <div className="mt-5 grid grid-cols-2 gap-3">
-            {step > 1 ? (
-              <ButtonLink
-                to={`/tutorial/${step - 1}`}
-                replace
-                variant="secondary"
-                size="lg"
-                className="w-full px-4!"
-              >
-                이전
-              </ButtonLink>
-            ) : (
-              <Button variant="secondary" size="lg" disabled className="w-full px-4!">
-                이전
-              </Button>
-            )}
-            {last ? (
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              {step > 1 ? (
+                <ButtonLink
+                  to={`/tutorial/${step - 1}`}
+                  replace
+                  variant="secondary"
+                  size="lg"
+                  className="w-full px-4!"
+                >
+                  이전
+                </ButtonLink>
+              ) : (
+                <Button variant="secondary" size="lg" disabled className="w-full px-4!">
+                  이전
+                </Button>
+              )}
+              {last ? (
+                <Button
+                  variant="primary"
+                  size="lg"
+                  onClick={() => void done()}
+                  className="w-full px-4!"
+                >
+                  다음
+                </Button>
+              ) : (
+                <ButtonLink
+                  to={`/tutorial/${step + 1}`}
+                  replace
+                  variant="primary"
+                  size="lg"
+                  className="w-full px-4!"
+                >
+                  다음
+                </ButtonLink>
+              )}
+            </div>
+            {/* 한 줄: 왼쪽 다시 듣기, 오른쪽 건너뛰기 */}
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-x-2">
+              {/* 안내 띠의 '스크린리더로 다시 듣기'(마지막 안내)와 구분되는 이름 (버튼 목록으로 훑는 사용자용) */}
               <Button
-                variant="primary"
-                size="lg"
-                onClick={() => void done()}
-                className="w-full px-4!"
+                variant="ghost"
+                onClick={() => announce(spoken)}
+                className="px-1! whitespace-nowrap"
               >
-                다음
+                이 단계 설명 다시 듣기
               </Button>
-            ) : (
-              <ButtonLink
-                to={`/tutorial/${step + 1}`}
-                replace
-                variant="primary"
-                size="lg"
-                className="w-full px-4!"
+              <Button
+                variant="ghost"
+                onClick={() => void done()}
+                className="px-1! whitespace-nowrap"
               >
-                다음
-              </ButtonLink>
-            )}
+                건너뛰기
+              </Button>
+            </div>
           </div>
-          {/* 한 줄: 왼쪽 다시 듣기, 오른쪽 건너뛰기 */}
-          <div className="mt-2 flex items-center justify-between gap-2">
-            {/* 안내 띠의 '스크린리더로 다시 듣기'(마지막 안내)와 구분되는 이름 (버튼 목록으로 훑는 사용자용) */}
-            <Button
-              variant="ghost"
-              onClick={() => announce(spoken)}
-              className="px-1! whitespace-nowrap"
-            >
-              이 단계 설명 다시 듣기
-            </Button>
-            <Button variant="ghost" onClick={() => void done()} className="px-1! whitespace-nowrap">
-              건너뛰기
-            </Button>
-          </div>
-        </div>
-      </section>
+        </section>
+      </div>
     </div>
   )
 }

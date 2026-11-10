@@ -78,7 +78,7 @@ export function SearchBar({
   const { update: updateSettings } = useSettings()
   /**
    * 음성 검색은 받아쓴 말을 챗봇으로 먼저 나눈다 (글자 검색은 LLM 비용·대기 없이 바로 검색).
-   * "고양이 영상 찾아 줘" → '고양이'로 검색, "말 빠르게" → 설정 변경, "도움말" → 도움말.
+   * "오리 영상 찾아 줘" → '오리'로 검색, "말 빠르게" → 설정 변경, "도움말" → 도움말.
    * 그 밖이거나 실패(한도 초과 포함)하면 받아쓴 말 그대로 검색한다
    */
   const onHeard = useCallback(
@@ -143,7 +143,7 @@ export function SearchBar({
       prepare: () => {
         // 처음 몇 번만 부가 기능을 함께 알린다 (매번 길게 읽지 않게)
         // 화면 아래 안내 문구와 같은 예시를 쓴다 (원칙 2장: 낭독 문구 = 화면 문구)
-        const tip = takeVoiceTip() ? ' "고양이 영상 찾아 줘"처럼 문장으로 말해도 돼요.' : ''
+        const tip = takeVoiceTip() ? ' "오리 영상 찾아 줘"처럼 문장으로 말해도 돼요.' : ''
         const intro = `'띠' 소리 뒤에 말씀하세요.${tip}`
         announce(intro)
         return beepLeadMs(intro)
@@ -239,7 +239,7 @@ export function SearchBar({
             </Button>
             {/* 음성으로만 되는 부가 기능 안내. 버튼에 이어 읽힌다 (예시는 둘만: 버튼에 올 때마다 길게 읽히지 않게) */}
             <p id={voiceHintId} className="basis-full text-lg text-ink">
-              음성으로는 "고양이 영상 찾아 줘"처럼 말해도 돼요.
+              음성으로는 "오리 영상 찾아 줘"처럼 말해도 돼요.
             </p>
           </>
         )}

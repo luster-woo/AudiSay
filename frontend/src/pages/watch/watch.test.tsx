@@ -526,7 +526,9 @@ test('질문: 영상을 멈추고 답을 문장 단위로 읽은 뒤 끝났다�
   expect(controls.play).toHaveBeenCalled()
   expect(screen.getByRole('textbox', { name: '챗봇과 대화하기' })).toHaveFocus()
   expect(screen.getByRole('heading', { name: /^질문 기록, ?2개$/ })).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: /그 장면 보기, 2분 14초/ })).toBeInTheDocument()
+  // 질문의 답에는 '다시 듣기'만 ('그 장면 보기'는 장면 이동에만)
+  expect(screen.getByRole('button', { name: /^다시 듣기, AudiSay 답/ })).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /^그 장면 보기/ })).not.toBeInTheDocument()
 })
 
 test('질문을 보낸 직후에는 낭독기가 읽을 시간만큼 기다렸다가 답 소리를 낸다', async () => {
@@ -638,6 +640,8 @@ test('장면 이동 후보가 여럿이면 번호를 읽어 주고, 고르면 �
   expect(controls.seek).toHaveBeenCalledWith(T(141))
   await waitFor(() => expect(band()).toHaveTextContent('막대그래프 비교, 2분 21초로 옮겼어요.'))
   expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument()
+  // 장면 이동의 답에는 '그 장면 보기'가 옮긴 시각으로 붙는다
+  expect(screen.getByRole('button', { name: '그 장면 보기, 2분 21초' })).toBeInTheDocument()
 })
 
 test('장면 후보를 읽어 준 뒤 "2번"이라고 말하거나 적으면 서버로 보내지 않고 그 후보로 옮긴다', async () => {
@@ -835,7 +839,7 @@ test('지금까지 줄거리(RECAP)는 질문처럼 답변을 받아 읽는다',
   )
   // 답을 받는 동안에는 '다시 듣기' 자리에 '답 멈추기'가 있다 (끝난 뒤 생겨서 화면이 밀리지 않게)
   expect(await screen.findByRole('button', { name: '답 멈추기' })).toBeInTheDocument()
-  // 줄거리는 한 장면에 대한 답이 아니라 '그 장면 보기'가 없다
+  // 질문의 답에는 '그 장면 보기'가 없다
   const history = screen.getByRole('region', { name: /^질문 기록/ })
   expect(within(history).queryByRole('button', { name: /^그 장면 보기/ })).not.toBeInTheDocument()
   answer('막대그래프로 두 반을 비교했어요.')
@@ -933,7 +937,7 @@ test('"들으시겠어요?" 뒤에 아니요라고 하면 다시 받지 않고, 
   await waitFor(() => expect(chatApi.send).toHaveBeenCalledTimes(2))
 })
 
-test('"들으시겠어요?"를 물은 답에는 다시 듣기·그 장면 보기 위에 네/아니요 버튼 줄이 더 붙는다', async () => {
+test('"들으시겠어요?"를 물은 답에는 다시 듣기 위에 네/아니요 버튼 줄이 더 붙는다', async () => {
   const user = userEvent.setup()
   vi.mocked(chatApi.send).mockResolvedValue({
     chatLogId: 93,
@@ -955,9 +959,9 @@ test('"들으시겠어요?"를 물은 답에는 다시 듣기·그 장면 보기
   )
   // 질문 기록 안에서만 찾는다 (위 안내 띠에도 '스크린리더로 다시 듣기 Alt+Shift+R' 버튼이 늘 있다)
   const history = () => screen.getByRole('region', { name: /^질문 기록/ })
-  // 다른 답과 같은 버튼 두 칸도 그대로 있다
+  // 다른 답과 같은 다시 듣기도 그대로 있다
   expect(within(history()).getByRole('button', { name: /^다시 듣기/ })).toBeInTheDocument()
-  expect(within(history()).getByRole('button', { name: /^그 장면 보기/ })).toBeInTheDocument()
+  expect(within(history()).queryByRole('button', { name: /^그 장면 보기/ })).not.toBeInTheDocument()
 
   await user.click(no)
   await waitFor(() => expect(band()).toHaveTextContent('알겠어요.'))
@@ -1109,7 +1113,7 @@ test('설정이 범위 끝이면 서버가 준 말을 읽고, 아니면 바꾼 �
   await ask(user, '더 빠르게')
   await waitFor(() => expect(band()).toHaveTextContent('이미 가장 빠른 속도예요.'))
   expect(band()).not.toHaveTextContent('설정을 바꿨어요')
-  // 설정 답에는 '다시 듣기'만 있다 ('그 장면 보기'는 질문의 답·장면 이동에만)
+  // 설정 답에는 '다시 듣기'만 있다 ('그 장면 보기'는 장면 이동에만)
   const history = screen.getByRole('region', { name: /^질문 기록/ })
   expect(within(history).getByRole('button', { name: /^다시 듣기/ })).toBeInTheDocument()
   expect(within(history).queryByRole('button', { name: /^그 장면 보기/ })).not.toBeInTheDocument()

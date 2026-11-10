@@ -55,9 +55,10 @@ class Settings(BaseSettings):
     h200_token: str = ""  # gpu_server의 ~/gpu_server/.secret 값 또는 주피터 토큰. "Authorization: token <값>"으로 보낸다
     h200_chat: str = "stt,intent,answer,tts"  # 재생 중 기능 가운데 H200에 먼저 맡길 것. 실패하면 GMS로(tts는 실패하면 503 → 브라우저 음성)
     h200_answer_stream: bool = True  # 질문 답변을 H200 /chat/answer/stream으로(문장마다). 옛 서버면 false
-    # 업로드 영상 해설 엔진: video(기본, H200 32B가 영상을 1분 조각으로 보고 씀, gpu_server 버전 22 이상) |
-    # opensource(H200 8B 장면별) | gemini(영상 파일을 Gemini에 넣음, 크레딧). 실패하면 video → opensource → gemini 순으로 대체
-    upload_engine: str = "video"
+    # 업로드 영상 해설 엔진: opensource(기본, 장면별. H200이 줄거리·인물표를 먼저 정하고 장면마다 씀. 3분 영상 60~110초) |
+    # video(H200 32B가 영상을 1분 조각으로 보고 씀, gpu_server 버전 22 이상. 같은 영상에 282~451초 걸리고 해설이 낫지 않았다,
+    # 2026-11-09 데모 실측) | gemini(영상 파일을 Gemini에 넣음, 크레딧). 실패하면 opensource → gemini(video는 video → opensource → gemini)
+    upload_engine: str = "opensource"
     # H200 번역 가운데 의심스러운 것을 Gemini로 다시: failed(기본) | all | off
     translate_fix: str = "failed"
     # 시리즈 등장인물 사전 폴더(ai/data/characters)

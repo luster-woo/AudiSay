@@ -323,7 +323,7 @@ const ACTION = 'w-full px-2! whitespace-nowrap'
 /**
  * 대화 칸의 질문 기록. 질문이든 명령(이동·설정)이든 모두 같은 모양:
  * '나' 말풍선 + 'AudiSay 답' 말풍선, 답 아래에는 [다시 듣기][그 장면 보기] 두 칸.
- * '다시 듣기'는 모든 답에, '그 장면 보기'는 장면과 이어진 답(질문·지금 장면·장면 이동)에만 붙는다.
+ * '다시 듣기'는 모든 답에, '그 장면 보기'는 장면 이동(시각·장면으로 가기, 후보 고르기)의 답에만 붙는다.
  * 답을 받거나 읽는 동안에는 '다시 듣기' 자리가 '답 멈추기'가 된다 (버튼 수가 그대로라 말풍선 모양이 바뀌지 않는다).
  * "들으시겠어요?"를 묻는 답에는 그 위에 [네][아니요] 줄이 더 붙는다
  */
@@ -406,9 +406,8 @@ export function HistoryPanel({
             const reading = !e.done && !!e.offering
             const offerWhat = offer?.kind === 'summary' ? '요약' : '뒤 내용'
             const stopping = answering && !!onStop && isLast && !e.done
-            // '그 장면 보기': 질문·지금 장면 답은 물어본 시각, 장면 이동은 옮긴 시각.
-            // 줄거리·설정·기능 실행·대답 등 한 장면과 상관없는 답은 null 이라 버튼이 없다 ('다시 듣기'만)
-            const goTo = e.goToMs === undefined ? e.videoTimeMs : e.goToMs
+            // '그 장면 보기': 장면 이동의 답에만, 옮긴 시각으로. 질문·설정·기능 실행 등은 '다시 듣기'만
+            const goTo = e.goToMs ?? null
             return (
               <li key={e.key} className="flex flex-col items-start">
                 <Bubble

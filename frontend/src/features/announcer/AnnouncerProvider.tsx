@@ -174,6 +174,19 @@ export function AnnouncerProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => cancelFlush, [cancelFlush])
 
+  // 키를 누르면 낭독기는 읽던 말을 멈춘다 (NVDA·센스리더 기본 동작). 그러니 남은 '읽는 중' 어림도 버린다.
+  // 안 버리면 요약 창에서 Enter 처럼 사용자가 직접 고른 소리가 진입 안내 길이(최대 6초)만큼 늦게 나서
+  // 키가 안 먹은 것처럼 느껴진다. 캡처 단계에서 먼저 지워, 그 키가 새로 낸 안내는 다시 어림하게 한다
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      // 수식키만 누른 것은 아직 명령이 아니다 (Alt+Shift+… 를 누르는 중)
+      if (['Shift', 'Alt', 'Control', 'Meta'].includes(e.key)) return
+      quietUntilRef.current = Date.now()
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [])
+
   const value = useMemo<AnnouncerValue>(
     () => ({ announce, repeat, lastMessage, setMuted, bindVoice }),
     [announce, repeat, lastMessage, setMuted, bindVoice],

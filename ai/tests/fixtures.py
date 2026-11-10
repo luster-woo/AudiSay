@@ -4,10 +4,10 @@ RAW = {
     "category": "예능",
     "summary_30s": "두 사람이 부엌에서 라면을 끓이며 맛을 평가한다.",
     "dialogue": [
-        {"start": "00:05", "end": "00:09", "speaker": "김철수", "text": "오늘은 라면을 끓여 볼게요."},
-        {"start": "00:20", "end": "00:24", "speaker": None, "text": "물이 끓기 시작했어요."},
-        {"start": "02:00", "end": "02:06", "speaker": "김철수", "text": "이제 맛을 볼까요?"},
-        {"start": "02:50", "end": "03:00", "speaker": None, "text": "정말 맛있네요."},
+        {"start": "00:05", "end": "00:09", "speaker": "김철수", "text": "오늘은 라면을 끓여 볼게요.", "language": "ko", "translation": None},
+        {"start": "00:20", "end": "00:24", "speaker": None, "text": "물이 끓기 시작했어요.", "language": "ko", "translation": None},
+        {"start": "02:00", "end": "02:06", "speaker": "김철수", "text": "이제 맛을 볼까요?", "language": "ko", "translation": None},
+        {"start": "02:50", "end": "03:00", "speaker": None, "text": "정말 맛있네요.", "language": "ko", "translation": None},
     ],
     "scenes": [
         {"start": "00:00", "end": "01:10", "title": "앞치마를 두른 남성이 부엌에 선다",

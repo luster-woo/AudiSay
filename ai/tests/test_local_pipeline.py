@@ -1,6 +1,6 @@
 """업로드 영상(LOCAL) 분석: 데모에서 검증한 규칙이 그대로 옮겨졌는지, 그리고 가짜 H200으로 분석 → full.json → merge까지.
 
-ffmpeg·PySceneDetect·H200·GMS·DB는 부르지 않는다(장면 나누기와 사진 뽑기는 가짜로 바꿔 끼움).
+ffmpeg·PySceneDetect·H200·GMS·DB는 부르지 않는다(장면 나누기와 사진 뽑기, 줄거리용 사진은 가짜로 바꿔 끼움).
 """
 import asyncio
 from pathlib import Path
@@ -42,6 +42,12 @@ def test_split_scenes_merges_short_and_splits_long():
     cuts = [(0, 10_000), (10_000, 12_000), (12_000, 80_000)]
     assert local.split_scenes(cuts, 80_000) == [{"startMs": 0, "endMs": 12_000}, {"startMs": 12_000, "endMs": 42_000},
                                                 {"startMs": 42_000, "endMs": 72_000}, {"startMs": 72_000, "endMs": 80_000}]
+
+
+def test_silent_scenes_split_finer_and_frames_dense():
+    assert local.split_long([{"startMs": 74_000, "endMs": 93_000}], 12.0) == [{"startMs": 74_000, "endMs": 86_000},
+                                                                              {"startMs": 86_000, "endMs": 93_000}]
+    assert local.frames_for_silent(12_000) == 4 and local.frames_for_silent(21_000) == 7 and local.frames_for_silent(60_000) == 8
 
 
 def test_frames_for_and_overlaps():
@@ -96,16 +102,38 @@ def test_local_analysis_end_to_end_with_mock_h200(tmp_path, monkeypatch):
         async def ocr(self, images):
             return {"texts": [["STEP 1"] for _ in images]}
 
+        async def sounds(self, wav):
+            return {"events": [{"startMs": 22_000, "endMs": 26_000, "label": "Sizzle", "ko": "지글거리는 소리"}], "model": "sound"}
+
+        async def story(self, payload):
+            assert payload["frames"] == [(1500, tmp_path / "a.jpg")] and "겉모습 호칭" in payload["guide"]
+            assert payload["transcript"] == "1초 양파 두 개를 넣어요.\n21초 잘 저어요." and payload["sounds"] == "22~26초 지글거리는 소리"
+            return {"model": "Qwen3-VL-32B", "events": [{"atMs": 2000, "text": "양파를 냄비에 넣는다"}],
+                    "names": [{"name": "백종원", "what": "앞치마 입은 남성"}, {"name": "양파", "what": ""}]}
+
         async def describe(self, payload):
             assert "외국어" in payload["guide"] and "요리 영상 해설 지침" in payload["guide"]
             assert payload["scenes"][0]["transcript"] == "양파 두 개를 넣어요."
+            # 줄거리·인물표: 제목·화면 글자·대사에 없는 이름(백종원)은 겉모습 호칭으로 바뀌어 모든 장면에 넘어간다
+            assert payload["storyline"] == "2초 양파를 냄비에 넣는다" and payload["names"] == "앞치마 입은 남성, 양파"
+            assert "정해 둔 인물·물건 이름" in payload["guide"]
+            assert [s["events"] for s in payload["scenes"]] == ["양파를 냄비에 넣는다", ""]
+            assert [s["sounds"] for s in payload["scenes"]] == ["", "22~26초 지글거리는 소리"]
             return {"model": "Qwen3-VL-8B", "scenes": [
                 {"title": "양파 넣기", "people": [{"name": None, "basis": None, "appearance": "앞치마 입은 손"}],
-                 "lines": [{"atMs": 500, "level": 1, "text": "양파가 냄비에 들어가 있음"}, {"atMs": 2000, "level": 3, "text": "냄비가 빨갛습니다"}]},
-                {"title": "볶기", "people": [], "lines": [{"atMs": 25_000, "level": 1, "text": "주걱으로 볶습니다"}]}]}
+                 "lines": [{"atMs": 500, "level": 1, "text": "양파가 냄비에 들어가 있음"}, {"atMs": 2000, "level": 3, "text": "냄비가 빨갛습니다"},
+                           {"atMs": 9000, "level": 2, "text": "남자는 흰 앞치마를 입고 있습니다"},
+                           {"atMs": 12_000, "level": 2, "text": '{"title": "양파 넣기", "people": ['}]},
+                {"title": "볶기", "people": [], "lines": [{"atMs": 25_000, "level": 1, "text": "주걱으로 볶습니다"},
+                                                       {"atMs": 30_000, "level": 2, "text": "양파가 냄비에 들어가 있습니다"}]}]}
+
+        async def summarize(self, payload):
+            assert payload["lines"][0] == "양파를 냄비에 넣는다"  # 줄거리 사건이 요약 입력 앞에
+            return await super().summarize(payload)
 
     scenes = [{"startMs": 0, "endMs": 20_000}, {"startMs": 20_000, "endMs": 40_000}]
     monkeypatch.setattr(local, "detect_scenes", lambda path, ms: scenes)
+    monkeypatch.setattr(local, "timeline_frames", lambda playback, work, ms: [(1500, tmp_path / "a.jpg")])
     monkeypatch.setattr(local, "frames", lambda playback, work, sc, per_scene=4: [[tmp_path / "a.jpg"] for _ in sc])
     files = {"playback": tmp_path / "playback.mp4", "wav": tmp_path / "a.wav"}
     seen = []
@@ -120,6 +148,9 @@ def test_local_analysis_end_to_end_with_mock_h200(tmp_path, monkeypatch):
     assert raw["dialogue_language"] == "en"
     assert raw["dialogue"][0]["text"] == "양파 두 개를 넣어요." and raw["dialogue"][0]["original"] == "Add two onions."
     assert raw["lines"][0]["text"] == "양파가 냄비에 들어가 있습니다."  # 개조식 끝 고침
+    # 끊긴 JSON 조각, 앞 장면에서 한 말, 옷차림만 있는 문장은 빠지고 겹친 시각은 2초 띄운다(0.5초·2초 → 2.5초)
+    assert [(x["at"], x["text"]) for x in raw["lines"]] == [("00:00", "양파가 냄비에 들어가 있습니다."), ("00:02", "냄비가 빨갛습니다."),
+                                                           ("00:25", "주걱으로 볶습니다.")]
     assert raw["scenes"][0]["screen_text"] == [{"text": "STEP 1", "text_type": "OTHER", "importance": "중", "same_as_dialogue": False}]
 
     full = normalize(raw, 3, model, 40_000)
@@ -137,6 +168,85 @@ def test_local_analysis_end_to_end_with_mock_h200(tmp_path, monkeypatch):
     assert "이름 모르는 인물(앞치마 입은 손)" in plan.scenes[0]["sceneDescription"]
 
 
+def test_video_without_speech_is_described_by_action(tmp_path, monkeypatch):
+    """받아쓴 말이 없으면 장면을 12초로 더 나누고 사진을 3초에 1장으로 뽑아 동작 중심 지침을 준다. 자막이 많으면 자막 지침도."""
+    captions = iter(["하지 마!", "이거 스노우?", "머리가 너무 작다"])
+    got = {}
+
+    class Silent(inference.MockInference):
+        async def ocr(self, images):
+            return {"texts": [[next(captions)] for _ in images]}
+
+        async def describe(self, payload):
+            got["guide"] = payload["guide"]
+            got["scenes"] = [(s["startMs"], s["endMs"]) for s in payload["scenes"]]
+            return await super().describe(payload)
+
+    def frames(playback, work, sc, per_scene=4):
+        got["per_scene"] = per_scene
+        return [[tmp_path / f"{i}.jpg"] for i, _ in enumerate(sc)]
+
+    monkeypatch.setattr(local, "detect_scenes", lambda path, ms: [{"startMs": 0, "endMs": 30_000}])
+    monkeypatch.setattr(local, "frames", frames)
+    monkeypatch.setattr(local, "timeline_frames", lambda playback, work, ms: [])
+
+    async def progress(pct):
+        pass
+
+    asyncio.run(local.analyze("opensource", Silent(), None, False, "라마와 펭귄", {"playback": tmp_path / "p.mp4", "wav": tmp_path / "a.wav"},
+                              tmp_path, 30_000, progress, 7))
+    assert got["scenes"] == [(0, 12_000), (12_000, 24_000), (24_000, 30_000)] and got["per_scene"] is local.frames_for_silent
+    assert "이 영상에는 대사가 없습니다" in got["guide"] and "화면 자막이 대사 역할" in got["guide"]
+
+
+def test_clean_ocr_drops_logos_and_keeps_captions():
+    """늘 떠 있는 로고는 OCR 오타가 달라도 빼고, 장면마다 다른 자막은 남긴다(2026-11-02 데모)."""
+    scenes = [["코보티비", "보령·한국도로공사컵", "됐따!", "5"], ["코보E비", "보령·안국도로공사컵", "이거~스노우?"],
+              ["코보O티비", "보령·한국도로공사컵", "하지마!"], ["코보티비", "머리가 너무 작다"]]
+    assert local.clean_ocr(scenes) == [["됐따!"], ["이거~스노우?"], ["하지마!"], ["머리가 너무 작다"]]
+    assert local.clean_ocr([["로고", "자막"], ["로고"]]) == [["로고", "자막"], ["로고"]]  # 장면이 적으면 로고로 보지 않는다
+
+
+def test_json_fragment_and_crowded_lines_are_fixed():
+    """끊긴 JSON 조각은 문장으로 쓰지 않고, 같은 시각에 겹친 문장은 2초씩 띄운다."""
+    assert local.looks_like_json('{"title": "라마와 펭귄이 눈밭에서 쉬고 있습니다", "people": [{"name": "라마",.')
+    assert not local.looks_like_json("라마가 \"안녕\"이라고 쓴 팻말을 듭니다.")
+    scene = {"startMs": 74000, "endMs": 93000}
+    out = local.spread_lines([{"atMs": 92000, "level": 2, "text": "a"}, {"atMs": 92000, "level": 2, "text": "b"},
+                              {"atMs": 74300, "level": 1, "text": "c"}], scene)
+    assert [x["text"] for x in out] == ["c", "a"]  # b는 장면 끝을 넘어 뺀다
+    assert out[0]["atMs"] == 74300
+
+
+def test_repeated_lines_across_scenes_are_dropped():
+    scenes = [{"lines": [{"text": "안경 쓴 남자가 테이블 앞에 앉아 있습니다."}, {"text": "남자는 체크무늬 셔츠를 입고 있습니다."}]},
+              {"lines": [{"text": "안경 쓴 남자가 나무 테이블에 앉아 있습니다."}, {"text": "남자 뒤 벽에 로고가 붙어 있습니다."}]},
+              {"lines": [{"text": "남자는 체크무늬 셔츠를 입고 있습니다."}]}]
+    local.drop_repeats(scenes)
+    assert [len(s["lines"]) for s in scenes] == [2, 1, 0]  # 다 겹친 장면은 해설 없이(같은 문장을 남기지 않는다)
+    assert scenes[1]["lines"][0]["text"].startswith("남자 뒤 벽")
+
+
+def test_idle_and_speech_act_lines_are_dropped():
+    """옷차림만·'말한다'만 있는 문장, 말한 내용을 요약한 문장은 빼고 동작·표정이 함께 있으면 남긴다."""
+    lines = [{"text": t} for t in ["주우재는 줄무늬 티셔츠를 입고 있습니다.", "검은 후드티 청년 남성이 말한다.",
+                                   "휴대폰을 들여다보며 말합니다.", "남자가 자리에서 일어납니다."]]
+    assert [x["text"] for x in local.drop_idle(lines)] == ["휴대폰을 들여다보며 말합니다.", "남자가 자리에서 일어납니다."]
+    lines = [{"text": t} for t in ["AI가 볼링을 추천합니다.", "남성이 비용을 우려합니다.", "남성이 웃으며 대답합니다.",
+                                   "여성이 계산대로 걸어갑니다."]]
+    assert [x["text"] for x in local.drop_speech_acts(lines)] == ["남성이 웃으며 대답합니다.", "여성이 계산대로 걸어갑니다."]
+
+
+def test_ground_names_keeps_only_names_with_evidence(monkeypatch):
+    names = [{"name": "철수", "what": "빨간 모자 남성"}, {"name": "영희", "what": "안경 쓴 여성"}, {"name": "민수", "what": ""}]
+    segs = [{"text": "영희야 이리 와"}]
+    out = local.ground_names(names, "철수의 하루", [["OPEN"]], segs)
+    assert [n["name"] for n in out] == ["철수", "영희", "민수"] and out[2]["what"] == ""  # 제목·대사에 있으면 그대로, 호칭이 없으면 이름 유지
+    monkeypatch.setattr(local, "NAME_SOURCE", "screen")  # 대사에서만 들린 이름은 화면의 누구인지 몰라 쓰지 않는다
+    out = local.ground_names(names, "철수의 하루", [["OPEN"]], segs)
+    assert out[1] == {"name": "안경 쓴 여성", "what": ""} and out[0]["name"] == "철수"
+
+
 def test_engine_fallback_to_gemini_when_h200_fails(tmp_path):
     class DownH200(inference.MockInference):
         async def transcribe(self, wav):
@@ -151,6 +261,35 @@ def test_engine_fallback_to_gemini_when_h200_fails(tmp_path):
                                   10_000, progress, 1))
     except Exception as e:  # noqa: BLE001
         assert "opensource: INFER_UNREACHABLE" in str(e) and "gemini: GMS 꺼짐" in str(e)
+    else:
+        raise AssertionError("실패해야 함")
+
+
+def test_frames_survive_failed_shots(tmp_path, monkeypatch):
+    """영상 끝을 넘는 시각은 끝 0.2초 앞으로 당기고, 실패하면 1초 앞에서 한 번 더. 그래도 없으면 앞 장면의 마지막 사진을 쓴다."""
+    asked = []
+
+    def ff(*args):
+        t = float(args[1])
+        asked.append(t)
+        if t >= 8.7:  # 8.7초부터는 뽑히지 않는 영상
+            raise local.WorkerError("TRANSCODE_FAILED", "ffmpeg 실패")
+        Path(args[-1]).write_bytes(b"jpg")
+
+    monkeypatch.setattr(local, "_ff", ff)
+    monkeypatch.setattr(local, "video_end_sec", lambda path: 10.0)
+    scenes = [{"startMs": 0, "endMs": 8000}, {"startMs": 8000, "endMs": 10_000}, {"startMs": 10_000, "endMs": 12_000}]
+    shots = local.frames(tmp_path / "p.mp4", tmp_path, scenes, per_scene=2)
+    assert [len(g) for g in shots] == [2, 2, 1] and all(p.exists() for g in shots for p in g)
+    assert shots[2] == [shots[1][-1]] and max(asked) == 9.8  # 셋째 장면(영상 끝 뒤)은 둘째 장면의 마지막 사진
+    # 둘째 장면: 8.5초는 바로, 9.5초는 실패해 8.5초(1초 앞)에서 다시. 셋째 장면: 9.8초도 8.8초도 실패
+    assert sorted(asked) == [2.0, 6.0, 8.5, 8.5, 8.8, 8.8, 9.5, 9.8, 9.8]
+
+    monkeypatch.setattr(local, "_ff", lambda *a: (_ for _ in ()).throw(local.WorkerError("TRANSCODE_FAILED", "ffmpeg 실패")))
+    try:
+        local.frames(tmp_path / "p.mp4", tmp_path / "none", [{"startMs": 0, "endMs": 4000}])
+    except local.WorkerError as e:
+        assert e.code == "TRANSCODE_FAILED"
     else:
         raise AssertionError("실패해야 함")
 

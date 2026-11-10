@@ -4,6 +4,7 @@ GEMINI_URL·LOCAL 모두: AI를 다시 부르지 않는다(크레딧 0). job.pre
 (LOCAL은 prepare가 H200으로 영상을 분석해 유튜브와 같은 full.json을 만든다 — pipeline/local.py)
 - 누적형 해설 문장마다 startMs·gapEndMs를 정하고 (대사 중간이면 대사가 끝난 직후로 옮김)
 - 대사 반복·긴 문장·앞 문장을 가리키는 말을 표시해 로그로 남기고 (다시 쓰게 하지 않음)
+- 외국어 대사는 한국어 번역을 그 대사 시각에 읽어 줄 문장으로 넣고 (dub_lines)
 - 해설 문장에 이미 들어간 화면 글자를 뺀 뒤
 jobs/{jobId}/chunks/{chunkIndex}.json에 저장한다.
 """
@@ -73,6 +74,38 @@ PAUSED_STEP_MS = 1000  # 멈추고 읽는 문장 다음 문장과의 간격(영�
 TAIL_MS = 1000  # 밀린 문장도 영상 끝 1초 전에는 시작하게(끝 시각에 두면 영상이 끝나 읽히지 않는다)
 
 
+DUB_FLAG = "DIALOGUE_DUB"  # 외국어 대사를 한국어로 읽어 주는 문장 표시(해설 문장이 아님)
+SENTENCE_END = re.compile(r"(?<=[.!?…])\s+")
+
+
+def dub_lines(dialogues: list[dict]) -> list[dict]:
+    """외국어 대사(dub 표시, text는 한국어 번역)를 그 대사 시각에 읽어 줄 문장으로 만든다. dialogues는 시각 순.
+    2026-11-10 '100일의 거짓말': 일본어·영어 연설을 알아들을 수 없었다(넷플릭스 화면해설은 성우가 한국어로 읽는다).
+    - 상세도 1(내용을 따라가는 데 꼭 필요), gapEndMs null: 대사와 겹치므로 재생 엔진이 영상을 멈추고 읽은 뒤 원래 말을 들려준다.
+    - 말한 사람이 바뀔 때만 "태웅: …"처럼 이름을 붙인다(한국어 대사가 끼면 다시 붙인다).
+    - MAX_CHARS를 넘는 번역은 문장 단위로 나누고, 시각은 대사 길이에 글자 수 비율로 나눠 준다."""
+    out, prev = [], None
+    for d in dialogues:
+        if not d.get("dub"):
+            prev = None
+            continue
+        speaker = (d.get("speaker") or "").split(" (")[0].strip() or None
+        parts: list[str] = []
+        for s in SENTENCE_END.split(d["text"].strip()):
+            if parts and len(parts[-1]) + 1 + len(s) <= MAX_CHARS:
+                parts[-1] += " " + s
+            elif s:
+                parts.append(s)
+        total, done = sum(len(p) for p in parts) or 1, 0
+        for i, p in enumerate(parts):
+            start = d["startMs"] + (d["endMs"] - d["startMs"]) * done // total
+            done += len(p)
+            text = f"{speaker}: {p}" if i == 0 and speaker and speaker != prev else p
+            out.append({"detailLevel": 1, "startMs": start, "gapEndMs": None, "importance": 3, "text": text, "flags": [DUB_FLAG]})
+        prev = speaker
+    return out
+
+
 NEAR_MS = 1500  # 시작이 이 안에 붙은 같은 상세도 문장은 따로 읽지 않고 두 문장짜리 해설 하나로 묶는다
 
 
@@ -84,8 +117,12 @@ def join_near(lines: list[dict]) -> list[dict]:
     out: list[dict] = []
     joined: set[int] = set()
     for x in lines:
+        if DUB_FLAG in (x.get("flags") or []):  # 읽어 주는 대사는 해설 문장과 섞지 않는다
+            out.append(x)
+            continue
         prev = next((p for p in reversed(out) if p["detailLevel"] == x["detailLevel"]), None)
-        if (prev is not None and id(prev) not in joined and x["startMs"] - prev["startMs"] <= NEAR_MS
+        if (prev is not None and id(prev) not in joined and DUB_FLAG not in (prev.get("flags") or [])
+                and x["startMs"] - prev["startMs"] <= NEAR_MS
                 and len(prev["text"]) + 1 + len(x["text"]) <= MAX_CHARS):
             prev["text"] += " " + x["text"]
             prev["flags"] = list(dict.fromkeys(list(prev.get("flags") or []) + list(x.get("flags") or [])))
@@ -157,6 +194,7 @@ def build_chunk(full: dict, chunk_index: int, start_ms: int, end_ms: int) -> dic
         lines.append({"detailLevel": x["detailLevel"], "startMs": start, "gapEndMs": gap_end,
                       "importance": 4 - x["detailLevel"], "text": x["text"],
                       "flags": check(x["text"], start, dialogues, x["detailLevel"])})
+    lines += [x for x in dub_lines(dialogues) if in_chunk(x["startMs"])]  # 외국어 대사는 한국어로 읽어 준다
     lines.sort(key=lambda x: (x["startMs"], x["detailLevel"]))
 
     scenes, screen_texts, characters, seen = [], [], [], set()

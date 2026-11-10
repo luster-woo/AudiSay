@@ -268,8 +268,7 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
   /**
    * QUESTION·SCENE_NOW·RECAP: 영상을 멈추고 답을 문장 단위로 듣는다 (ASK-01).
    * includeFuture: "들으시겠어요?"에 '네'라고 해서 같은 질문을 뒤 내용까지 넣어 다시 받을 때
-   * sceneLinked: 답이 물어본 그 장면에 대한 것이면 true ('그 장면 보기'를 단다).
-   * 지금까지 줄거리(RECAP)는 한 장면이 아니라 처음부터 지금까지라 false
+   * 질문의 답에는 '그 장면 보기'를 달지 않는다 ("서희가 누구야?"의 답으로 물어본 시각에 갈 까닭이 없다)
    */
   const listenAnswer = useCallback(
     async (
@@ -279,7 +278,6 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
       includeFuture = false,
       /** 말로 질문하느라 이미 멈춰 둔 경우: 원래 재생 중이었는지 */
       resumeAfter = false,
-      sceneLinked = true,
     ) => {
       const c = ctxRef.current
       const gen = sendGenRef.current
@@ -300,8 +298,7 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
         text: '',
         sentences: [],
         done: false,
-        // undefined 면 '그 장면 보기'가 물어본 시각으로 간다. null 이면 버튼을 두지 않는다
-        goToMs: sceneLinked ? undefined : null,
+        goToMs: null,
       })
       c.showHistory()
       const controller = new AbortController()
@@ -412,7 +409,6 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
             videoTimeMs,
             false,
             resumeAfterRef.current,
-            res.intent !== 'RECAP',
           )
           return
         case 'SEEK_TIME':

@@ -1,5 +1,6 @@
 from app.pipeline.describe import build_chunk, join_near, place, spread
 from app.pipeline.prepare import make_chunks, normalize, pick_model
+from app.pipeline.merge import assemble
 from tests.fixtures import RAW
 
 
@@ -133,3 +134,16 @@ def test_foreign_dialogue_is_read_in_korean_at_its_time():
     # 붙어 있어도 해설 문장과 한 문장으로 묶지 않는다
     near = join_near([_ln(1, 19_500, "총독이 단상에 선다."), dict(lines[0])])
     assert len(near) == 2
+
+
+def test_dub_lines_are_read_but_kept_out_of_chapters_and_scenes():
+    """외국어 대사 번역 문장은 description_lines에 남겨 플레이어가 읽게 하고, 합쳐 저장하는 목차 요약·키워드·장면 설명에는 넣지 않는다.
+    (BE 챗봇이 목차·장면 설명을 '화면 해설'로 읽는다. 대사는 transcript_segments에 따로 있다)"""
+    f = normalize(_foreign_raw(), 15, "gemini-3.5-flash", 190_000)
+    plan = assemble(f, [{**build_chunk(f, 0, 0, 190_000), "chunkIndex": 0}])
+    dubs = [x["text"] for x in plan.lines if "DIALOGUE_DUB" in x["flags"]]
+    assert len(dubs) == 4  # 플레이어가 읽어 줄 문장은 그대로
+    assert any(d["text"] == "금일 5월 15일." for d in plan.dialogues)  # 대사에는 한국어 번역
+    stored = [c["summary"] or "" for c in plan.chapters] + [s["sceneDescription"] for s in plan.scenes]
+    assert stored and not any(d in t or d.split(": ", 1)[-1] in t for d in dubs for t in stored)
+    assert not any("건배사" in k or "기송관" in k for c in plan.chapters for k in c["keywords"])

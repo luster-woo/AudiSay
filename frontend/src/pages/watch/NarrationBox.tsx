@@ -54,8 +54,9 @@ export function NarrationBox({
           // 한국어는 단어 중간에서 끊지 않는다. 띄어쓰기 없는 아주 긴 글자(주소 등)만 어디서든 끊는다
           'leading-snug font-bold text-yellow [overflow-wrap:anywhere]',
           size,
-          // 전체 화면: 2줄 자리를 늘 잡아 두어 1~2줄 해설에서는 영상 크기가 출렁이지 않는다
-          fullscreen && 'min-h-[2.75em]',
+          // 3줄 자리를 늘 잡아 두어 문장 길이에 따라 상자가 커졌다 작아졌다 하지 않는다 (줄 높이 1.375 × 3).
+          // 3줄을 넘는 긴 문장은 자르지 않고 늘어난다. 전체 화면은 영상 크기가 출렁이지 않게 2줄 자리만
+          fullscreen ? 'min-h-[2.75em]' : 'min-h-[4.125em]',
         )}
       >
         {line && started ? line.text : '재생을 시작하면 지금 읽는 해설이 여기에 크게 보여요.'}

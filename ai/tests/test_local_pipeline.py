@@ -24,7 +24,7 @@ def test_finish_sentence_fixes_noun_endings():
 def test_cap_lines_limits_by_scene_length_and_dedups():
     lines = [{"level": 1, "text": "가"}, {"level": 1, "text": "나"}, {"level": 3, "text": "다"},
              {"level": 2, "text": "라"}, {"level": 2, "text": "라 "}]
-    kept = local.cap_lines(lines, 12_000)  # 12초 → 2문장
+    kept = local.cap_lines(lines, 8000)  # 8초 → 2문장
     assert [x["text"] for x in kept] == ["가", "라"]  # level 1은 한도의 절반(1), 나머지는 낮은 level부터, 같은 문장은 하나
     assert len(local.cap_lines(lines, 1000)) == 1
 
@@ -39,9 +39,9 @@ def test_group_sentences_by_end_mark_or_12s():
 
 
 def test_split_scenes_merges_short_and_splits_long():
-    cuts = [(0, 10_000), (10_000, 12_000), (12_000, 80_000)]
-    assert local.split_scenes(cuts, 80_000) == [{"startMs": 0, "endMs": 12_000}, {"startMs": 12_000, "endMs": 42_000},
-                                                {"startMs": 42_000, "endMs": 72_000}, {"startMs": 72_000, "endMs": 80_000}]
+    cuts = [(0, 10_000), (10_000, 12_000), (12_000, 50_000)]
+    assert local.split_scenes(cuts, 50_000) == [{"startMs": 0, "endMs": 12_000}, {"startMs": 12_000, "endMs": 27_000},
+                                                {"startMs": 27_000, "endMs": 42_000}, {"startMs": 42_000, "endMs": 50_000}]
 
 
 def test_silent_scenes_split_finer_and_frames_dense():
@@ -51,7 +51,7 @@ def test_silent_scenes_split_finer_and_frames_dense():
 
 
 def test_frames_for_and_overlaps():
-    assert local.frames_for(3000) == 4 and local.frames_for(36_000) == 6 and local.frames_for(120_000) == 8
+    assert local.frames_for(3000) == 4 and local.frames_for(15_000) == 5 and local.frames_for(120_000) == 8
     assert local.overlaps({"startMs": 5000, "endMs": 15_000}, {"startMs": 10_000, "endMs": 20_000})
     assert not local.overlaps({"startMs": 0, "endMs": 10_000}, {"startMs": 10_000, "endMs": 20_000})
 
@@ -240,6 +240,7 @@ def test_idle_and_speech_act_lines_are_dropped():
 def test_ground_names_keeps_only_names_with_evidence(monkeypatch):
     names = [{"name": "철수", "what": "빨간 모자 남성"}, {"name": "영희", "what": "안경 쓴 여성"}, {"name": "민수", "what": ""}]
     segs = [{"text": "영희야 이리 와"}]
+    monkeypatch.setattr(local, "NAME_SOURCE", "all")
     out = local.ground_names(names, "철수의 하루", [["OPEN"]], segs)
     assert [n["name"] for n in out] == ["철수", "영희", "민수"] and out[2]["what"] == ""  # 제목·대사에 있으면 그대로, 호칭이 없으면 이름 유지
     monkeypatch.setattr(local, "NAME_SOURCE", "screen")  # 대사에서만 들린 이름은 화면의 누구인지 몰라 쓰지 않는다

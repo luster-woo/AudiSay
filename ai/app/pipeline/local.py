@@ -183,7 +183,9 @@ def timeline_frames(playback: Path, work: Path, duration_ms: int, every_ms: int 
 # ---------- 3·4. 오픈소스 분석(데모 local_pipeline.py) ----------
 
 MIN_SCENE_SEC = 4.0  # 2초였을 때 2분 요리 영상이 25장면(평균 5초)으로 잘게 나뉨
-MAX_SCENE_SEC = 30.0  # 장면이 너무 길면 나눠서 해설이 듬성듬성해지지 않게
+# 장면 길이·사진 간격·문장 수·대사 요약 거르기·이름 근거의 기본값은 데모에서 Gemini 정답지 5편(예능·애니·요리·시트콤·드라마)과
+# 견줘 정했다(2026-11-10): 30초·6초·6초에 거르기를 끈 값은 평균 종합 0.41, 지금 값은 0.44(2회 0.443·0.446)
+MAX_SCENE_SEC = 15.0  # 장면이 길면 사건을 놓친다(30초일 때 정답지 사건을 덜 담았다)
 SILENT_MAX_SCENE_SEC = 12.0  # 대사 없는 영상은 더 잘게. 19~22초 장면에서 동작을 놓치고 해설이 18초씩 비었다(2026-11-02 데모 Caminandes)
 
 # 추론 서버에 함께 보내는 해설 지침. 첫 실분석(2026-10-28)에서 "표시됨"처럼 개조식으로 끝나는 문장이 섞여 넣었다
@@ -212,9 +214,9 @@ SCENE_FIX_GUIDE = (" 인물은 '정해 둔 인물·물건 이름'의 호칭과 �
                    " 옷차림만 말하거나 '말하고 있습니다'만 있는 문장은 쓰지 않습니다. 대사로 들리는 내용은 옮기지 않습니다."
                    " 대사로는 알 수 없는 것, 곧 누가 무엇을 하는지(동작), 표정·몸짓·리액션, 화면 자막의 핵심 문구, 장소와 상황의 변화를 씁니다.")
 # all: 제목·화면 글자·대사에 나온 이름을 쓴다. screen: 대사에서만 들린 이름은 쓰지 않는다(들려도 화면의 누가 그 사람인지는 모른다)
-NAME_SOURCE = os.getenv("NAME_SOURCE", "all")
+NAME_SOURCE = os.getenv("NAME_SOURCE", "screen")
 # on이면 말로 한 내용을 요약한 문장("AI가 볼링을 추천합니다")을 쓰지 않게 하고(SPEECH_GUIDE) 남은 것도 뺀다(drop_speech_acts)
-SPEECH_FILTER = os.getenv("SPEECH_FILTER", "off") == "on"
+SPEECH_FILTER = os.getenv("SPEECH_FILTER", "on") == "on"
 SPEECH_GUIDE = (" 인물이 말로 설명·제안·질문·주장하는 내용은 대사로 들리므로 해설에 쓰지 않습니다."
                 " level 1도 말한 내용의 요약이 아니라 화면에서 보이는 행동과 그 결과(일어선다, 계산대로 간다, 휴대폰을 내민다)를 씁니다.")
 MIN_LINE_GAP_MS = 2000  # 한 장면 안 문장 사이 최소 간격. 같은 시각에 두 문장이 겹쳤다(2026-11-02 데모 Caminandes 92초)
@@ -249,8 +251,8 @@ def overlaps(seg: dict, scene: dict) -> bool:
 
 
 def frames_for(scene_ms: int) -> int:
-    """장면 길이에 맞춘 대표 사진 수: 6초에 1장, 4~8장."""
-    return max(4, min(8, round(scene_ms / 6000)))
+    """장면 길이에 맞춘 대표 사진 수: 3초에 1장, 4~8장."""
+    return max(4, min(8, round(scene_ms / 3000)))
 
 
 def frames_for_silent(scene_ms: int) -> int:
@@ -258,7 +260,7 @@ def frames_for_silent(scene_ms: int) -> int:
     return max(4, min(8, round(scene_ms / 3000)))
 
 
-SEC_PER_LINE = 6.0  # 장면 길이 몇 초에 문장 하나(모든 상세도 합). 해설 읽기 약 3~4초 + 대사·여유
+SEC_PER_LINE = 4.0  # 장면 길이 몇 초에 문장 하나(모든 상세도 합). 해설 읽기 약 3~4초
 
 
 def cap_lines(lines: list[dict], scene_ms: int) -> list[dict]:

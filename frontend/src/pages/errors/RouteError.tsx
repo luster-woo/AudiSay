@@ -42,7 +42,7 @@ export default function RouteError() {
         )}
         <Link
           to="/"
-          className="inline-flex min-h-touch items-center rounded-md bg-navy px-6 font-bold text-cream focus-visible:bg-navy focus-visible:outline-yellow"
+          className="inline-flex min-h-touch items-center rounded-md bg-navy px-6 font-bold text-cream focus-visible:bg-navy"
         >
           처음 화면으로
         </Link>

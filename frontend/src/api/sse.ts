@@ -71,8 +71,13 @@ export async function subscribeSse(path: string, opts: SseOptions, retried = fal
       } catch (e) {
         // RefreshToken 도 만료 → 세션을 끝낸다 (axios 쪽과 같게)
         logDev('재발급 실패', e)
-        expireSession()
-        opts.onClose('error', new ApiError('AUTH_002', 401, '로그인이 만료되었습니다.'))
+        expireSession(e)
+        opts.onClose(
+          'error',
+          e instanceof ApiError && e.code === 'AUTH_004'
+            ? e
+            : new ApiError('AUTH_002', 401, '로그인이 만료됐어요.'),
+        )
         return
       }
     }

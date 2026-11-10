@@ -169,7 +169,7 @@ export default function StatsPage() {
             )}
           </section>
 
-          <div className="mt-[1.4667rem] grid gap-[1.4667rem] xl:grid-cols-[3fr_2fr]">
+          <div className="mt-[1.4667rem] grid gap-[1.4667rem] xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
             <PurposeTable data={data} />
             <ModelTable data={data} />
           </div>
@@ -295,58 +295,61 @@ function PurposeTable({ data }: { data: AiUsageStats }) {
       {data.byPurpose.length === 0 ? (
         <p className="px-[1.2rem] pb-[1.2rem] text-[0.9333rem] text-ink-muted">기록 없음</p>
       ) : (
-        <table className="w-full text-[0.9333rem]">
-          <thead className="bg-cream text-[0.8667rem] text-ink-muted">
-            <tr>
-              <th scope="col" className={`${CELL} ${TH}`}>
-                용도
-              </th>
-              <th scope="col" className={`${NUM} ${TH}`}>
-                호출
-              </th>
-              <th scope="col" className={`${NUM} ${TH}`}>
-                크레딧
-              </th>
-              <th scope="col" className={`${NUM} ${TH}`}>
-                비중
-              </th>
-              <th scope="col" className={`${NUM} ${TH}`}>
-                입력 토큰
-              </th>
-              <th scope="col" className={`${NUM} ${TH}`}>
-                출력 토큰
-              </th>
-              <th scope="col" className={`${NUM} ${TH}`}>
-                오류율
-              </th>
-              <th scope="col" className={`${NUM} ${TH}`}>
-                p50
-              </th>
-              <th scope="col" className={`${NUM} ${TH}`}>
-                p95
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.byPurpose.map((p) => (
-              <tr key={p.purpose} className="border-t border-line">
-                <th scope="row" className={`${CELL} font-bold`}>
-                  {purposeLabel(p.purpose)}
+        // 칸이 많아 좁으면 잘리지 않고 가로로 스크롤한다 (챗봇 통계 TableCard 와 같게)
+        <div className="overflow-x-auto">
+          <table className="w-full text-[0.9333rem]">
+            <thead className="bg-cream text-[0.8667rem] text-ink-muted">
+              <tr>
+                <th scope="col" className={`${CELL} ${TH}`}>
+                  용도
                 </th>
-                <td className={NUM}>{formatInt(p.calls)}</td>
-                <td className={`${NUM} font-bold`}>{formatCredits(p.estimatedCredits)}</td>
-                <td className={NUM}>{formatRate(p.estimatedCredits / total)}</td>
-                <td className={NUM}>{formatInt(p.inputTokens)}</td>
-                <td className={NUM}>{formatInt(p.outputTokens)}</td>
-                <td className={cn(NUM, p.errorRate >= 0.05 && 'font-bold text-danger')}>
-                  {formatRate(p.errorRate)}
-                </td>
-                <td className={NUM}>{formatLatency(p.p50LatencyMs)}</td>
-                <td className={NUM}>{formatLatency(p.p95LatencyMs)}</td>
+                <th scope="col" className={`${NUM} ${TH}`}>
+                  호출
+                </th>
+                <th scope="col" className={`${NUM} ${TH}`}>
+                  크레딧
+                </th>
+                <th scope="col" className={`${NUM} ${TH}`}>
+                  비중
+                </th>
+                <th scope="col" className={`${NUM} ${TH}`}>
+                  입력 토큰
+                </th>
+                <th scope="col" className={`${NUM} ${TH}`}>
+                  출력 토큰
+                </th>
+                <th scope="col" className={`${NUM} ${TH}`}>
+                  오류율
+                </th>
+                <th scope="col" className={`${NUM} ${TH}`}>
+                  p50
+                </th>
+                <th scope="col" className={`${NUM} ${TH}`}>
+                  p95
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {data.byPurpose.map((p) => (
+                <tr key={p.purpose} className="border-t border-line">
+                  <th scope="row" className={`${CELL} font-bold`}>
+                    {purposeLabel(p.purpose)}
+                  </th>
+                  <td className={NUM}>{formatInt(p.calls)}</td>
+                  <td className={`${NUM} font-bold`}>{formatCredits(p.estimatedCredits)}</td>
+                  <td className={NUM}>{formatRate(p.estimatedCredits / total)}</td>
+                  <td className={NUM}>{formatInt(p.inputTokens)}</td>
+                  <td className={NUM}>{formatInt(p.outputTokens)}</td>
+                  <td className={cn(NUM, p.errorRate >= 0.05 && 'font-bold text-danger')}>
+                    {formatRate(p.errorRate)}
+                  </td>
+                  <td className={NUM}>{formatLatency(p.p50LatencyMs)}</td>
+                  <td className={NUM}>{formatLatency(p.p95LatencyMs)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </section>
   )
@@ -369,43 +372,46 @@ function ModelTable({ data }: { data: AiUsageStats }) {
       {data.byModel.length === 0 ? (
         <p className="px-[1.2rem] pb-[1.2rem] text-[0.9333rem] text-ink-muted">기록 없음</p>
       ) : (
-        <table className="w-full text-[0.9333rem]">
-          <thead className="bg-cream text-[0.8667rem] text-ink-muted">
-            <tr>
-              <th scope="col" className={`${CELL} ${TH}`}>
-                모델
-              </th>
-              <th scope="col" className={`${NUM} ${TH}`}>
-                호출
-              </th>
-              <th scope="col" className={`${NUM} ${TH}`}>
-                토큰
-              </th>
-              <th scope="col" className={`${NUM} ${TH}`}>
-                크레딧
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.byModel.map((m) => (
-              <tr key={m.model} className="border-t border-line">
-                <th scope="row" className={`${CELL} font-mono text-[0.8667rem] font-normal`}>
-                  {m.model}
-                  {isSelfHosted(m.model) && (
-                    <span className="ml-[0.4rem] rounded-sm bg-cream px-[0.4rem] font-sans text-[0.8rem] text-ink-muted">
-                      자체 서버
-                    </span>
-                  )}
+        // 칸이 많아 좁으면 잘리지 않고 가로로 스크롤한다 (챗봇 통계 TableCard 와 같게)
+        <div className="overflow-x-auto">
+          <table className="w-full text-[0.9333rem]">
+            <thead className="bg-cream text-[0.8667rem] text-ink-muted">
+              <tr>
+                <th scope="col" className={`${CELL} ${TH}`}>
+                  모델
                 </th>
-                <td className={NUM}>{formatInt(m.calls)}</td>
-                <td className={NUM}>{formatInt(m.inputTokens + m.outputTokens)}</td>
-                <td className={`${NUM} font-bold`}>
-                  {isSelfHosted(m.model) ? '0' : formatCredits(m.estimatedCredits)}
-                </td>
+                <th scope="col" className={`${NUM} ${TH}`}>
+                  호출
+                </th>
+                <th scope="col" className={`${NUM} ${TH}`}>
+                  토큰
+                </th>
+                <th scope="col" className={`${NUM} ${TH}`}>
+                  크레딧
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {data.byModel.map((m) => (
+                <tr key={m.model} className="border-t border-line">
+                  <th scope="row" className={`${CELL} font-mono text-[0.8667rem] font-normal`}>
+                    {m.model}
+                    {isSelfHosted(m.model) && (
+                      <span className="ml-[0.4rem] rounded-sm bg-cream px-[0.4rem] font-sans text-[0.8rem] text-ink-muted">
+                        자체 서버
+                      </span>
+                    )}
+                  </th>
+                  <td className={NUM}>{formatInt(m.calls)}</td>
+                  <td className={NUM}>{formatInt(m.inputTokens + m.outputTokens)}</td>
+                  <td className={`${NUM} font-bold`}>
+                    {isSelfHosted(m.model) ? '0' : formatCredits(m.estimatedCredits)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </section>
   )

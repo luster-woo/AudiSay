@@ -29,7 +29,7 @@ export default function HelpPage() {
     focusRef: headingRef,
   })
   return (
-    <div className="help-page min-w-0 max-sm:-mx-10">
+    <div className="help-page min-w-0">
       <div className="help-wireframe-view">
         <h1 ref={headingRef} tabIndex={-1} className="help-title font-bold outline-none">
           도움말

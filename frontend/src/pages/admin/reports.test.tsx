@@ -200,6 +200,17 @@ describe('신고 처리', () => {
     expect(await axe(container)).toHaveNoViolations()
   })
 
+  test('처리 상태를 바꾸면 포커스는 상태 라디오에 그대로 두고 결과만 알린다 (진입 안내를 다시 읽지 않는다)', async () => {
+    renderRoute('/admin/reports')
+    const heading = await screen.findByRole('heading', { name: /^처리 전/ })
+    await waitFor(() => expect(heading).toHaveFocus())
+    const done = screen.getByRole('radio', { name: /^처리 완료/ })
+    await userEvent.click(done)
+    await waitFor(() => expect(screen.getByText(/^처리 완료 \d+건\.$/)).toBeInTheDocument())
+    expect(done).toHaveFocus()
+    expect(screen.queryAllByText(/신고 처리 화면이에요/).length).toBeLessThanOrEqual(1)
+  })
+
   test('빈 구간이 없는 문장(gapEndMs null)은 넘침으로 보지 않고 멈추고 읽는다고 알린다', async () => {
     vi.mocked(adminApi.reviewDescription).mockResolvedValue({
       ...review,
@@ -225,6 +236,7 @@ describe('신고 처리', () => {
       text: '네 개의 막대가 있는 그래프예요',
       audioUrl: null,
       updatedAt: '2026-10-24T00:00:00Z',
+      audioRegenerating: true,
     })
     vi.mocked(adminApi.handleReport).mockResolvedValue({
       reportId: 7,

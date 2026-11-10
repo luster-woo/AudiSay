@@ -409,6 +409,8 @@ export interface LineUpdateResult {
   text: string
   audioUrl: string | null
   updatedAt: string
+  /** 문장 글자가 바뀌어 음성을 다시 만드는 중이면 true. 중요도만 바꿨으면 false(음성 그대로) */
+  audioRegenerating: boolean
 }
 
 /** POST /admin/lines/{lineId}/audio (202) */

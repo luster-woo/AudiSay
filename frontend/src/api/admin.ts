@@ -38,6 +38,8 @@ export interface AdminUserListParams {
   keyword?: string
   /** 기본 false (탈퇴 회원 제외) */
   includeWithdrawn?: boolean
+  /** 기본 NEWEST(가입 최신순). OLDEST · NAME(이름 가나다순) */
+  sort?: 'NEWEST' | 'OLDEST' | 'NAME'
   page?: number
   /** 기본 20, 최대 50 */
   size?: number

@@ -41,19 +41,36 @@ export type ReportSort = 'oldest' | 'most'
 /** 서버 한 번 최대 50건 */
 const MAX_SIZE = 50
 
+/** 처리된 신고(완료·반려)는 최근 이만큼의 쪽(쪽마다 50건)만 받는다. 기록은 계속 쌓여 전부 받으면 요청이 끝없이 늘어난다 */
+export const HANDLED_PAGES = 4
+/** 쪽을 한 번에 이만큼씩 받는다 (수십 개를 동시에 보내 서버와 화면이 느려지지 않게) */
+const CONCURRENT = 4
+
 /**
- * 한 상태의 신고를 모두 받는다. 서버는 신고 한 건씩 쪽으로 나눠 주므로,
- * 쪽마다 묶으면 같은 문장이 여러 줄로 갈라진다. 다 받은 뒤 화면에서 문장 단위로 묶는다
+ * 한 상태의 신고를 받는다. 서버는 신고 한 건씩 쪽으로 나눠 주므로(오래된 순), 쪽마다 묶으면 같은 문장이
+ * 여러 줄로 갈라진다. 받은 뒤 화면에서 문장 단위로 묶는다.
+ * - 처리 전: 모두 받는다 (처리할 일이라 다 보여야 하고, 처리하면 줄어든다)
+ * - 처리 완료·반려: 최근 HANDLED_PAGES 쪽(200건)만 받는다
  */
 export async function fetchAllReports(status: ReportStatus): Promise<AdminReport[]> {
   const first = await adminApi.reports({ status, page: 0, size: MAX_SIZE })
-  const rest = await Promise.all(
-    Array.from({ length: Math.max(0, first.page.totalPages - 1) }, (_, i) =>
-      adminApi.reports({ status, page: i + 1, size: MAX_SIZE }),
-    ),
-  )
+  const total = first.page.totalPages
+  const from = status === 'PENDING' ? 1 : Math.max(1, total - HANDLED_PAGES)
+  const pages = Array.from({ length: Math.max(0, total - from) }, (_, i) => from + i)
+  const rest = []
+  for (let i = 0; i < pages.length; i += CONCURRENT) {
+    rest.push(
+      ...(await Promise.all(
+        pages
+          .slice(i, i + CONCURRENT)
+          .map((page) => adminApi.reports({ status, page, size: MAX_SIZE })),
+      )),
+    )
+  }
+  // 처리된 신고가 많아 최근 쪽만 받았으면 첫 쪽(가장 오래된 것)은 빼고 최근 것만 보인다
+  const head = status === 'PENDING' || total <= HANDLED_PAGES + 1 ? [first] : []
   const seen = new Set<number>()
-  return [first, ...rest]
+  return [...head, ...rest]
     .flatMap((p) => p.content)
     .filter((r) => !seen.has(r.reportId) && seen.add(r.reportId))
 }

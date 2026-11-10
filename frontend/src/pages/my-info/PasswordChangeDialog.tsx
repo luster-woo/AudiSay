@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/Button'
 import { Dialog } from '@/components/ui/Dialog'
 import { PasswordField } from '@/components/ui/PasswordField'
 import { useAnnouncer } from '@/features/announcer/context'
-import { isValidPassword } from '@/utils/validation'
+import { isValidPassword, PASSWORD_RULE } from '@/utils/validation'
 
 type Field = 'current' | 'next' | 'confirm'
 type Errors = Partial<Record<Field, string>>
@@ -50,8 +50,7 @@ export function PasswordChangeDialog({ open, onClose }: { open: boolean; onClose
     setFailure('')
     const nextErrors: Errors = {}
     if (!current) nextErrors.current = '현재 비밀번호를 입력해 주세요.'
-    if (!isValidPassword(next) || /\s/.test(next))
-      nextErrors.next = '공백 없이 8~20자로, 영문·숫자·특수문자를 모두 넣어 주세요.'
+    if (!isValidPassword(next)) nextErrors.next = PASSWORD_RULE
     if (!confirm) nextErrors.confirm = '새 비밀번호를 한 번 더 입력해 주세요.'
     else if (confirm !== next) nextErrors.confirm = '새 비밀번호가 서로 달라요.'
     if (Object.keys(nextErrors).length) return fail(nextErrors)
@@ -111,7 +110,7 @@ export function PasswordChangeDialog({ open, onClose }: { open: boolean; onClose
           ref={nextRef}
           label="새 비밀번호"
           autoComplete="new-password"
-          hint="공백 없이 8~20자, 영문·숫자·특수문자 포함"
+          hint={PASSWORD_RULE}
           required
           readOnly={pending}
           value={next}

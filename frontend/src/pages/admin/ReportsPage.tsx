@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { queryKeys } from '@/api/queryKeys'
@@ -15,6 +15,7 @@ import {
 } from '@/features/admin/reports'
 import { StatusSwitch } from '@/features/admin/StatusSwitch'
 import { usePendingReportCount } from '@/features/admin/usePendingReportCount'
+import { useAnnouncer } from '@/features/announcer/context'
 import { usePageEntry } from '@/features/page/usePageEntry'
 
 /** 게시판 한 쪽에 보일 문장(묶음) 수 */
@@ -54,6 +55,7 @@ export default function ReportsPage() {
 
 function ReportListView() {
   const navigate = useNavigate()
+  const { announce } = useAnnouncer()
   const status = useStatus()
   const headingRef = useRef<HTMLHeadingElement>(null)
   const pendingCount = usePendingReportCount()
@@ -61,15 +63,29 @@ function ReportListView() {
   const [page, setPage] = useState(0)
   const { groups, isError, isFetched, data } = useReportGroups(status, sort)
 
-  usePageEntry({
-    title: '신고 처리',
-    announce:
+  // 화면 진입(제목 포커스·안내)은 처음 한 번만, 그때의 문구로 고정한다. 처리 상태를 바꿔 다시 받거나 처리 전 건수가
+  // 늦게 와도 제목으로 포커스가 튀거나 진입 안내를 다시 읽지 않게 한다 (상태 라디오를 ← → 로 옮기던 포커스를 지킨다)
+  const [entryText, setEntryText] = useState<string | null>(null)
+  if (entryText === null && isFetched)
+    setEntryText(
       pendingCount === undefined
         ? '신고 처리 화면이에요.'
         : `신고 처리 화면이에요. 처리 전 ${pendingCount}건.`,
+    )
+  usePageEntry({
+    title: '신고 처리',
+    announce: entryText ?? '',
     focusRef: headingRef,
-    ready: isFetched,
+    ready: entryText !== null,
   })
+
+  // 상태를 바꾼 뒤에는 포커스를 그대로 두고 결과만 알린다 ('처리 완료 12건')
+  const announcedStatus = useRef(status)
+  useEffect(() => {
+    if (!isFetched || announcedStatus.current === status) return
+    announcedStatus.current = status
+    announce(`${STATUS_LABELS[status]} ${groups.length}건.`)
+  }, [status, isFetched, groups.length, announce])
 
   const totalPages = Math.max(1, Math.ceil(groups.length / PAGE_SIZE))
   const current = Math.min(page, totalPages - 1)

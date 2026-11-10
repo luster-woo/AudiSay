@@ -103,9 +103,30 @@ def test_name_must_appear_in_title_dialogue_or_screen():
     plan = assemble(full, chunks)
     assert [c["name"] for c in plan.characters] == ["박진영", "사토 히데오"]
     assert plan.dropped_names == ["최유리"]
-    assert plan.lines[0]["flags"] == ["UNSUPPORTED_NAME"]
+    assert plan.lines[0]["text"] == "원피스가 맥주를 건넨다."  # 근거 없는 이름은 겉모습 호칭으로 바꿔 읽는다
     old = assemble({**full, "title": None}, chunks)  # 제목 모르면 예전처럼 근거 말만 본다
     assert [c["name"] for c in old.characters] == ["박진영", "최유리", "사토 히데오"]
+
+
+def test_made_up_names_become_label_or_subtitle_name():
+    """2026-11-10 '100일의 거짓말': 자막엔 '가경'뿐인데 '금가경', 영상에 없는 '임승묵(박성웅)'을 지어 첫 해설에서 읽었다.
+    성을 뗀 이름이 자막에 있으면 그것으로, 아예 없으면 겉모습 호칭으로 바꾸고 조사도 맞춘다. 배우 괄호는 떼고 본다."""
+    full = {**FULL, "title": "마지막으로 꼭 전하고 싶었던 가경의 진심 아무것도 모르는 태웅",
+            "dialogues": [{"startMs": 1000, "endMs": 3000, "speaker": "임승묵(박성웅)", "text": "유모 이름은 금서희야"},
+                          {"startMs": 4000, "endMs": 5000, "speaker": "김태웅(진영)", "text": "김태웅이 아니라"}],
+            "scenes": [{"startMs": 0, "endMs": 60_000, "title": "떠나는 가경", "screenTexts": [],
+                        "people": [{"name": "금가경(김유정)", "basis": "자막", "appearance": "브라운 재킷 여성"},
+                                   {"name": "임승묵(박성웅)", "basis": "대사 및 자막", "appearance": "회색 원피스를 입은 중년 여성"},
+                                   {"name": "김태웅(진영)", "basis": "대사에서 언급", "appearance": "검은 수트"}]}]}
+    line = lambda t, s: {"detailLevel": 1, "startMs": s, "gapEndMs": None, "importance": 3, "text": t, "flags": []}
+    chunks = [{"chunkIndex": 0, "screenTexts": [], "lines": [line("임승묵과 금가경이 마주 앉는다.", 0),
+                                                             line("승묵이 부품을 조립한다.", 10_000),
+                                                             line("김태웅의 얼굴이 굳는다.", 20_000)]}]
+    plan = assemble(full, chunks)
+    assert [x["text"] for x in plan.lines] == ["원피스를 입은 중년 여성과 가경이 마주 앉는다.",  # 15자 안으로 앞 낱말을 뗌
+                                               "원피스를 입은 중년 여성이 부품을 조립한다.", "김태웅의 얼굴이 굳는다."]
+    assert [c["name"] for c in plan.characters] == ["가경", "김태웅"]
+    assert [d["speaker"] for d in plan.dialogues] == [None, "김태웅"]
 
 
 def test_check_flags_prompt_v4_rules():

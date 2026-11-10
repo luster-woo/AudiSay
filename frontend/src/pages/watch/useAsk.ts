@@ -13,7 +13,7 @@ import type { Narrator } from '@/features/player/Narrator'
 import { withRo } from '@/utils/korean'
 import { formatPositionSpoken } from '@/utils/time'
 import { screenReaderLeadMs } from '@/features/search/speechLead'
-import { commandText, type HistoryEntry } from './history'
+import { commandReply, sentence, type HistoryEntry } from './history'
 
 export interface PendingCandidates {
   chatLogId: number
@@ -228,6 +228,36 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
   })
 
   const push = useCallback((e: HistoryEntry) => setLocal((prev) => [...prev, e]), [])
+  /**
+   * 질문이 아닌 말(이동·설정·기능·대답)도 질문과 같은 모양으로 남긴다: '나' 말풍선 + 'AudiSay 답' 말풍선.
+   * goToMs: '그 장면 보기'로 갈 시각 (장면 이동이면 옮긴 시각)
+   */
+  const addReply = useCallback(
+    (
+      key: string,
+      chatLogId: number,
+      videoTimeMs: number | null,
+      utterance: string,
+      answer: string,
+      goToMs: number | null = null,
+    ) => {
+      setLocal((prev) => [
+        ...prev,
+        { key: `me-${key}`, kind: 'me', chatLogId, videoTimeMs, text: utterance },
+        {
+          key: `ans-${key}`,
+          kind: 'answer',
+          chatLogId,
+          videoTimeMs,
+          text: sentence(answer),
+          sentences: [],
+          done: true,
+          goToMs,
+        },
+      ])
+    },
+    [],
+  )
   // 같은 chatLogId 에 답이 두 번 올 수 있어("들으시겠어요?" → 네) 항목 key 로 고친다
   const patchAnswer = useCallback(
     (key: string, fn: (a: Extract<HistoryEntry, { kind: 'answer' }>) => HistoryEntry) =>
@@ -238,6 +268,8 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
   /**
    * QUESTION·SCENE_NOW·RECAP: 영상을 멈추고 답을 문장 단위로 듣는다 (ASK-01).
    * includeFuture: "들으시겠어요?"에 '네'라고 해서 같은 질문을 뒤 내용까지 넣어 다시 받을 때
+   * sceneLinked: 답이 물어본 그 장면에 대한 것이면 true ('그 장면 보기'를 단다).
+   * 지금까지 줄거리(RECAP)는 한 장면이 아니라 처음부터 지금까지라 false
    */
   const listenAnswer = useCallback(
     async (
@@ -247,6 +279,7 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
       includeFuture = false,
       /** 말로 질문하느라 이미 멈춰 둔 경우: 원래 재생 중이었는지 */
       resumeAfter = false,
+      sceneLinked = true,
     ) => {
       const c = ctxRef.current
       const gen = sendGenRef.current
@@ -267,6 +300,8 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
         text: '',
         sentences: [],
         done: false,
+        // undefined 면 '그 장면 보기'가 물어본 시각으로 간다. null 이면 버튼을 두지 않는다
+        goToMs: sceneLinked ? undefined : null,
       })
       c.showHistory()
       const controller = new AbortController()
@@ -362,21 +397,23 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
     async (res: ChatMessageResult, videoTimeMs: number) => {
       const c = ctxRef.current
       const { chatLogId, utterance } = res
+      const answer = (text: string, goToMs: number | null = null) =>
+        addReply(String(chatLogId), chatLogId, videoTimeMs, utterance, text, goToMs)
       const command = (targetMs: number | null) =>
-        push({
-          key: `cmd-${chatLogId}`,
-          kind: 'command',
-          chatLogId,
-          videoTimeMs,
-          text: commandText(res.intent, utterance, targetMs),
-          targetMs,
-        })
+        answer(commandReply(res.intent, targetMs), targetMs)
 
       switch (res.intent) {
         case 'QUESTION':
         case 'SCENE_NOW':
         case 'RECAP':
-          await listenAnswer(chatLogId, utterance, videoTimeMs, false, resumeAfterRef.current)
+          await listenAnswer(
+            chatLogId,
+            utterance,
+            videoTimeMs,
+            false,
+            resumeAfterRef.current,
+            res.intent !== 'RECAP',
+          )
           return
         case 'SEEK_TIME':
           command(res.result.targetMs)
@@ -392,14 +429,7 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
           if (candidates.length === 0) {
             // 서버가 이유별 말을 준다 ("못 찾았어요" / "시간이 오래 걸려요")
             const said = res.result.message || '그런 장면을 찾지 못했어요. 다르게 말씀해 주세요.'
-            push({
-              key: `cmd-${chatLogId}`,
-              kind: 'command',
-              chatLogId,
-              videoTimeMs,
-              text: `"${utterance}" → ${said}`,
-              targetMs: null,
-            })
+            answer(said)
             c.announce(said)
             return
           }
@@ -418,26 +448,12 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
           const { settingKey, settingValue, message } = res.result
           const patch = coerceSetting(settingKey, settingValue)
           if (!patch) {
-            push({
-              key: `cmd-${chatLogId}`,
-              kind: 'command',
-              chatLogId,
-              videoTimeMs,
-              text: `"${utterance}" → 바꿀 수 없는 설정이에요`,
-              targetMs: null,
-            })
+            answer('바꿀 수 없는 설정이에요.')
             c.announce('바꿀 수 없는 설정이에요.')
             return
           }
           // 범위 끝이면 서버가 준 말("이미 가장 빠른 속도예요.")을 그대로 읽는다
-          push({
-            key: `cmd-${chatLogId}`,
-            kind: 'command',
-            chatLogId,
-            videoTimeMs,
-            text: `"${utterance}" → ${message || `${withRo(settingSpoken(settingKey, settingValue))} 바꿨어요`}`,
-            targetMs: null,
-          })
+          answer(message || `${withRo(settingSpoken(settingKey, settingValue))} 바꿨어요.`)
           await c.updateSettings(patch)
           c.announce(message || `${withRo(settingSpoken(settingKey, settingValue))} 바꿨어요.`)
           return
@@ -445,45 +461,33 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
         case 'ACTION': {
           // 재생 중 "요약 들려줘": 요약에는 뒤 내용이 있어 먼저 묻는다 (스포일러)
           if (res.result.actionCode === 'PLAY_SUMMARY' && videoTimeMs > 0) {
-            push({
-              key: `cmd-${chatLogId}`,
-              kind: 'command',
-              chatLogId,
-              videoTimeMs,
-              text: `"${utterance}" → ${SUMMARY_OFFER}`,
-              targetMs: null,
-            })
+            answer(SUMMARY_OFFER)
             setOffer({ kind: 'summary', chatLogId, videoTimeMs })
             c.announce(`${SUMMARY_OFFER} 들으려면 '네', 아니면 '아니요'라고 말하거나 적어 주세요.`)
             c.focusInput()
             return
           }
           const done = c.runAction(res.result.actionCode)
-          push({
-            key: `cmd-${chatLogId}`,
-            kind: 'command',
-            chatLogId,
-            videoTimeMs,
-            text: done
-              ? commandText('ACTION', utterance, null)
-              : `"${utterance}" → 이 화면에서는 할 수 없는 기능이에요`,
-            targetMs: null,
-          })
+          answer(done ? commandReply('ACTION', null) : '이 화면에서는 할 수 없는 기능이에요.')
           if (!done) c.announce('이 화면에서는 할 수 없는 기능이에요.')
           return
         }
         case 'SEARCH_VIDEO':
-          command(null)
+          answer(
+            res.result.query
+              ? `'${res.result.query}' 영상을 찾아요.`
+              : res.result.message || '다른 영상은 검색 화면에서 찾아 주세요.',
+          )
           // 영상 안에서는 서버가 검색어 대신 안내("다른 영상은 검색 화면에서 찾아 주세요.")만 준다
           if (res.result.query) c.searchVideos(res.result.query)
           else c.announce(res.result.message || '다른 영상은 검색 화면에서 찾아 주세요.')
           return
         default:
-          command(null)
+          answer(res.result.message || '알아듣지 못했어요. 다시 말씀해 주세요.')
           c.announce(res.result.message || '알아듣지 못했어요. 다시 말씀해 주세요.')
       }
     },
-    [push, listenAnswer],
+    [addReply, listenAnswer],
   )
 
   /** 후보 중 하나로 이동 */
@@ -491,38 +495,37 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
     (cand: SceneCandidate) => {
       if (!pending) return
       const c = ctxRef.current
-      push({
-        key: `cmd-${pending.chatLogId}`,
-        kind: 'command',
-        chatLogId: pending.chatLogId,
-        videoTimeMs: pending.videoTimeMs,
-        text: commandText('SEEK_SCENE', pending.utterance, cand.startMs),
-        targetMs: cand.startMs,
-      })
+      addReply(
+        String(pending.chatLogId),
+        pending.chatLogId,
+        pending.videoTimeMs,
+        pending.utterance,
+        `${cand.title}, ${commandReply('SEEK_SCENE', cand.startMs)}`,
+        cand.startMs,
+      )
       setPending(null)
       c.seekTo(
         cand.startMs,
         `${cand.title}, ${withRo(formatPositionSpoken(cand.startMs))} 옮겼어요.`,
       )
     },
-    [pending, push],
+    [pending, addReply],
   )
 
   const dismissCandidates = useCallback(() => {
     if (!pending) return
     const c = ctxRef.current
-    push({
-      key: `cmd-${pending.chatLogId}`,
-      kind: 'command',
-      chatLogId: pending.chatLogId,
-      videoTimeMs: pending.videoTimeMs,
-      text: commandText('SEEK_SCENE', pending.utterance, null),
-      targetMs: null,
-    })
+    addReply(
+      String(pending.chatLogId),
+      pending.chatLogId,
+      pending.videoTimeMs,
+      pending.utterance,
+      '찾는 장면이 아니었어요. 다시 말씀해 주세요.',
+    )
     setPending(null)
     c.focusInput()
     c.announce('다시 말씀해 주세요. 입력칸에 있어요.')
-  }, [pending, push])
+  }, [pending, addReply])
 
   const send = useCallback(
     async (
@@ -554,27 +557,25 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
       setOffer(null)
       const reply = asked ? answerToOffer(utterance) : null
       if (asked && reply === 'no') {
-        push({
-          key: `cmd-${asked.chatLogId}-${asked.kind}`,
-          kind: 'command',
-          chatLogId: asked.chatLogId,
-          videoTimeMs: asked.videoTimeMs,
-          text: `"${utterance}" → ${asked.kind === 'summary' ? '요약은 듣지 않았어요' : '뒤 내용은 듣지 않았어요'}`,
-          targetMs: null,
-        })
+        addReply(
+          `${asked.chatLogId}-${asked.kind}-no`,
+          asked.chatLogId,
+          asked.videoTimeMs,
+          utterance,
+          asked.kind === 'summary' ? '알겠어요. 요약은 듣지 않을게요.' : '알겠어요. 뒤 내용은 듣지 않을게요.',
+        )
         c.announce('알겠어요. 입력칸에 있어요.')
         c.focusInput()
         return
       }
       if (asked?.kind === 'summary' && reply === 'yes') {
-        push({
-          key: `cmd-${asked.chatLogId}-summary`,
-          kind: 'command',
-          chatLogId: asked.chatLogId,
-          videoTimeMs: asked.videoTimeMs,
-          text: `"${utterance}" → 요약을 들었어요`,
-          targetMs: null,
-        })
+        addReply(
+          `${asked.chatLogId}-summary-yes`,
+          asked.chatLogId,
+          asked.videoTimeMs,
+          utterance,
+          '요약을 들려 드릴게요.',
+        )
         c.runAction('PLAY_SUMMARY')
         return
       }
@@ -604,7 +605,7 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
         setBusy(false)
       }
     },
-    [busy, offer, pending, chooseCandidate, handle, listenAnswer, push],
+    [busy, offer, pending, chooseCandidate, handle, listenAnswer, addReply],
   )
 
   /** 기록의 답을 다시 듣기 (음성이 있으면 그걸, 없으면 브라우저 음성) */

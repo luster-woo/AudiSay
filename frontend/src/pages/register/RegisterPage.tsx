@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useBlocker, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { usersApi } from '@/api/users'
@@ -76,11 +76,15 @@ export default function RegisterPage() {
       upload.phase === 'uploading' && currentLocation.pathname !== nextLocation.pathname,
   )
 
+  const noticeTimerRef = useRef<number | undefined>(undefined)
+  useEffect(() => () => window.clearTimeout(noticeTimerRef.current), [])
+
   const backToPick = (message: string) => {
     setStep('pick')
     setPicked(null)
-    // 새 화면의 진입 안내 뒤에 결과를 이어서 읽는다
-    setTimeout(() => announce(message), 300)
+    // 새 화면의 진입 안내 뒤에 결과를 이어서 읽는다. 그 사이 다른 화면으로 가면 읽지 않는다(아래 정리)
+    window.clearTimeout(noticeTimerRef.current)
+    noticeTimerRef.current = window.setTimeout(() => announce(message), 300)
   }
 
   const start = async (visibility: Visibility) => {

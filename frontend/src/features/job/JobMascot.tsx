@@ -21,6 +21,22 @@ function subscribeReduce(onChange: () => void) {
 const useReducedMotion = () =>
   useSyncExternalStore(subscribeReduce, () => window.matchMedia?.(REDUCE).matches ?? false)
 
+// 저장소를 막아 둔 브라우저(쿠키 전체 차단 등)에서는 localStorage 가 예외를 던진다. 그때는 기억하지 않는다
+function readPaused() {
+  try {
+    return localStorage.getItem(PAUSED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+function savePaused(paused: boolean) {
+  try {
+    localStorage.setItem(PAUSED_KEY, paused ? '1' : '0')
+  } catch {
+    /* 기억하지 못해도 이번 화면에서는 멈춘다 */
+  }
+}
+
 /**
  * 해설 만들기 화면의 마스코트 오디. 장식이라 낭독기에 숨긴다.
  * 대기·진행 중엔 태블릿으로 영상을 보며 움직인다(움직이는 WebP).
@@ -28,7 +44,7 @@ const useReducedMotion = () =>
  * 기기의 '동작 줄이기'가 켜져 있으면 처음부터 멈춘 그림만 보여 준다(버튼 아님).
  */
 export function JobMascot({ phase }: { phase: Phase }) {
-  const [paused, setPaused] = useState(() => localStorage.getItem(PAUSED_KEY) === '1')
+  const [paused, setPaused] = useState(readPaused)
   const reducedMotion = useReducedMotion()
 
   if (phase === 'done' || phase === 'failed') {
@@ -58,7 +74,7 @@ export function JobMascot({ phase }: { phase: Phase }) {
   }
 
   const toggle = () => {
-    localStorage.setItem(PAUSED_KEY, paused ? '0' : '1')
+    savePaused(!paused)
     setPaused(!paused)
   }
 

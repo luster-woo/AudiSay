@@ -65,3 +65,18 @@ class Db:
                                     c.output_tokens, c.image_count, c.estimated_credits, c.latency_ms, c.error_code)
         except Exception as e:  # noqa: BLE001
             log.warning("ai_call_logs 기록 실패(%s %s): %s", c.purpose, c.model, e)
+
+
+_columns: set[tuple[str, str]] = set()
+
+
+async def has_column(pool, table: str, column: str) -> bool:
+    """BE Flyway가 칸을 이미 만들었는지. AI와 BE가 같이 배포돼도 BE 마이그레이션이 조금 늦을 수 있어 새 칸은 이것으로 보고 쓴다.
+    있으면 기억하고(칸은 없어지지 않는다), 없으면 다음에 다시 본다."""
+    if (table, column) in _columns:
+        return True
+    ok = bool(await pool.fetchval("SELECT 1 FROM information_schema.columns WHERE table_name = $1 AND column_name = $2",
+                                  table, column))
+    if ok:
+        _columns.add((table, column))
+    return ok

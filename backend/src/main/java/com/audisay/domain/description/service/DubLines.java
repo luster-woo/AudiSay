@@ -1,6 +1,7 @@
 package com.audisay.domain.description.service;
 
 import com.audisay.domain.description.entity.DescriptionLine;
+import com.audisay.domain.description.entity.LineType;
 import com.audisay.domain.description.entity.TranscriptSegment;
 
 import java.util.List;
@@ -59,6 +60,8 @@ public final class DubLines {
 
     /** lines에서 대사 번역 문장을 뺀다. dialogues는 lines보다 LOOKBACK_MS 앞부터 읽은 대사 */
     public static List<DescriptionLine> remove(List<DescriptionLine> lines, List<TranscriptSegment> dialogues) {
+        // AI가 종류(line_type)를 적은 해설은 그 칸으로, 칸이 생기기 전 해설(모두 NARRATION)은 글로 가른다
+        lines = lines.stream().filter(l -> l.getLineType() != LineType.DIALOGUE).toList();
         if (lines.isEmpty() || dialogues.isEmpty()) {
             return lines;
         }

@@ -34,6 +34,8 @@ public record SettingsUpdateRequest(
 
         SubtitleReading subtitleReading,
 
+        Boolean translationReading,
+
         @Min(value = 0, message = "원래 소리 크기는 0~100 사이여야 해요.")
         @Max(value = 100, message = "원래 소리 크기는 0~100 사이여야 해요.")
         Integer originalVolume,
@@ -64,6 +66,7 @@ public record SettingsUpdateRequest(
                 speechRate,
                 soundMix,
                 subtitleReading,
+                translationReading,
                 toShort(originalVolume),
                 toShort(seekStepSec),
                 summaryMode,

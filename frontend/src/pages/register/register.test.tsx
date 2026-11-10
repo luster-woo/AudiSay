@@ -220,6 +220,10 @@ test('업로드 멈추기 → 확인 → 멈추기: 올린 조각을 지우고 �
   expect(
     await screen.findByRole('heading', { name: '올릴 영상 파일을 골라 주세요' }),
   ).toBeInTheDocument()
+  // 처음 단계의 진입 안내 뒤에 결과를 이어서 읽는다
+  expect(
+    (await screen.findAllByText('업로드를 멈췄어요. 오늘 횟수는 쓰지 않았어요.')).length,
+  ).toBeGreaterThan(0)
 })
 
 test('연결이 끊기면 처음부터 다시 올리기 / 업로드 취소를 고른다', async () => {

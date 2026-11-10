@@ -3,6 +3,7 @@
 - job.tts: 유튜브 영상은 상세도 1·2·3 문장 전부(2026-11-10 사용자 결정: 유튜브는 상세도 전부 Gemini TTS), 직접 올린 영상도
   상세도 1·2·3 문장 전부(2026-11-10 점검 수정) + 30초 요약을 Gemini TTS(목소리 Kore)로 만들어 S3에 올리고
   description_lines.audio_key·audio_duration_ms, descriptions.summary_audio_key·summary_duration_ms를 채운다.
+  외국어 대사를 한국어로 읽어 주는 문장(is_dub)은 해설과 구별되게 남성 목소리(DUB_VOICE)로 만든다.
   payload(BE TtsPayload): {descriptionId, voiceCode("ko-female-1")} — 목소리가 하나뿐이라 voiceCode는 읽지 않는다.
   PROGRESS는 80→100을 10% 단위(90)로 보내고, 완료 result에 descriptionId를 넣는다(BE TtsResult가 그 값만 읽음).
   해설 공개(PUBLISHED·READY)는 BE가 TTS 완료 이벤트를 받고 한다(descriptionService.publish) → 여기서는 하지 않는다.
@@ -24,6 +25,7 @@
 import asyncio
 import hashlib
 import logging
+import re
 import tempfile
 from array import array
 from collections.abc import Awaitable, Callable
@@ -32,7 +34,7 @@ from pathlib import Path
 from google.genai import types
 
 from app import inference
-from app.db import Db
+from app.db import Db, has_column
 from app.errors import WorkerError
 from app.gms.client import CallContext, GmsClient
 from app.mq.envelope import Envelope
@@ -44,6 +46,8 @@ log = logging.getLogger(__name__)
 
 MODELS = ("gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts")
 VOICE_NAME = "Kore"
+# 외국어 대사를 한국어로 읽어 주는 문장(describe.dub_lines)의 목소리: 해설(Kore, 여성)과 들어서 구별되게 남성 목소리(2026-11-10 사용자 결정)
+DUB_VOICE = "Charon"
 UPLOAD_VOICE = "F1"  # 직접 올린 영상의 해설 목소리: Supertonic 수아(안내 목소리 기본과 같음, 데모 2026-11-04 결정과 같음)
 # 음성 동시 요청 수. 데모 실측(2026-11-03): 5개씩 32개 18.5초(개당 0.58초) → 10개씩 47개 13.8초(개당 0.29초), 오류 0
 CONCURRENCY = 10
@@ -162,11 +166,11 @@ async def encode_mp3(pcm: bytes) -> bytes:
     return out
 
 
-def _config() -> types.GenerateContentConfig:
+def _config(voice: str = VOICE_NAME) -> types.GenerateContentConfig:
     return types.GenerateContentConfig(
         response_modalities=["AUDIO"],
         speech_config=types.SpeechConfig(voice_config=types.VoiceConfig(
-            prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=VOICE_NAME))))
+            prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=voice))))
 
 
 def strip_wav_header(data: bytes) -> bytes:
@@ -194,11 +198,11 @@ def _pcm(r: types.GenerateContentResponse) -> bytes:
     return b""
 
 
-async def synthesize(gms: GmsClient, text: str, ctx: CallContext) -> tuple[bytes, int] | None:
+async def synthesize(gms: GmsClient, text: str, ctx: CallContext, voice: str = VOICE_NAME) -> tuple[bytes, int] | None:
     """문장 하나 → (mp3 바이트, 길이 ms). 두 모델 다 실패하면 None."""
     for model in MODELS:
         try:
-            r = await gms.generate(model, text, _config(), ctx, retries=1)
+            r = await gms.generate(model, text, _config(voice), ctx, retries=1)
         except WorkerError as e:
             # 호출 한도 대기가 길어진 것(AI_LIMIT)은 이 문장만 비우지 않고 작업을 다시 시도하게 올린다.
             # 문장마다 나눠 저장하므로 다시 할 때는 남은 문장만 만든다 (2026-11-10 점검)
@@ -223,8 +227,8 @@ def text_hash(text: str) -> str:
     return hashlib.sha1(text.strip().encode()).hexdigest()[:16]
 
 
-def tts_cache_key(h: str) -> str:
-    return f"cache/tts/kore/{h}.mp3"
+def tts_cache_key(h: str, voice: str = VOICE_NAME) -> str:
+    return f"cache/tts/{voice.lower()}/{h}.mp3"
 
 
 def _seed(h: str) -> tuple[bytes, int] | None:
@@ -238,10 +242,10 @@ def _seed(h: str) -> tuple[bytes, int] | None:
     return (p.read_bytes(), int(_seed_index.get(h) or 0)) if h in _seed_index and p.exists() else None
 
 
-async def reuse(storage: Storage, text: str) -> tuple[bytes, int] | None:
-    """같은 문장의 음성(mp3, 길이 ms): S3 캐시 → 레포의 데모 음성. 없으면 None."""
+async def reuse(storage: Storage, text: str, voice: str = VOICE_NAME) -> tuple[bytes, int] | None:
+    """같은 문장·목소리의 음성(mp3, 길이 ms): S3 캐시 → 레포의 데모 음성(Kore만). 없으면 None."""
     h = text_hash(text)
-    key = tts_cache_key(h)
+    key = tts_cache_key(h, voice)
     if await storage.exists(key):
         meta_key = key.removesuffix(".mp3") + ".json"
         meta = await storage.get_json(meta_key) if await storage.exists(meta_key) else {}
@@ -249,15 +253,15 @@ async def reuse(storage: Storage, text: str) -> tuple[bytes, int] | None:
         if not meta.get("headClean"):  # 헤더 잡음을 고치기 전에 캐시에 들어간 음성은 한 번 고쳐 다시 넣는다
             try:
                 mp3 = await remove_head_click(mp3) or mp3
-                await remember(storage, text, mp3, ms)
+                await remember(storage, text, mp3, ms, voice)
             except WorkerError as e:  # 못 고치면 그대로 쓴다(다음에 다시 시도)
                 log.warning("캐시 음성 앞 잡음 고치기 실패 %s: %s", key, e)
         return mp3, ms
-    return _seed(h)
+    return _seed(h) if voice == VOICE_NAME else None
 
 
-async def remember(storage: Storage, text: str, mp3: bytes, ms: int) -> None:
-    key = tts_cache_key(text_hash(text))
+async def remember(storage: Storage, text: str, mp3: bytes, ms: int, voice: str = VOICE_NAME) -> None:
+    key = tts_cache_key(text_hash(text), voice)
     await storage.put_bytes(key, mp3, "audio/mpeg")
     await storage.put_json(key.removesuffix(".mp3") + ".json", {"durationMs": ms, "headClean": True})
 
@@ -282,30 +286,30 @@ async def synthesize_supertonic(inf: inference.Inference, text: str) -> tuple[by
 OnDone = Callable[[int, int], Awaitable[None]]
 
 
-async def synthesize_many(gms: GmsClient, storage: Storage, items: list[tuple[str, str]], ctx: CallContext,
+async def synthesize_many(gms: GmsClient, storage: Storage, items: list[tuple], ctx: CallContext,
                           on_done: OnDone | None = None, inf: inference.Inference | None = None) -> dict[str, int | None]:
-    """items: [(S3 키, 문장)]. 동시에 CONCURRENCY개씩. 반환 {키: 길이 ms 또는 None(실패)}.
+    """items: [(S3 키, 문장)] 또는 [(S3 키, 문장, Gemini 목소리)]. 동시에 CONCURRENCY개씩. 반환 {키: 길이 ms 또는 None(실패)}.
     inf가 있으면(직접 올린 영상) Supertonic으로 만들고 Gemini 음성 캐시는 쓰지 않는다(목소리가 다름)."""
     sem = asyncio.Semaphore(CONCURRENCY)
     out: dict[str, int | None] = {}
 
-    async def one(key: str, text: str) -> None:
+    async def one(key: str, text: str, voice: str = VOICE_NAME) -> None:
         async with sem:
             if inf is not None:
                 made = await synthesize_supertonic(inf, text)
             else:
-                made = await reuse(storage, text)  # 같은 문장이면 크레딧 0
+                made = await reuse(storage, text, voice)  # 같은 문장·목소리면 크레딧 0
                 if made is None:
-                    made = await synthesize(gms, text, ctx)
+                    made = await synthesize(gms, text, ctx, voice)
                     if made:
-                        await remember(storage, text, *made)
+                        await remember(storage, text, *made, voice)
             if made:
                 await storage.put_bytes(key, made[0], "audio/mpeg")
             out[key] = made[1] if made else None
         if on_done:
             await on_done(len(out), len(items))
 
-    await asyncio.gather(*(one(k, t) for k, t in items))
+    await asyncio.gather(*(one(*item) for item in items))
     return out
 
 
@@ -320,10 +324,11 @@ class Tts:
         pool = _pool(self.db)
         desc_id = await _description_id(pool, p, job_id)
         d = await pool.fetchrow("SELECT summary_text, summary_audio_key FROM descriptions WHERE id = $1", desc_id)
-        rows = await pool.fetch("SELECT id, text FROM description_lines WHERE description_id = $1 AND detail_level <= $2"
-                                " AND audio_key IS NULL ORDER BY line_index", desc_id, await _pre_tts_level(pool, desc_id))
+        rows = await pool.fetch("SELECT id, text, start_ms, detail_level FROM description_lines WHERE description_id = $1"
+                                " AND detail_level <= $2 AND audio_key IS NULL ORDER BY line_index",
+                                desc_id, await _pre_tts_level(pool, desc_id))
         await events.started()
-        items = [(line_key(desc_id, r["id"], r["text"]), r["text"]) for r in rows]
+        items = await _line_items(pool, desc_id, rows)
         if d["summary_text"] and not d["summary_audio_key"]:
             items.append((summary_key(desc_id), d["summary_text"]))
 
@@ -385,12 +390,14 @@ class LineTts:
         pool = _pool(self.db)
         desc_id = int(p["descriptionId"])
         if p.get("lineIds"):
-            rows = await pool.fetch("SELECT id, text FROM description_lines WHERE description_id = $1 AND id = ANY($2::bigint[])"
-                                    " AND audio_key IS NULL ORDER BY line_index", desc_id, [int(x) for x in p["lineIds"]])
+            rows = await pool.fetch("SELECT id, text, start_ms, detail_level FROM description_lines WHERE description_id = $1"
+                                    " AND id = ANY($2::bigint[]) AND audio_key IS NULL ORDER BY line_index",
+                                    desc_id, [int(x) for x in p["lineIds"]])
         else:
-            rows = await pool.fetch("SELECT id, text FROM description_lines WHERE description_id = $1 AND detail_level = $2"
-                                    " AND audio_key IS NULL ORDER BY line_index", desc_id, int(p.get("detailLevel") or 3))
-        items = [(line_key(desc_id, r["id"], r["text"]), r["text"]) for r in rows]
+            rows = await pool.fetch("SELECT id, text, start_ms, detail_level FROM description_lines WHERE description_id = $1"
+                                    " AND detail_level = $2 AND audio_key IS NULL ORDER BY line_index",
+                                    desc_id, int(p.get("detailLevel") or 3))
+        items = await _line_items(pool, desc_id, rows)
         inf = await _upload_inf(pool, desc_id, self.inf)
         done = await synthesize_many(self.gms, self.storage, items, CallContext("TTS", job_id=env.jobId), inf=inf) if items else {}
         async with pool.acquire() as con, con.transaction():
@@ -404,6 +411,40 @@ class LineTts:
         log.info("line.tts 완료 description=%s 음성 %s/%s", desc_id, ok, len(items))
         if env.jobId is not None:  # 작업에 묶인 메시지일 때만 job.events로 알린다
             await events.completed({"descriptionId": desc_id, "audioMade": ok, "audioTotal": len(items)})
+
+
+DUB_AFTER_END_MS = 15_000  # BE DubLines.AFTER_END_MS와 같다
+DUB_LOOKBACK_MS = 120_000  # 긴 연설 한 줄이 나뉜 번역 문장도 가르려고 이만큼 앞의 대사부터 읽는다
+DUB_SPEAKER = re.compile(r"^[^:\s][^:]{0,29}:\s+")
+
+
+def is_dub(start_ms: int, level: int, text: str, spoken: list[tuple[int, int, str]]) -> bool:
+    """외국어 대사를 읽어 주는 문장인지(describe.dub_lines). 표시가 DB에 없어 BE DubLines와 같은 규칙으로 가른다:
+    상세도 1이고, 앞의 "이름: "을 뗀 글이(공백 무시) 그 시각에 걸친 대사(시작 ~ 끝 + 15초) 글 안에 그대로 있다.
+    spoken: [(시작 ms, 끝 ms, 공백 뺀 대사 글)]"""
+    if level != 1 or not text:
+        return False
+    body = re.sub(r"\s+", "", DUB_SPEAKER.sub("", text.strip(), count=1))
+    return len(body) >= 2 and any(a <= start_ms <= b + DUB_AFTER_END_MS and body in t for a, b, t in spoken)
+
+
+async def _line_items(pool, desc_id: int, rows) -> list[tuple[str, str, str]]:
+    """[(S3 키, 문장, 목소리)]. 외국어 대사를 읽어 주는 문장은 DUB_VOICE, 나머지는 해설 목소리.
+    종류 칸(line_type)이 DIALOGUE면 대사 번역, 칸이 생기기 전 해설(모두 NARRATION)은 대사 글과 비교해 가른다(is_dub)."""
+    dialogue_ids: set[int] = set()
+    if rows and await has_column(pool, "description_lines", "line_type"):
+        dialogue_ids = {r["id"] for r in await pool.fetch(
+            "SELECT id FROM description_lines WHERE description_id = $1 AND line_type = 'DIALOGUE'", desc_id)}
+    spoken: list[tuple[int, int, str]] = []
+    starts = [r["start_ms"] for r in rows if r["detail_level"] == 1]
+    if starts:
+        segs = await pool.fetch("SELECT start_ms, end_ms, text FROM transcript_segments WHERE description_id = $1"
+                                " AND start_ms BETWEEN $2 AND $3", desc_id, max(0, min(starts) - DUB_LOOKBACK_MS), max(starts))
+        spoken = [(s["start_ms"], s["end_ms"] if s["end_ms"] is not None else s["start_ms"], re.sub(r"\s+", "", s["text"] or ""))
+                  for s in segs]
+    return [(line_key(desc_id, r["id"], r["text"]), r["text"],
+             DUB_VOICE if r["id"] in dialogue_ids or is_dub(r["start_ms"], r["detail_level"], r["text"], spoken) else VOICE_NAME)
+            for r in rows]
 
 
 async def _upload_inf(pool, desc_id: int, inf: inference.Inference | None) -> inference.Inference | None:

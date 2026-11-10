@@ -9,6 +9,8 @@
 - POST /ocr      jpg 여러 장 → {"texts": [[글자, ...], ...]}  (이미지 순서대로)
 - POST /describe JSON {title, guide, scenes:[{startMs, endMs, transcript, ocr, frames:[base64 jpg]}]}
                  → {"scenes": [{"title", "people": [{name, basis, appearance}], "lines": [{"atMs", "level", "text"}]}], "model"}
+- POST /story    JSON {title, guide, frames:[{atMs, jpg(base64)}], sounds, transcript}
+                 → {"events": [{"atMs", "text"}], "names": [{"name", "what"}], "model"}  (영상 전체 줄거리·인물표, 32B)
 - POST /summarize JSON {title, transcript, sceneTitles, lines} → {"summary", "category"(한국어 9종), "model"}
 - POST /translate JSON {texts, source, title} → {"texts": [...], "model"}
 - POST /chat/answer JSON {question, context} → {"sentences": [...], "model"}
@@ -85,6 +87,9 @@ class MockInference:
 
     async def speakers(self, wav: Path | None, segs: list[dict]) -> dict:
         return {"speakers": [], "model": "mock"}
+
+    async def story(self, payload: dict) -> dict:
+        return {"events": [], "names": [], "model": "mock"}
 
     async def summarize(self, payload: dict) -> dict:
         return {"summary": f"{payload['title']} 영상의 시험용 요약입니다. 추론 서버를 연결하면 실제 요약이 나옵니다.",
@@ -195,6 +200,16 @@ class RemoteInference:
             return r if len(r.get("speakers", [])) == len(segs) else {"speakers": [], "model": None}
         except InferenceError:
             return {"speakers": [], "model": None}
+
+    async def story(self, payload: dict) -> dict:
+        """영상 전체 사진(3초 간격) + 소리·대사 → 핵심 사건과 인물·물건 이름(32B). 옛 서버거나 32B가 꺼져 있으면
+        빈 결과(장면별 해설만으로 계속)."""
+        body = {**payload, "frames": [{"atMs": at, "jpg": base64.b64encode(Path(p).read_bytes()).decode()}
+                                      for at, p in payload["frames"]]}
+        try:
+            return await self._post("/story", json=body)
+        except InferenceError:
+            return {"events": [], "names": [], "model": "none"}
 
     async def translate(self, texts: list[str], source: str | None = None, title: str | None = None) -> dict:
         """외국어 대사 → 한국어. 제목은 고유명사·주제 맥락."""

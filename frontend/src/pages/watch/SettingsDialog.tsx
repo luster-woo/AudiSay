@@ -120,7 +120,7 @@ export function SettingsDialog({
 
         <Section title="소리">
           <ChoiceGroup
-            legend="들을 소리"
+            legend="해설"
             options={MIX}
             value={settings.soundMix}
             onChange={(v) =>
@@ -128,8 +128,8 @@ export function SettingsDialog({
                 'soundMix',
                 v,
                 v === 'DIALOGUE_ONLY'
-                  ? '대사만 들려요. 해설은 읽지 않아요.'
-                  : '대사와 해설을 함께 들려요.',
+                  ? '해설을 껐어요. 영상 소리만 들려요.'
+                  : '해설을 켰어요. 영상 소리와 함께 읽어요.',
               )
             }
             className={row}

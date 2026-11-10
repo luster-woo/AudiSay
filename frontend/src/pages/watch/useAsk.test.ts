@@ -39,7 +39,7 @@ test.each([
 
 test('챗봇이 말하는 설정 이름은 재생 설정 창과 같다', () => {
   expect(settingSpoken('summaryMode', 'ASK')).toBe('보기 전 30초 요약 묻기')
-  expect(settingSpoken('soundMix', 'DIALOGUE_AND_NARRATION')).toBe('들을 소리 대사 + 해설')
+  expect(settingSpoken('soundMix', 'DIALOGUE_AND_NARRATION')).toBe('해설 켜기')
   expect(settingSpoken('narrationMode', 'PAUSE_AFTER')).toBe('해설 방식 멈추고')
   expect(settingSpoken('subtitleReading', 'DIFFERENT_ONLY')).toBe('자막 읽기 다른 것만')
   expect(settingSpoken('detailLevel', '1')).toBe('해설 상세도 1 짧은 해설')

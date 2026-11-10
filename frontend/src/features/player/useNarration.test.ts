@@ -308,7 +308,7 @@ test('readLine: 대본에서 고른 문장은 해설 방식대로 읽고, 이어
   expect(said()).toEqual(['긴 문장', '첫 문장'])
 })
 
-test('readLine: 대사만 설정이면 읽지 않고 false 를 준다', () => {
+test('readLine: 해설 끄기 설정이면 읽지 않고 false 를 준다', () => {
   const { hook, said } = setup({ soundMix: 'DIALOGUE_ONLY' })
   act(() => {
     expect(hook.result.current.readLine(description.lines[0])).toBe(false)
@@ -316,7 +316,7 @@ test('readLine: 대사만 설정이면 읽지 않고 false 를 준다', () => {
   expect(said()).toEqual([])
 })
 
-test('대사만: 아무것도 읽지 않지만 지금 문장은 보인다', () => {
+test('해설 끄기: 아무것도 읽지 않지만 지금 문장은 보인다', () => {
   const { hook, tick, said } = setup({ soundMix: 'DIALOGUE_ONLY' })
   tick(T(9.5))
   tick(T(10.2))

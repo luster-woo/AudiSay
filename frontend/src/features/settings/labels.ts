@@ -15,8 +15,8 @@ export const MODE_LABELS: { value: UserSettings['narrationMode']; label: string 
   { value: 'PAUSE_AFTER', label: '멈추고' },
 ]
 export const MIX_LABELS: { value: UserSettings['soundMix']; label: string }[] = [
-  { value: 'DIALOGUE_AND_NARRATION', label: '대사 + 해설' },
-  { value: 'DIALOGUE_ONLY', label: '대사만' },
+  { value: 'DIALOGUE_AND_NARRATION', label: '켜기' },
+  { value: 'DIALOGUE_ONLY', label: '끄기' },
 ]
 export const SUBTITLE_LABELS: { value: UserSettings['subtitleReading']; label: string }[] = [
   { value: 'ALL', label: '모두' },
@@ -43,7 +43,7 @@ export const SETTING_NAMES: Partial<Record<keyof UserSettings, string>> = {
   fontSizeLevel: '글자 크기',
   highContrast: '고대비 화면',
   narrationMode: '해설 방식',
-  soundMix: '들을 소리',
+  soundMix: '해설',
   subtitleReading: '자막 읽기',
   summaryMode: '보기 전 30초 요약',
 }

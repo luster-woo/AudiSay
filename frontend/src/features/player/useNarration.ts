@@ -151,7 +151,7 @@ export function useNarration({
   )
 
   /**
-   * 문장 하나를 해설 방식대로 읽는다. 읽기 시작했으면 true, '대사만' 설정이라 읽지 않으면 false.
+   * 문장 하나를 해설 방식대로 읽는다. 읽기 시작했으면 true, '해설 끄기' 설정이라 읽지 않으면 false.
    * onTick 이 시각을 지날 때 부르고, 대본에서 문장을 골랐을 때(readLine)도 같은 길을 탄다.
    */
   const speakLine = useCallback(
@@ -288,7 +288,7 @@ export function useNarration({
     interrupt,
     readDetail,
     markSeek,
-    /** 사용자가 고른 문장을 지금 읽는다 (대본 탭). 해설 방식을 따르고, 다음 tick 이 또 읽지 않는다. '대사만'이면 false */
+    /** 사용자가 고른 문장을 지금 읽는다 (대본 탭). 해설 방식을 따르고, 다음 tick 이 또 읽지 않는다. '해설 끄기'면 false */
     readLine: speakLine,
   }
 }

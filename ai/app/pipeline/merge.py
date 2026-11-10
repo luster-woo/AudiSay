@@ -22,7 +22,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 
-from app.db import Db
+from app.db import Db, has_column
 from app.errors import WorkerError
 from app.mq.envelope import Envelope
 from app.mq.worker import Events
@@ -83,6 +83,11 @@ def _speaker(speaker: str | None, renames: dict[str, str]) -> str | None:
     if s in renames:
         s = renames[s] if len(renames[s]) < len(s) and renames[s] in s else ""  # 성만 뗀 이름이면 그것으로
     return None if s.lower() in ("", "null", "none") else s
+
+
+def line_type(x: dict) -> str:
+    """description_lines.line_type: 외국어 대사를 읽어 주는 문장(describe.dub_lines)은 DIALOGUE, 나머지는 NARRATION."""
+    return "DIALOGUE" if DUB_FLAG in (x.get("flags") or []) else "NARRATION"
 
 
 def trusted_name(name: str | None, basis: str | None) -> str | None:
@@ -348,11 +353,19 @@ class Merge:
                 "INSERT INTO transcript_segments (description_id, start_ms, end_ms, text, character_id) VALUES ($1, $2, $3, $4, $5)",
                 [(desc_id, d["startMs"], d["endMs"], d["text"], char_ids.get(d["speaker"] or "")) for d in plan.dialogues])
             # 외국어 대사 원문(d["original"])은 jobs/{jobId}/full.json에만 있다. V5(original_text) 생기면 여기서 같이 넣는다
-            await con.executemany(
-                "INSERT INTO description_lines (description_id, line_index, detail_level, start_ms, gap_end_ms, importance, text)"
-                " VALUES ($1, $2, $3, $4, $5, $6, $7)",
-                [(desc_id, x["lineIndex"], x["detailLevel"], x["startMs"], x["gapEndMs"], x["importance"], x["text"])
-                 for x in plan.lines])
+            if await has_column(con, "description_lines", "line_type"):
+                # 외국어 대사를 읽어 주는 문장은 DIALOGUE: 플레이어가 '외국어 번역 읽기' 설정으로 겹쳐 읽고, 챗봇은 해설 근거에서 뺀다
+                await con.executemany(
+                    "INSERT INTO description_lines (description_id, line_index, detail_level, start_ms, gap_end_ms, importance, text,"
+                    " line_type) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+                    [(desc_id, x["lineIndex"], x["detailLevel"], x["startMs"], x["gapEndMs"], x["importance"], x["text"],
+                      line_type(x)) for x in plan.lines])
+            else:
+                await con.executemany(
+                    "INSERT INTO description_lines (description_id, line_index, detail_level, start_ms, gap_end_ms, importance, text)"
+                    " VALUES ($1, $2, $3, $4, $5, $6, $7)",
+                    [(desc_id, x["lineIndex"], x["detailLevel"], x["startMs"], x["gapEndMs"], x["importance"], x["text"])
+                     for x in plan.lines])
             await con.executemany(
                 "INSERT INTO scenes (description_id, scene_index, start_ms, end_ms, title, scene_description)"
                 " VALUES ($1, $2, $3, $4, $5, $6)",

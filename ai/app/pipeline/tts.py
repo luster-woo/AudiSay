@@ -34,7 +34,7 @@ from pathlib import Path
 from google.genai import types
 
 from app import inference
-from app.db import Db
+from app.db import Db, has_column
 from app.errors import WorkerError
 from app.gms.client import CallContext, GmsClient
 from app.mq.envelope import Envelope
@@ -429,7 +429,12 @@ def is_dub(start_ms: int, level: int, text: str, spoken: list[tuple[int, int, st
 
 
 async def _line_items(pool, desc_id: int, rows) -> list[tuple[str, str, str]]:
-    """[(S3 키, 문장, 목소리)]. 외국어 대사를 읽어 주는 문장은 DUB_VOICE, 나머지는 해설 목소리."""
+    """[(S3 키, 문장, 목소리)]. 외국어 대사를 읽어 주는 문장은 DUB_VOICE, 나머지는 해설 목소리.
+    종류 칸(line_type)이 DIALOGUE면 대사 번역, 칸이 생기기 전 해설(모두 NARRATION)은 대사 글과 비교해 가른다(is_dub)."""
+    dialogue_ids: set[int] = set()
+    if rows and await has_column(pool, "description_lines", "line_type"):
+        dialogue_ids = {r["id"] for r in await pool.fetch(
+            "SELECT id FROM description_lines WHERE description_id = $1 AND line_type = 'DIALOGUE'", desc_id)}
     spoken: list[tuple[int, int, str]] = []
     starts = [r["start_ms"] for r in rows if r["detail_level"] == 1]
     if starts:
@@ -438,7 +443,8 @@ async def _line_items(pool, desc_id: int, rows) -> list[tuple[str, str, str]]:
         spoken = [(s["start_ms"], s["end_ms"] if s["end_ms"] is not None else s["start_ms"], re.sub(r"\s+", "", s["text"] or ""))
                   for s in segs]
     return [(line_key(desc_id, r["id"], r["text"]), r["text"],
-             DUB_VOICE if is_dub(r["start_ms"], r["detail_level"], r["text"], spoken) else VOICE_NAME) for r in rows]
+             DUB_VOICE if r["id"] in dialogue_ids or is_dub(r["start_ms"], r["detail_level"], r["text"], spoken) else VOICE_NAME)
+            for r in rows]
 
 
 async def _upload_inf(pool, desc_id: int, inf: inference.Inference | None) -> inference.Inference | None:

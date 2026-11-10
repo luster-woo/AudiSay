@@ -10,6 +10,7 @@ import type {
   UserSettings,
 } from '@/api/types'
 import type { Narrator } from '@/features/player/Narrator'
+import type { ActionResult } from './Player'
 import { withRo } from '@/utils/korean'
 import { formatPositionSpoken } from '@/utils/time'
 import { screenReaderLeadMs } from '@/features/search/speechLead'
@@ -41,12 +42,15 @@ export interface AskContext {
   getCurrentMs: () => number
   /** 영상을 멈추고 fn 이 끝나면 이어서 재생 (resume:false 면 재생하지 않고 원래 재생 중이었는지만 돌려준다) */
   holdWhile: (fn: () => Promise<unknown>, opts?: { resume?: boolean }) => Promise<boolean>
-  /** 멈춰 둔 영상을 이어서 재생 (끝난 영상이면 하지 않는다) */
-  resumePlayback: () => void
+  /** 지금 영상이 (사용자 입장에서) 재생 중인지. 답이 끝난 뒤 '재생하려면 …' 안내를 붙일지 정한다 */
+  isPlaying: () => boolean
   seekTo: (ms: number, said?: string) => void
   updateSettings: (patch: Partial<UserSettings>) => Promise<void>
-  /** 기능 실행. 이 화면에서 처리하지 못한 기능이면 false */
-  runAction: (code: ChatActionCode) => boolean
+  /**
+   * 기능 실행. 처리하지 못한 기능이면 null, 했으면 실제 결과 문장(안내는 이미 했다)과 장면 이동 시각.
+   * fromChat: 챗봇 명령이라 읽은 뒤 이어서 재생하지 않는다
+   */
+  runAction: (code: ChatActionCode, opts?: { fromChat?: boolean }) => ActionResult | null
   /** 다른 영상 찾기 (SEARCH_VIDEO) */
   searchVideos: (query: string) => void
   announce: (text: string, opts?: { politeness: 'assertive' }) => void
@@ -107,6 +111,15 @@ export function settingSpoken(key: keyof UserSettings, raw: string) {
 export const SUMMARY_OFFER = '요약에는 뒤 내용이 있어요. 들으시겠어요?'
 
 /** "들으시겠어요?" 다음 말이 그러겠다는 뜻인지 / 아니라는 뜻인지. 둘 다 아니면 새 질문으로 처리한다 */
+/** 장면 후보는 이 수까지만 보인다·읽는다 (번호를 기억할 수 있게. 서버도 같은 수로 자른다) */
+export const MAX_CANDIDATES = 3
+
+/** 답이 끝난 뒤 영상이 멈춰 있으면 덧붙이는 안내 (챗봇 응답 뒤에는 자동 재생하지 않는다) */
+export const PLAY_HINT = 'Alt+Shift+K를 누르면 재생해요.'
+
+/** 답 스트림이 끝 신호(done·error) 없이 끊겼을 때 */
+export const STREAM_CUT_MESSAGE = '답을 받는 중에 연결이 끊겼어요. 다시 물어봐 주세요.'
+
 const YES = /^(네|넵|예|응|웅|그래|좋아|좋아요|들을게|들려|들어|듣고|듣기|계속|ㅇㅇ|ok|오케이)/i
 /** "네 번째 장면", "세 개"처럼 수를 말하는 '네'는 대답이 아니다 */
 const COUNTING = /^(네|세)\s*(번|개|명|시|분|초|살|가지|째)/
@@ -166,12 +179,6 @@ export function candidateNumber(utterance: string): number | null {
   return n >= 1 ? n : null
 }
 
-/** 후보를 읽어 줄 이름: 장면 이름이 겹치면 찾은 문장으로 구분한다 */
-function candidateLabel(cand: SceneCandidate, all: SceneCandidate[]) {
-  const same = all.filter((c) => c.title === cand.title).length > 1
-  return same && cand.summary ? cand.summary : cand.title
-}
-
 /** 설정 변경 명령의 값(문자열)을 설정 필드 타입에 맞춘다 */
 export function coerceSetting(key: keyof UserSettings, raw: string): Partial<UserSettings> | null {
   const num = Number(raw)
@@ -217,9 +224,13 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
   const [pending, setPending] = useState<PendingCandidates | null>(null)
   const [offer, setOffer] = useState<FutureOffer | null>(null)
   const abortRef = useRef<AbortController | null>(null)
-  // 보낼 때마다 올라가는 번호. 답이 끝난 뒤 이어서 재생하기 전에 새 질문이 시작됐으면 재생하지 않는다
-  const sendGenRef = useRef(0)
-  const resumeAfterRef = useRef(false)
+  // 화면 조작(재생·이동·창 열기)으로 답을 끊었으면 '답변을 멈췄어요' 안내와 입력칸 포커스 이동을 하지 않는다
+  const quietStopRef = useRef(false)
+  // '다시 듣기'로 읽는 중인 답 (그 자리에 '멈추기'를 둔다)
+  const [replayingKey, setReplayingKey] = useState<string | null>(null)
+  const replayingRef = useRef<string | null>(null)
+  // 보내기 실패 기록의 key (같은 말을 여러 번 실패해도 겹치지 않게)
+  const failSeqRef = useRef(0)
   // 답 소리를 이 시각 전에는 내지 않는다. 보낸 직후 낭독기가 읽는 것(친 단어, 알아들은 뒤 입력칸 이름)과 겹치지 않게
   const quietUntilRef = useRef(0)
   const ctxRef = useRef(ctx)
@@ -276,11 +287,8 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
       utterance: string,
       videoTimeMs: number,
       includeFuture = false,
-      /** 말로 질문하느라 이미 멈춰 둔 경우: 원래 재생 중이었는지 */
-      resumeAfter = false,
     ) => {
       const c = ctxRef.current
-      const gen = sendGenRef.current
       const suffix = includeFuture ? '-future' : ''
       const ansKey = `ans-${chatLogId}${suffix}`
       push({
@@ -303,89 +311,107 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
       c.showHistory()
       const controller = new AbortController()
       abortRef.current = controller
+      quietStopRef.current = false
       let answerText = ''
+      // done·error 이벤트를 받았는지. 못 받고 닫히면(서버·프록시가 그냥 닫음, 45초 무응답) 실패로 본다
+      let ended = false
       let failed: string | null = null
       let futureAvailable = false
       let spokeSentence = false
-      // 답이 끝나도 바로 재생하지 않는다: 끝났다는 안내를 낭독기가 다 읽은 뒤에 재생한다 (아래)
-      const wasPlaying = await c.holdWhile(async () => {
-        // 첫 문장은 낭독기가 다 읽을 때까지 기다렸다가 낸다 (원칙 1장: 소리는 한 번에 하나)
-        let chain: Promise<unknown> = new Promise((r) =>
-          setTimeout(r, Math.max(0, quietUntilRef.current - Date.now())),
-        )
-        await new Promise<void>((resolve) => {
-          // 끊으면(Esc) subscribeSse 는 아무것도 알리지 않으므로 여기서 직접 끝낸다
-          controller.signal.addEventListener('abort', () => resolve())
-          void subscribeSse(chatApi.streamPath(chatLogId, includeFuture), {
-            signal: controller.signal,
-            onMessage: ({ event, data }) => {
-              const msg = parseStream(event, data)
-              if (!msg) return
-              if (msg.event === 'delta') {
-                answerText += msg.data.text
-                patchAnswer(ansKey, (a) => ({ ...a, text: answerText }))
-              } else if (msg.event === 'sentence') {
-                const s = msg.data
-                spokeSentence = true
-                patchAnswer(ansKey, (a) => ({ ...a, sentences: [...a.sentences, s] }))
-                chain = chain.then(() =>
-                  controller.signal.aborted
-                    ? undefined
-                    : c.narrator.say({ text: s.text, audioUrl: s.audioUrl, rate: c.speechRate }),
-                )
-              } else if (msg.event === 'done') {
-                answerText = msg.data.answerText || answerText
-                futureAvailable = msg.data.futureAvailable === true
-                // 읽는 동안 버튼 자리를 네/아니요로 바꿔 둔다 (끝나야 누를 수 있다)
-                if (futureAvailable && !includeFuture)
-                  patchAnswer(ansKey, (a) => (a.kind === 'answer' ? { ...a, offering: true } : a))
-                // 이미 끝난 답을 다시 받으면 sentence 없이 done 만 온다 → 답 본문도 우리 음성으로 읽는다
-                if (!spokeSentence && answerText) {
-                  const text = answerText
+      // 답이 끝나도 이어서 재생하지 않는다 (챗봇 응답 뒤 자동 재생 없음). 영상은 멈춘 채로 둔다
+      await c.holdWhile(
+        async () => {
+          // 첫 문장은 낭독기가 다 읽을 때까지 기다렸다가 낸다 (원칙 1장: 소리는 한 번에 하나)
+          let chain: Promise<unknown> = new Promise((r) =>
+            setTimeout(r, Math.max(0, quietUntilRef.current - Date.now())),
+          )
+          await new Promise<void>((resolve) => {
+            // 끊으면(Esc) subscribeSse 는 아무것도 알리지 않으므로 여기서 직접 끝낸다
+            controller.signal.addEventListener('abort', () => resolve())
+            void subscribeSse(chatApi.streamPath(chatLogId, includeFuture), {
+              signal: controller.signal,
+              onMessage: ({ event, data }) => {
+                const msg = parseStream(event, data)
+                if (!msg) return
+                if (msg.event === 'delta') {
+                  answerText += msg.data.text
+                  patchAnswer(ansKey, (a) => ({ ...a, text: answerText }))
+                } else if (msg.event === 'sentence') {
+                  const s = msg.data
+                  spokeSentence = true
+                  patchAnswer(ansKey, (a) => ({ ...a, sentences: [...a.sentences, s] }))
                   chain = chain.then(() =>
-                    controller.signal.aborted ? undefined : c.narrator.say({ text, rate: c.speechRate }),
+                    controller.signal.aborted
+                      ? undefined
+                      : c.narrator.say({ text: s.text, audioUrl: s.audioUrl, rate: c.speechRate }),
                   )
+                } else if (msg.event === 'done') {
+                  ended = true
+                  answerText = msg.data.answerText || answerText
+                  futureAvailable = msg.data.futureAvailable === true
+                  // 읽는 동안 버튼 자리를 네/아니요로 바꿔 둔다 (끝나야 누를 수 있다)
+                  if (futureAvailable && !includeFuture)
+                    patchAnswer(ansKey, (a) => (a.kind === 'answer' ? { ...a, offering: true } : a))
+                  // 이미 끝난 답을 다시 받으면 sentence 없이 done 만 온다 → 답 본문도 우리 음성으로 읽는다
+                  if (!spokeSentence && answerText) {
+                    const text = answerText
+                    chain = chain.then(() =>
+                      controller.signal.aborted
+                        ? undefined
+                        : c.narrator.say({ text, rate: c.speechRate }),
+                    )
+                  }
+                  resolve()
+                } else {
+                  ended = true
+                  failed = msg.data.message || '답을 만들지 못했어요.'
+                  resolve()
                 }
+              },
+              onClose: (reason, err) => {
+                if (!ended && !controller.signal.aborted)
+                  failed =
+                    reason === 'error' && !answerText ? toUserMessage(err) : STREAM_CUT_MESSAGE
                 resolve()
-              } else {
-                failed = msg.data.message || '답을 만들지 못했어요.'
-                resolve()
-              }
-            },
-            onClose: (reason, err) => {
-              if (reason === 'error' && !answerText) failed = toUserMessage(err)
-              resolve()
-            },
+              },
+            })
           })
-        })
-        if (!controller.signal.aborted) await chain
-      }, { resume: false })
-      abortRef.current = null
+          if (!controller.signal.aborted) await chain
+        },
+        { resume: false },
+      )
+      if (abortRef.current === controller) abortRef.current = null
       const aborted = controller.signal.aborted
+      const quiet = aborted && quietStopRef.current
       patchAnswer(ansKey, (a) => ({
         ...a,
-        text: answerText || (failed ? `(${failed})` : a.text),
+        // 중간에 끊긴 답은 받은 데까지 보이고, 끊겼다는 것도 함께 남긴다
+        text: answerText
+          ? failed
+            ? `${answerText} (${failed})`
+            : answerText
+          : failed
+            ? `(${failed})`
+            : a.text,
         done: true,
       }))
       // 답변 끝의 "들으시겠어요?"에 대한 대답을 기다린다 (다음 말이 '네'면 다시 받는다)
       const offering = !aborted && !failed && futureAvailable && !includeFuture
       setOffer(offering ? { kind: 'future', chatLogId, videoTimeMs } : null)
-      // 답 본문은 우리 음성이 이미 읽었다. 낭독기는 다음에 할 일만 알린다 (같은 문장을 두 번 읽지 않게)
+      // 화면 조작(재생·이동·창 열기)으로 끊었으면 그 조작의 안내·포커스를 그대로 둔다
+      if (quiet) return
+      // 답 본문은 우리 음성이 이미 읽었다. 낭독기는 다음에 할 일만 알린다 (같은 문장을 두 번 읽지 않게).
+      // 영상은 멈춘 채로 두므로, 재생하는 방법을 덧붙인다 (입력칸에서는 Space 가 글자라 단축키로 알린다)
+      const playHint = ctxRef.current.isPlaying() ? '' : ` ${PLAY_HINT}`
       const endText = aborted
         ? '답변을 멈췄어요. 입력칸에 있어요.'
         : failed
-          ? failed
+          ? `${failed}${playHint}`
           : offering
             ? "들으려면 '네', 아니면 '아니요'라고 말하거나 적어 주세요."
-            : '답변이 끝났어요. 입력칸에 있어요.'
+            : `답변이 끝났어요. 입력칸에 있어요.${playHint}`
       c.announce(endText, failed && !aborted ? { politeness: 'assertive' } : undefined)
       c.focusInput()
-      // 원래 재생 중이었으면, 안내를 낭독기가 다 읽은 뒤에 이어서 재생한다 (안내와 영상 소리가 겹치지 않게).
-      // 그사이 새 질문을 시작했으면 재생하지 않는다
-      if (wasPlaying || resumeAfter) {
-        await new Promise((r) => setTimeout(r, screenReaderLeadMs(endText)))
-        if (sendGenRef.current === gen) ctxRef.current.resumePlayback()
-      }
     },
     [push, patchAnswer],
   )
@@ -403,20 +429,16 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
         case 'QUESTION':
         case 'SCENE_NOW':
         case 'RECAP':
-          await listenAnswer(
-            chatLogId,
-            utterance,
-            videoTimeMs,
-            false,
-            resumeAfterRef.current,
-          )
+          await listenAnswer(chatLogId, utterance, videoTimeMs)
           return
         case 'SEEK_TIME':
           command(res.result.targetMs)
           c.seekTo(res.result.targetMs)
           return
         case 'SEEK_SCENE': {
-          const { targetMs, candidates } = res.result
+          const { targetMs } = res.result
+          // 후보는 3개까지만 (서버도 자르지만, 더 오면 여기서도 자른다)
+          const candidates = res.result.candidates.slice(0, MAX_CANDIDATES)
           if (targetMs != null) {
             command(targetMs)
             c.seekTo(targetMs)
@@ -429,15 +451,10 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
             c.announce(said)
             return
           }
+          // 후보 목록은 따로 안내하지 않는다. 후보 칸이 열리며 첫 후보로 포커스가 가고, 낭독기가 묶음 이름
+          // ('비슷한 장면 N곳 …')과 첫 후보를 읽는다. 안내까지 하면 같은 목록을 두 번 듣는다 (원칙 1장)
           setPending({ chatLogId, utterance, videoTimeMs, candidates })
           c.showHistory()
-          const list = candidates
-            .map(
-              (cand, i) =>
-                `${i + 1}번, ${candidateLabel(cand, candidates)}, ${formatPositionSpoken(cand.startMs)}`,
-            )
-            .join('. ')
-          c.announce(`비슷한 장면이 ${candidates.length}곳 있어요. ${list}. 번호를 고르세요.`)
           return
         }
         case 'SETTING': {
@@ -463,9 +480,14 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
             c.focusInput()
             return
           }
-          const done = c.runAction(res.result.actionCode)
-          answer(done ? commandReply('ACTION', null) : '이 화면에서는 할 수 없는 기능이에요.')
-          if (!done) c.announce('이 화면에서는 할 수 없는 기능이에요.')
+          // 실제로 한 일(예: '이미 즐겨찾기에 있어요', '마지막 장면이에요')을 말풍선과 다시 듣기에도 같게 쓴다
+          const result = c.runAction(res.result.actionCode, { fromChat: true })
+          if (!result) {
+            answer('이 화면에서는 할 수 없는 기능이에요.')
+            c.announce('이 화면에서는 할 수 없는 기능이에요.')
+            return
+          }
+          answer(result.said, result.goToMs)
           return
         }
         case 'SEARCH_VIDEO':
@@ -524,16 +546,9 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
   }, [pending, addReply])
 
   const send = useCallback(
-    async (
-      utterance: string,
-      inputMode: 'TEXT' | 'VOICE',
-      /** 말로 질문하느라 이미 멈춰 둔 영상이 원래 재생 중이었는지 (답이 끝나면 이어서 재생) */
-      resumeAfter = false,
-    ) => {
+    async (utterance: string, inputMode: 'TEXT' | 'VOICE') => {
       const c = ctxRef.current
       if (busy) return
-      sendGenRef.current += 1
-      resumeAfterRef.current = resumeAfter
       // 글자: Enter 에 낭독기가 친 단어를 읽는다. 말: 알아들은 뒤 입력칸으로 돌아오며 그 이름을 읽는다
       quietUntilRef.current =
         Date.now() + screenReaderLeadMs(inputMode === 'VOICE' ? '챗봇과 대화하기, 편집창' : '')
@@ -558,7 +573,9 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
           asked.chatLogId,
           asked.videoTimeMs,
           utterance,
-          asked.kind === 'summary' ? '알겠어요. 요약은 듣지 않을게요.' : '알겠어요. 뒤 내용은 듣지 않을게요.',
+          asked.kind === 'summary'
+            ? '알겠어요. 요약은 듣지 않을게요.'
+            : '알겠어요. 뒤 내용은 듣지 않을게요.',
         )
         c.announce('알겠어요. 입력칸에 있어요.')
         c.focusInput()
@@ -572,14 +589,14 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
           utterance,
           '요약을 들려 드릴게요.',
         )
-        c.runAction('PLAY_SUMMARY')
+        c.runAction('PLAY_SUMMARY', { fromChat: true })
         return
       }
       setBusy(true)
       const videoTimeMs = c.getCurrentMs()
       if (asked && reply === 'yes') {
         try {
-          await listenAnswer(asked.chatLogId, utterance, asked.videoTimeMs, true, resumeAfterRef.current)
+          await listenAnswer(asked.chatLogId, utterance, asked.videoTimeMs, true)
         } finally {
           setBusy(false)
         }
@@ -595,7 +612,18 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
         })
         await handle(res, videoTimeMs)
       } catch (e) {
-        c.announce(`보내지 못했어요. ${toUserMessage(e)}`, { politeness: 'assertive' })
+        // 답 스트림이 실패했을 때와 같은 모양으로 남긴다: '나' 말풍선 + '(오류)' 답 말풍선.
+        // 적은 질문이 사라지지 않고, 기록에서 무엇이 실패했는지 보인다
+        const message = toUserMessage(e)
+        failSeqRef.current += 1
+        addReply(
+          `fail-${failSeqRef.current}`,
+          0,
+          videoTimeMs,
+          utterance,
+          `(보내지 못했어요. ${message})`,
+        )
+        c.announce(`보내지 못했어요. ${message}`, { politeness: 'assertive' })
         c.focusInput()
       } finally {
         setBusy(false)
@@ -604,27 +632,51 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
     [busy, offer, pending, chooseCandidate, handle, listenAnswer, addReply],
   )
 
-  /** 기록의 답을 다시 듣기 (음성이 있으면 그걸, 없으면 브라우저 음성) */
+  /** 기록의 답을 다시 듣기 (음성이 있으면 그걸, 없으면 브라우저 음성). 읽는 동안 그 자리에 '멈추기'가 생긴다 */
   const replay = useCallback((entry: Extract<HistoryEntry, { kind: 'answer' }>) => {
     const c = ctxRef.current
     const items =
       entry.sentences.length > 0
         ? entry.sentences
         : [{ text: entry.text, audioUrl: null as string | null }]
-    void c.holdWhile(async () => {
-      for (const s of items) {
-        if (!(await c.narrator.say({ text: s.text, audioUrl: s.audioUrl, rate: c.speechRate })))
-          break
-      }
-    })
+    replayingRef.current = entry.key
+    setReplayingKey(entry.key)
+    void c
+      .holdWhile(async () => {
+        for (const s of items) {
+          if (replayingRef.current !== entry.key) break
+          if (!(await c.narrator.say({ text: s.text, audioUrl: s.audioUrl, rate: c.speechRate })))
+            break
+        }
+      })
+      .finally(() => {
+        if (replayingRef.current === entry.key) {
+          replayingRef.current = null
+          setReplayingKey(null)
+        }
+      })
   }, [])
 
-  /** Esc: 답을 듣는 중이면 멈춘다 */
-  const stopAnswer = useCallback(() => {
-    if (!abortRef.current) return false
-    abortRef.current.abort()
-    ctxRef.current.narrator.stop()
-    return true
+  /**
+   * Esc·'답 멈추기': 답을 받거나 읽는 중이면, 또는 다시 듣기 중이면 멈춘다. 멈췄으면 true.
+   * quiet: 화면 조작(재생·이동·창 열기)이 끊는 것이라 '답변을 멈췄어요' 안내·입력칸 포커스를 하지 않는다
+   */
+  const stopAnswer = useCallback(({ quiet = false }: { quiet?: boolean } = {}) => {
+    if (abortRef.current) {
+      quietStopRef.current = quiet
+      abortRef.current.abort()
+      abortRef.current = null
+      ctxRef.current.narrator.stop()
+      return true
+    }
+    if (replayingRef.current) {
+      replayingRef.current = null
+      setReplayingKey(null)
+      ctxRef.current.narrator.stop()
+      if (!quiet) ctxRef.current.announce('다시 듣기를 멈췄어요.')
+      return true
+    }
+    return false
   }, [])
 
   useEffect(() => () => abortRef.current?.abort(), [])
@@ -638,6 +690,7 @@ export function useAsk(ctx: AskContext, initial: HistoryEntry[]) {
     chooseCandidate,
     dismissCandidates,
     replay,
+    replayingKey,
     stopAnswer,
   }
 }

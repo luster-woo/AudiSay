@@ -24,8 +24,10 @@ export interface AskPanelProps {
   onSubmit: (text: string, mode: 'TEXT' | 'VOICE') => void
   /** 듣기 시작 — 영상을 멈춘다 (원칙 1장) */
   onListenStart: () => void
-  /** 듣기를 취소했거나 알아듣지 못했을 때 — 영상을 다시 재생한다 */
-  onListenAbort: () => void
+  /** 듣기를 취소했거나 알아듣지 못했을 때 — 원래 재생 중이었으면 다시 재생한다. 재생했으면 true */
+  onListenAbort: () => boolean | void
+  /** 지금은 말로 물을 수 없는 이유 (예: 전체 화면이라 질문 칸이 보이지 않음). 있으면 Alt+Shift+Q 가 이 말만 한다 */
+  askBlockedReason?: string | null
   /** 보내기·음성 인식 옆에 같은 크기로 둘 버튼 */
   extraAction?: ReactNode
   /**
@@ -48,6 +50,7 @@ export function AskPanel({
   onSubmit,
   onListenStart,
   onListenAbort,
+  askBlockedReason = null,
   extraAction,
   children,
   className,
@@ -76,6 +79,12 @@ export function AskPanel({
   })
 
   const startVoice = useCallback(async () => {
+    if (askBlockedReason) {
+      announce(askBlockedReason)
+      return
+    }
+    // 이미 듣는 중·알아듣는 중이면 새로 녹음하지 않는다 (녹음기가 겹치면 마이크가 꺼지지 않는다)
+    if (voice.state !== 'idle' && voice.state !== 'error') return
     if (busy) {
       announce('답을 듣는 중이에요. 끝나면 다시 물어보세요.')
       return
@@ -91,7 +100,7 @@ export function AskPanel({
         return beepLeadMs(intro)
       },
     })
-  }, [busy, voice, onListenStart, announce])
+  }, [askBlockedReason, busy, voice, onListenStart, announce])
 
   useShortcutEntry('ask', () => void startVoice(), { scope: 'user' })
 
@@ -114,18 +123,23 @@ export function AskPanel({
   }, [voice.state, announce, inputRef])
 
   const backToText = useCallback(
-    (message: string) => {
+    (message: string | ((resumed: boolean) => string)) => {
       voice.reset()
-      onListenAbort()
+      const resumed = onListenAbort() === true
       requestAnimationFrame(() => inputRef.current?.focus())
-      announce(message)
+      announce(typeof message === 'function' ? message(resumed) : message)
     },
     [voice, onListenAbort, inputRef, announce],
   )
 
   const cancelVoice = useCallback(() => {
     voice.cancel()
-    backToText('질문을 취소했어요. 영상을 이어서 재생해요.')
+    // 원래 멈춰 있던 영상이면 '이어서 재생해요'라고 하지 않는다
+    backToText((resumed) =>
+      resumed
+        ? '질문을 취소했어요. 영상을 이어서 재생해요.'
+        : '질문을 취소했어요. 입력칸에 있어요.',
+    )
   }, [voice, backToText])
 
   const listening = voice.state === 'preparing' || voice.state === 'listening'
@@ -137,8 +151,9 @@ export function AskPanel({
         cancelVoice()
       }
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    // 캡처: 화면의 다른 Esc(크게 보기 끄기 등)보다 먼저 받고 preventDefault 로 표시해, 같은 Esc 가 두 번 처리되지 않게 한다
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
   }, [listening, cancelVoice])
 
   const submit = (e: FormEvent) => {
@@ -244,25 +259,26 @@ export function AskPanel({
                 {formatClock(voice.elapsed * 1000)} / {formatClock(MAX_RECORD_SEC * 1000)}
               </span>
             </div>
-            <div className="mt-4 flex flex-wrap gap-3">
+            {/* 버튼 크기·폭은 평소(보내기·음성 인식)와 같게: 상태가 바뀌어도 칸 높이가 출렁이지 않는다 */}
+            <div className="mt-4 grid grid-cols-2 gap-2">
               <Button
                 ref={finishRef}
                 variant="accent"
-                size="xl"
+                size="panel"
                 disabled={voice.state !== 'listening'}
                 onClick={voice.stop}
               >
                 말 끝내기
               </Button>
-              <Button variant="secondary" size="xl" onClick={cancelVoice}>
+              <Button variant="secondary" size="panel" onClick={cancelVoice}>
                 취소
               </Button>
             </div>
-            <p className="mt-4 break-keep text-ink-muted">
-              {
-                '1분이 지나면 자동으로 끝나요. 말을 마치면 질문으로 보내고, 답이 끝나면 영상을 다시 재생해요.'
-              }
-            </p>
+            {dock && keyHint && (
+              <p className="mt-3 text-center text-base text-ink-muted">
+                1분이 지나면 자동으로 끝나요.
+              </p>
+            )}
           </div>
         )}
 
@@ -272,18 +288,28 @@ export function AskPanel({
               <span aria-hidden="true">●</span>
               <span className="font-bold">알아듣지 못했어요</span>
             </div>
-            <div className="mt-4 flex flex-wrap gap-3">
-              <Button ref={retryRef} variant="accent" size="xl" onClick={() => void startVoice()}>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <Button
+                ref={retryRef}
+                variant="accent"
+                size="panel"
+                onClick={() => void startVoice()}
+              >
                 다시 말하기
               </Button>
               <Button
                 variant="secondary"
-                size="xl"
+                size="panel"
                 onClick={() => backToText('입력칸에 있어요. 글자로 적어 주세요.')}
               >
                 글자로 묻기
               </Button>
             </div>
+            {dock && keyHint && (
+              <p className="mt-3 text-center text-base text-ink-muted">
+                다시 말하거나 글자로 물어보세요.
+              </p>
+            )}
           </div>
         )}
       </div>

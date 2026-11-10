@@ -16,7 +16,19 @@ export interface PlayerState {
   ended: boolean
   currentMs: number
   durationMs: number
+  /** 재생할 수 없을 때 사용자에게 알릴 이유 (없으면 null) */
+  error: string | null
 }
+
+/** 유튜브 IFrame 오류 코드 → 안내 문구 */
+export function youtubeErrorMessage(code: number): string {
+  if (code === 100) return '유튜브에서 영상이 지워졌거나 비공개로 바뀌어 재생할 수 없어요.'
+  if (code === 101 || code === 150)
+    return '영상 주인이 다른 사이트에서 재생하지 못하게 막아 두어 재생할 수 없어요.'
+  return '유튜브 영상을 재생할 수 없어요. 잠시 뒤에 다시 시도해 주세요.'
+}
+export const UPLOAD_ERROR_MESSAGE = '영상 파일을 재생할 수 없어요. 잠시 뒤에 다시 시도해 주세요.'
+export const YOUTUBE_API_ERROR_MESSAGE = '유튜브 플레이어를 불러오지 못했어요. 새로고침해 주세요.'
 
 declare global {
   interface Window {
@@ -44,7 +56,7 @@ function unloadCaptions(player: YT.Player) {
 function loadYoutubeApi(): Promise<void> {
   if (typeof YT !== 'undefined' && YT.Player) return Promise.resolve()
   if (ytApiPromise) return ytApiPromise
-  ytApiPromise = new Promise((resolve) => {
+  ytApiPromise = new Promise((resolve, reject) => {
     const prev = window.onYouTubeIframeAPIReady
     window.onYouTubeIframeAPIReady = () => {
       prev?.()
@@ -53,6 +65,12 @@ function loadYoutubeApi(): Promise<void> {
     const s = document.createElement('script')
     s.src = 'https://www.youtube.com/iframe_api'
     s.async = true
+    // 스크립트를 못 받으면(차단·오프라인) 다음에 다시 시도할 수 있게 비운다
+    s.onerror = () => {
+      ytApiPromise = null
+      s.remove()
+      reject(new Error('youtube api'))
+    }
     document.head.appendChild(s)
   })
   return ytApiPromise
@@ -83,6 +101,7 @@ export function usePlayerSource(
     ended: false,
     currentMs: 0,
     durationMs: fallbackDurationSec * 1000,
+    error: null,
   })
   const patch = useCallback((p: Partial<PlayerState>) => setState((s) => ({ ...s, ...p })), [])
 
@@ -101,7 +120,9 @@ export function usePlayerSource(
     const onPlay = () => patch({ playing: true, ended: false })
     const onPause = () => patch({ playing: false })
     const onEnded = () => patch({ playing: false, ended: true })
+    const onError = () => patch({ playing: false, error: UPLOAD_ERROR_MESSAGE })
     el.addEventListener('loadedmetadata', onMeta)
+    el.addEventListener('error', onError)
     el.addEventListener('timeupdate', onTime)
     el.addEventListener('seeked', onTime)
     el.addEventListener('play', onPlay)
@@ -115,6 +136,7 @@ export function usePlayerSource(
       el.removeEventListener('play', onPlay)
       el.removeEventListener('pause', onPause)
       el.removeEventListener('ended', onEnded)
+      el.removeEventListener('error', onError)
     }
   }, [sourceType, playbackUrl, fallbackDurationSec, patch])
 
@@ -145,54 +167,64 @@ export function usePlayerSource(
     document.addEventListener('focusin', onFocusIn)
     window.addEventListener('blur', onWindowBlur)
 
-    void loadYoutubeApi().then(() => {
-      if (cancelled) return
-      const player = new YT.Player(mount, {
-        videoId: youtubeVideoId,
-        width: '100%',
-        height: '100%',
-        playerVars: {
-          controls: 0,
-          disablekb: 1,
-          rel: 0,
-          modestbranding: 1,
-          playsinline: 1,
-          // 유튜브 자막(자동 생성 포함)은 끄고 시작한다. 자막은 우리 해설 데이터(screenTexts)를 설정대로 읽는다.
-          // 3 = 비공식 값. 이것만으로 안 꺼지는 경우가 있어 onReady/재생 시작 때 unloadCaptions 로 모듈도 내린다
-          cc_load_policy: 3 as unknown as YT.ClosedCaptionsLoadPolicy,
-          origin: window.location.origin,
-        },
-        events: {
-          onReady: () => {
-            if (cancelled) return
-            // 유튜브 iframe 에 포커스가 들어가지 않게. 유튜브는 재생·멈춤·이동 때마다 자기 iframe 으로 포커스를
-            // 가져가는데, inert 면 크롬이 프레임 안쪽까지 포커스 불가로 만들어 그 요청을 거부한다 (영상 상자는
-            // aria-hidden, 조작은 바깥 컨트롤). 클릭으로 영상을 멈추는 것도 함께 막히지만 재생 버튼이 그 역할을 한다
-            const iframe = player.getIframe()
-            iframe?.setAttribute('tabindex', '-1')
-            if (iframe) iframe.inert = true
-            unloadCaptions(player)
-            patch({
-              ready: true,
-              durationMs: Math.round((player.getDuration() || fallbackDurationSec) * 1000),
-            })
-            poll = setInterval(() => {
-              patch({ currentMs: Math.round(player.getCurrentTime() * 1000) })
-            }, POLL_MS)
+    void loadYoutubeApi().then(
+      () => {
+        if (cancelled) return
+        const player = new YT.Player(mount, {
+          videoId: youtubeVideoId,
+          width: '100%',
+          height: '100%',
+          playerVars: {
+            controls: 0,
+            disablekb: 1,
+            rel: 0,
+            modestbranding: 1,
+            playsinline: 1,
+            // 유튜브 자막(자동 생성 포함)은 끄고 시작한다. 자막은 우리 해설 데이터(screenTexts)를 설정대로 읽는다.
+            // 3 = 비공식 값. 이것만으로 안 꺼지는 경우가 있어 onReady/재생 시작 때 unloadCaptions 로 모듈도 내린다
+            cc_load_policy: 3 as unknown as YT.ClosedCaptionsLoadPolicy,
+            origin: window.location.origin,
           },
-          onStateChange: (e) => {
-            const s = e.data
-            // 자막 모듈은 재생이 시작될 때 다시 올라올 수 있어 그때마다 내린다
-            if (s === YT.PlayerState.PLAYING) {
+          events: {
+            onReady: () => {
+              if (cancelled) return
+              // 유튜브 iframe 에 포커스가 들어가지 않게. 유튜브는 재생·멈춤·이동 때마다 자기 iframe 으로 포커스를
+              // 가져가는데, inert 면 크롬이 프레임 안쪽까지 포커스 불가로 만들어 그 요청을 거부한다 (영상 상자는
+              // aria-hidden, 조작은 바깥 컨트롤). 클릭으로 영상을 멈추는 것도 함께 막히지만 재생 버튼이 그 역할을 한다
+              const iframe = player.getIframe()
+              iframe?.setAttribute('tabindex', '-1')
+              if (iframe) iframe.inert = true
               unloadCaptions(player)
-              patch({ playing: true, ended: false })
-            } else if (s === YT.PlayerState.ENDED) patch({ playing: false, ended: true })
-            else if (s === YT.PlayerState.PAUSED) patch({ playing: false })
+              patch({
+                ready: true,
+                durationMs: Math.round((player.getDuration() || fallbackDurationSec) * 1000),
+              })
+              poll = setInterval(() => {
+                patch({ currentMs: Math.round(player.getCurrentTime() * 1000) })
+              }, POLL_MS)
+            },
+            onStateChange: (e) => {
+              const s = e.data
+              // 자막 모듈은 재생이 시작될 때 다시 올라올 수 있어 그때마다 내린다
+              if (s === YT.PlayerState.PLAYING) {
+                unloadCaptions(player)
+                patch({ playing: true, ended: false })
+              } else if (s === YT.PlayerState.ENDED) patch({ playing: false, ended: true })
+              else if (s === YT.PlayerState.PAUSED) patch({ playing: false })
+            },
+            // 퍼가기 막힘(101·150)·지워짐(100)·잘못된 영상(2·5): 재생 버튼을 막고 이유를 알린다
+            onError: (e) => {
+              if (cancelled) return
+              patch({ playing: false, error: youtubeErrorMessage(e.data) })
+            },
           },
-        },
-      })
-      ytRef.current = player
-    })
+        })
+        ytRef.current = player
+      },
+      () => {
+        if (!cancelled) patch({ error: YOUTUBE_API_ERROR_MESSAGE })
+      },
+    )
     return () => {
       cancelled = true
       document.removeEventListener('focusin', onFocusIn)

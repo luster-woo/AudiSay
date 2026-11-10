@@ -659,6 +659,22 @@ class ChatAnswerServiceTest {
     }
 
     @Test
+    void 낱말_뜻을_물으면_뒤_확인_없이_자료에_없다고_읽는다() {
+        chatLog(31L, ChatIntent.QUESTION, "한타라는 개념을 알아?");
+        stream("그건 해설 자료에 없어요.");
+        when(contextReader.readFuture(DESC, 200_000)).thenReturn(Optional.of(future));
+        when(llmClient.generate(any())).thenReturn(
+                new LlmResult("{\"evidence\": \"한타에서 밀렸어요\"}", "gemini-3.1-flash-lite", 500, 12, 400, false, 2L));
+
+        service.subscribe(USER, 31L);
+
+        assertThat(emitter.data(Sentence.class)).extracting(Sentence::text).containsExactly(AnswerPrompt.UNANSWERABLE);
+        assertThat(emitter.data(Done.class).get(0).futureAvailable()).isFalse();
+        verify(llmClient, never()).generate(any());
+        verify(futureOffer, never()).offer(anyLong());
+    }
+
+    @Test
     void 뒤에도_답이_없으면_자료에_없다고_읽는다() {
         chatLog(31L, ChatIntent.QUESTION, "감독 이름이 뭐야?");
         stream("그건 해설 자료에 없어요.");

@@ -13,7 +13,8 @@ inference.RemoteInference), 결과는 SQLite 대신 full.json/prepare.json(그 �
      → H200 줄거리(32B: 핵심 사건과 인물표)
    받아쓴 말이 없는 영상(애니메이션·몸개그)은 장면을 더 잘게 나누고 사진을 더 촘촘히 뽑아 동작 중심으로 쓰게 한다
 4. H200 장면 해설(Qwen3-VL, 사진+대사+글자+줄거리·인물표)
-   → 개조식 끝 고치기·문장 수 줄이기·겹친 시각 띄우기·되풀이 빼기 → H200 요약 → 대사 옮기기·같은 동작·옷차림만 있는 문장 거르기
+   → 개조식 끝 고치기·대사 옮기기와 옷차림만 있는 문장 거르기·문장 수 줄이기·겹친 시각 띄우기·되풀이 빼기 → H200 요약
+   → 같은 동작 거르기
 5. Gemini 응답과 같은 모양(raw)으로 모아 prepare.normalize → full.json
 H200이 실패하면 Gemini 엔진(영상 파일을 Gemini에 넣음, 크레딧)으로, UPLOAD_ENGINE=gemini면 그 반대 순서.
 """
@@ -360,6 +361,16 @@ def drop_speech_acts(lines: list[dict]) -> list[dict]:
     return [x for x in lines if not (SPEECH_ACT.search(x["text"]) and not VISUAL_CUE.search(x["text"]))]
 
 
+def drop_early(lines: list[dict], segs: list[dict]) -> list[dict]:
+    """문장 수 한도(cap_lines)보다 먼저 거른다. 한도가 대사를 옮긴 level 1과 옷차림 문장을 남기고 표정·몸짓 문장을 버린 뒤에
+    거르기가 남긴 것마저 빼서, 시트콤 139문장이 한도에서 46문장, 거르기에서 17문장이 됐다(2026-11-10 데모)."""
+    from app.pipeline.video import drop_said  # video가 local을 불러와서 여기서 부른다
+    out = drop_idle(drop_said([{**x, "at": mmss(x["atMs"])} for x in lines], segs))
+    if SPEECH_FILTER:
+        out = drop_speech_acts(out)
+    return [{k: v for k, v in x.items() if k != "at"} for x in out]
+
+
 GROUP_MAX_MS = 12_000  # 문장 끝이 안 나와도 이 길이에서 끊는다(받아쓰기가 구두점을 안 찍는 구간)
 
 
@@ -562,6 +573,7 @@ async def analyze_opensource(inf, title: str | None, files: dict, work: Path, du
     for sc, sd in zip(desc["scenes"], scenes):
         kept = [{**ln, "text": finish_sentence(ln["text"])} for ln in sc["lines"]
                 if finish_sentence(ln["text"]) and not looks_like_json(ln["text"])]
+        kept = drop_early(kept, segs)
         sc["lines"] = spread_lines(cap_lines(kept, sd["endMs"] - sd["startMs"]), sd)
     drop_repeats(desc["scenes"])
     lines = [ln for sc in desc["scenes"] for ln in sc["lines"]]

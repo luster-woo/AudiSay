@@ -237,6 +237,15 @@ def test_idle_and_speech_act_lines_are_dropped():
     assert [x["text"] for x in local.drop_speech_acts(lines)] == ["남성이 웃으며 대답합니다.", "여성이 계산대로 걸어갑니다."]
 
 
+def test_filter_before_line_limit():
+    """대사를 옮긴 문장·옷차림만 있는 문장을 문장 수 한도보다 먼저 빼서 표정·몸짓 문장이 자리를 얻는다."""
+    lines = [{"atMs": 1000, "level": 1, "text": "남성이 집에 가자고 말합니다."},
+             {"atMs": 2000, "level": 2, "text": "남성이 검은 옷을 입고 있습니다."},
+             {"atMs": 3000, "level": 2, "text": "아이가 귀를 막고 고개를 젓습니다."}]
+    assert local.drop_early(lines, []) == lines[2:]
+    assert local.cap_lines(local.drop_early(lines, []), 4000) == lines[2:]  # 한도 1: 먼저 거르지 않으면 level 1만 남았다가 뒤에서 빠진다
+
+
 def test_ground_names_keeps_only_names_with_evidence(monkeypatch):
     names = [{"name": "철수", "what": "빨간 모자 남성"}, {"name": "영희", "what": "안경 쓴 여성"}, {"name": "민수", "what": ""}]
     segs = [{"text": "영희야 이리 와"}]

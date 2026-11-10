@@ -75,7 +75,10 @@ public class YoutubeVideoService {
         YoutubeSearchCache.CachedPage page = youtubeSearchCache.get(query, request.pageToken())
                 .orElseGet(() -> {
                     YoutubeSearchCache.CachedPage fetched = fetchSearchPage(query, request.pageToken());
-                    youtubeSearchCache.put(query, request.pageToken(), fetched);
+                    // 빈 결과는 캐시하지 않는다. 유튜브가 일시적으로 0개를 주면 6시간 동안 빈 결과가 굳는다
+                    if (!fetched.videos().isEmpty()) {
+                        youtubeSearchCache.put(query, request.pageToken(), fetched);
+                    }
                     return fetched;
                 });
 

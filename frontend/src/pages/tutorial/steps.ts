@@ -15,7 +15,9 @@ import watchTabsShot from '@/assets/tutorial/watch-tabs.webp'
 import youtubeShot from '@/assets/tutorial/youtube.webp'
 
 /**
- * 예시 화면 = 실제 화면 캡처(1440×1000, 예시 데이터). 영상 보기 9~12단계는 한 장을 같이 써서 강조만 옮겨 간다(캡처할 때 대화 칸 높이를 화면 안에 맞춤). 강조 영역은 캡처할 때 실제 요소에서 잰 위치(같은 1440×1000 좌표).
+ * 예시 화면 = 실제 화면 캡처(1440×1000 화면을 1.25배로 찍은 1800×1250, 예시 데이터, 글자 크기 3단계·일반 대비).
+ * 영상 보기 8~10단계는 맨 위 화면, 11~12단계는 아래로 276px 내린 화면(대화 칸 전체와 목차·대본 카드가 보임)을 쓴다.
+ * 강조 영역은 캡처할 때 실제 요소에서 잰 위치(같은 1440×1000 좌표). 그림에 대한 비율로 그리므로 화면 폭·글자 크기와 상관없이 같은 자리를 가리킨다.
  * 강조 영역은 내용 덩어리 단위로 잡아 테두리가 글자나 버튼을 가로지르지 않게 한다 (홈 목록은 다 보이는 줄까지만).
  * 화면을 바꾸면 assets/tutorial 캡처와 아래 좌표를 함께 다시 만든다
  */
@@ -117,16 +119,8 @@ export const TUTORIAL_STEPS: TutorialStepData[] = [
     mascot: smileImg,
   },
   {
-    screen: SCREENS.job,
-    target: { x: 64, y: 754, w: 960, h: 167 },
-    title: '기다리지 않아도 돼요',
-    body: '다른 화면으로 가도 해설은 계속 만들어지고, 다 되면 알려 드립니다.',
-    keys: '홈 오른쪽 위 카드나 내 영상에서 진행 상황을 다시 볼 수 있어요.',
-    mascot: clapImg,
-  },
-  {
     screen: SCREENS.watch,
-    target: { x: 64, y: 219, w: 777, h: 577 },
+    target: { x: 64, y: 215, w: 777, h: 581 },
     title: '영상 재생 및 음성 해설',
     body: '영상의 내용을 AI가 분석하고, 화면에서 일어나는 상황을 음성으로 설명해 드립니다.',
     keys: 'Alt+Shift+K로 재생과 멈춤, Alt+Shift+J와 L로 뒤로·앞으로 움직여요.',
@@ -149,8 +143,9 @@ export const TUTORIAL_STEPS: TutorialStepData[] = [
     mascot: pointImg,
   },
   {
-    screen: SCREENS.watch,
-    target: { x: 881, y: 215, w: 480, h: 760 },
+    // 대화 칸 전체(입력칸까지)가 보이도록 아래로 내린 화면을 쓴다
+    screen: SCREENS.watchTabs,
+    target: { x: 881, y: 24, w: 480, h: 952 },
     title: 'AI 챗봇 사용하기',
     body: '영상에 대해 궁금한 점을 자유롭게 질문해 보세요. AI가 영상의 맥락을 바탕으로 답변합니다.',
     keys: 'Alt+Shift+Q로 말하거나 적어서 물어요. 답을 듣다가 Esc를 누르면 멈춰요.',
@@ -158,7 +153,7 @@ export const TUTORIAL_STEPS: TutorialStepData[] = [
   },
   {
     screen: SCREENS.watchTabs,
-    target: { x: 64, y: 612, w: 777, h: 348 },
+    target: { x: 64, y: 628, w: 777, h: 348 },
     title: '목차와 대본',
     body: '영상 아래에서 목차로 원하는 장면에 바로 가고, 대본에서 해설 문장을 다시 볼 수 있습니다.',
     keys: '목록에서 장면이나 문장을 고르면 그 시각으로 옮겨요.',
@@ -174,7 +169,7 @@ export const TUTORIAL_STEPS: TutorialStepData[] = [
   },
   {
     screen: SCREENS.myInfo,
-    target: { x: 64, y: 232, w: 880, h: 384 },
+    target: { x: 64, y: 232, w: 880, h: 390 },
     title: '내 정보와 재생 설정',
     body: '계정 정보를 확인하고, 설정 바꾸기로 재생 설정을 바꿀 수 있습니다. 시각장애인 인증을 하면 더 긴 영상도 해설을 만들 수 있어요.',
     keys: '재생 설정은 영상 화면의 재생 설정 버튼에서도 바꿀 수 있어요.',

@@ -97,6 +97,8 @@ function UnavailableView({ video }: { video: VideoDetail }) {
     mutationFn: () => favoritesApi.remove(video.videoId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['videos'] })
+      void queryClient.invalidateQueries({ queryKey: ['favorites'] })
+      void queryClient.invalidateQueries({ queryKey: ['me', 'videos'] })
       announce(`${video.title}, 즐겨찾기에서 뺐어요. 홈으로 가요.`)
       navigate('/')
     },

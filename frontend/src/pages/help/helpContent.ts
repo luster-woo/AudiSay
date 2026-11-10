@@ -90,9 +90,9 @@ export const voiceCategories: { value: VoiceCategory; label: string; rows: HelpR
     label: '홈 음성 검색',
     rows: [
       {
-        command: '‘고양이 영상 찾아 줘’',
+        command: '‘오리 영상 찾아 줘’',
         description: '말한 영상 검색',
-        spokenCommand: '고양이 영상 찾아 줘라고 말하세요.',
+        spokenCommand: '오리 영상 찾아 줘라고 말하세요.',
       },
       {
         command: '‘말 빠르게’ / ‘고대비 켜 줘’',

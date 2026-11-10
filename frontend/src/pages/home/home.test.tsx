@@ -321,28 +321,28 @@ describe('음성 검색', () => {
 
   test('"~ 영상 찾아 줘"는 챗봇이 뽑은 검색어로 검색한다', async () => {
     localStorage.removeItem('audisay.voiceSearchTipCount')
-    vi.mocked(sttApi.transcribe).mockResolvedValue({ text: '고양이 영상 찾아 줘', latencyMs: 1 })
+    vi.mocked(sttApi.transcribe).mockResolvedValue({ text: '오리 영상 찾아 줘', latencyMs: 1 })
     vi.mocked(chatApi.send).mockResolvedValue({
       chatLogId: 1,
       inputMode: 'VOICE',
-      utterance: '고양이 영상 찾아 줘',
+      utterance: '오리 영상 찾아 줘',
       intent: 'SEARCH_VIDEO',
-      result: { query: '고양이' },
+      result: { query: '오리' },
     })
     const { router } = renderRoute('/')
     const voiceButton = await screen.findByRole('button', { name: '음성 검색' })
     expect(voiceButton).toHaveAccessibleDescription(
-      '음성으로는 "고양이 영상 찾아 줘"처럼 말해도 돼요.',
+      '음성으로는 "오리 영상 찾아 줘"처럼 말해도 돼요.',
     )
     await userEvent.click(voiceButton)
     // 처음 몇 번은 듣기 시작 안내에 부가 기능을 함께 읽는다
-    expect(await screen.findByText(/"고양이 영상 찾아 줘"처럼 문장으로 말해도 돼요/)).toBeInTheDocument()
+    expect(await screen.findByText(/"오리 영상 찾아 줘"처럼 문장으로 말해도 돼요/)).toBeInTheDocument()
     await userEvent.click(await screen.findByRole('button', { name: '말 끝내기' }))
     await waitFor(() => expect(router.state.location.search).toBe('?q=%EA%B3%A0%EC%96%91%EC%9D%B4'))
     expect(chatApi.send).toHaveBeenCalledWith(
       expect.objectContaining({
         videoId: null,
-        utterance: '고양이 영상 찾아 줘',
+        utterance: '오리 영상 찾아 줘',
         inputMode: 'VOICE',
       }),
     )

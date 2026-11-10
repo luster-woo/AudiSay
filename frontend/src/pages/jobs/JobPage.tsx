@@ -5,7 +5,7 @@ import { jobsApi } from '@/api/jobs'
 import { videosApi } from '@/api/videos'
 import { queryKeys } from '@/api/queryKeys'
 import { subscribeSse } from '@/api/sse'
-import { jobError, toUserMessage } from '@/api/errors'
+import { ApiError, jobError, toUserMessage } from '@/api/errors'
 import type { Job, JobEvent } from '@/api/types'
 import { ButtonLink } from '@/components/ui/ButtonLink'
 import { ProgressBar } from '@/components/ui/ProgressBar'
@@ -127,11 +127,14 @@ function JobPage({ jobId }: { jobId: number }) {
   useEffect(() => {
     if (!live) return
     const controller = new AbortController()
+    // 끝 이벤트(completed·failed)를 받았는지. 받지 못한 채 서버가 연결을 정상 종료하면(배포·재시작·프록시) 끝난 게 아니다
+    let finished = false
     void subscribeSse(jobsApi.streamPath(jobId), {
       signal: controller.signal,
       onMessage: ({ event, data }) => {
         const msg = parseEvent(event, data)
         if (!msg) return
+        if (msg.event !== 'progress') finished = true
         queryClient.setQueryData<Job>(queryKeys.job(jobId), (old) =>
           old ? mergeEvent(old, msg) : old,
         )
@@ -142,9 +145,10 @@ function JobPage({ jobId }: { jobId: number }) {
       },
       onClose: (reason) => {
         if (controller.signal.aborted) return
-        // 정상 종료면 마지막 상태(걸린 시간 등)를 한 번 더 받는다. 끊겼으면 GET 으로 바꿔 따라간다
+        // 끝 이벤트를 받고 닫혔으면 마지막 상태(걸린 시간 등)를 한 번 더 받는다.
+        // 끝 이벤트 없이 닫혔거나 끊겼으면 GET 으로 바꿔 따라간다 (안 그러면 진행 화면이 멈춘다)
         void queryClient.invalidateQueries({ queryKey: queryKeys.job(jobId) })
-        if (reason !== 'done') setPolling(true)
+        if (reason !== 'done' || !finished) setPolling(true)
       },
     })
     return () => controller.abort()
@@ -168,18 +172,10 @@ function JobPage({ jobId }: { jobId: number }) {
   // ── 읽어 주기: 진행 중엔 단계·10% 단위로, 상태가 바뀌면 한 번 ──
   useProgressAnnounce(phase === 'running' && source ? (job?.currentStage ?? null) : null, progress)
   const retryable = !!job?.errorCode && (job.retryable ?? jobError(job.errorCode).retryable)
+  // 완료·실패는 대화상자가 열리며 창 이름(제목)과 첫 버튼을 읽는다. 같은 문장을 안내로 또 읽지 않는다 (원칙 2장)
   useEffect(() => {
     if (phase === 'waiting') announce('해설 만들기 차례를 기다리고 있어요. 곧 시작해요.')
-    if (phase === 'done') announce('해설이 준비됐어요. 지금 보기 버튼에 있어요.')
-    if (phase === 'failed') {
-      announce(
-        retryable
-          ? '해설을 만들지 못했어요. 다시 요청 버튼에 있어요.'
-          : '해설을 만들지 못했어요. 홈으로 가기 버튼에 있어요.',
-        { politeness: 'assertive' },
-      )
-    }
-  }, [phase, retryable, announce])
+  }, [phase, announce])
 
   const retry = useMutation({
     mutationFn: () => videosApi.retry(job!.videoId),
@@ -190,6 +186,23 @@ function JobPage({ jobId }: { jobId: number }) {
     onError: (e) => announce(toUserMessage(e), { politeness: 'assertive' }),
   })
 
+  // 다른 회원이 요청한 공개 영상의 작업(공유 링크·영상 보기에서 넘어옴)은 진행 상황을 볼 수 없다(403). 홈으로 튕기지 않고 알린다
+  if (jobQuery.error instanceof ApiError && jobQuery.error.code === 'COMMON_003') {
+    return (
+      <div className="max-w-[60rem]">
+        <p className="text-2xl font-bold text-navy">해설 만들기</p>
+        <h1 ref={headingRef} tabIndex={-1} className="mt-6 text-[2.75rem] font-bold outline-none">
+          해설을 만드는 중이에요
+        </h1>
+        <p role="alert" className="mt-6 text-2xl">
+          다른 회원이 요청한 영상이라 진행 상황은 볼 수 없어요. 해설이 다 되면 홈에서 볼 수 있어요.
+        </p>
+        <ButtonLink to="/" variant="primary" size="hero" className="mt-10 w-full">
+          홈으로 가기
+        </ButtonLink>
+      </div>
+    )
+  }
   if (!validId || jobQuery.isError) {
     return (
       <div className="max-w-[60rem]">
@@ -255,7 +268,7 @@ function JobPage({ jobId }: { jobId: number }) {
       <p className="mt-10 text-[1.625rem] font-bold">
         {phase === 'done'
           ? '내 영상에서 언제든 다시 볼 수 있어요.'
-          : '다른 화면으로 가도 계속 만들어요. 다 되면 알려 드릴게요.'}
+          : '다른 화면으로 가도 계속 만들어요. 다 되면 홈·검색·내 영상 화면에서 알려 드려요.'}
       </p>
       {phase === 'done' && laterChosen && (
         <ButtonLink

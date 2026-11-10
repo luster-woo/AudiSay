@@ -4,18 +4,40 @@ import { ApiError, NetworkError } from './errors'
 import type { ApiResponse } from './types'
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api/v1'
+/** axios 를 거치지 않는 요청(keepalive fetch 등)이 쓸 API 주소 */
+export const API_BASE_URL = BASE_URL
 
-/** 세션 만료 시 로직 */
-type SessionListener = (reason: 'expired' | 'forbidden') => void
+/**
+ * 세션 만료 시 로직.
+ * - expired: 로그인이 만료됐다
+ * - replaced: 다른 탭·창에서 로그인 정보가 바뀌어 로그아웃됐다(AUTH_004, 동시 접속 불가)
+ * - forbidden: 관리자 화면 권한이 없다
+ */
+type SessionListener = (reason: 'expired' | 'replaced' | 'forbidden') => void
 let sessionListener: SessionListener | null = null
 export function onSessionEvent(listener: SessionListener | null) {
   sessionListener = listener
 }
 
 /** 재발급까지 실패해 세션이 끝났을 때 (SSE 처럼 axios 를 거치지 않는 요청에서 쓴다) */
-export function expireSession() {
+export function expireSession(err?: unknown) {
   tokenStore.clear()
-  sessionListener?.('expired')
+  sessionListener?.(endReason(err))
+}
+
+/** 재발급 실패의 이유: 다른 탭·창이 먼저 바꿨으면(AUTH_004) replaced, 아니면 expired */
+function endReason(err: unknown): 'expired' | 'replaced' {
+  return err instanceof ApiError && err.code === 'AUTH_004' ? 'replaced' : 'expired'
+}
+
+/** 재발급 실패 → 세션을 끝내고, 원래 요청에는 그 이유의 오류를 돌려준다 */
+function endSession(err: unknown): ApiError {
+  const reason = endReason(err)
+  tokenStore.clear()
+  sessionListener?.(reason)
+  return reason === 'replaced'
+    ? (err as ApiError)
+    : new ApiError('AUTH_002', 401, '로그인이 만료됐어요.')
 }
 
 export const api = axios.create({
@@ -25,8 +47,11 @@ export const api = axios.create({
   headers: { Accept: 'application/json' },
 })
 
-/** 재발급 전용 인스턴스 */
-const bare = axios.create({ baseURL: BASE_URL, withCredentials: true })
+/**
+ * 재발급 전용 인스턴스. 앱을 열 때 세션 복원도 이걸로 한다:
+ * 시간 제한이 없으면 서버·프록시가 응답하지 않을 때 빈 화면이 끝없이 이어져 api 와 같은 15초를 둔다
+ */
+const bare = axios.create({ baseURL: BASE_URL, withCredentials: true, timeout: 15_000 })
 
 /** reissue 중복 방지 */
 let reissuePromise: Promise<string> | null = null
@@ -39,6 +64,12 @@ export async function reissueAccessToken(): Promise<string> {
         tokenStore.set(token)
         return token
       })
+      // 서버가 준 이유(AUTH_002 만료 / AUTH_004 다른 탭에서 바뀜)를 ApiError 로 돌려준다
+      .catch((error: AxiosError<ApiResponse<null>>) => {
+        if (!error.response) throw new NetworkError()
+        const { status, data } = error.response
+        throw new ApiError(data?.error?.code ?? 'AUTH_002', status, data?.message ?? '')
+      })
       .finally(() => {
         reissuePromise = null
       })
@@ -46,7 +77,7 @@ export async function reissueAccessToken(): Promise<string> {
   return reissuePromise
 }
 
-// 요청: Bearer 첨부 
+// 요청: Bearer 첨부
 api.interceptors.request.use((config) => {
   const token = tokenStore.get()
   if (token) config.headers.Authorization = `Bearer ${token}`
@@ -74,10 +105,8 @@ api.interceptors.response.use(
         const token = await reissueAccessToken()
         config.headers.Authorization = `Bearer ${token}`
         return api(config)
-      } catch {
-        tokenStore.clear()
-        sessionListener?.('expired')
-        throw new ApiError('AUTH_002', 401, '로그인이 만료되었습니다.')
+      } catch (err) {
+        throw endSession(err)
       }
     }
 
@@ -95,10 +124,8 @@ api.interceptors.response.use(
       let token: string
       try {
         token = await reissueAccessToken()
-      } catch {
-        tokenStore.clear()
-        sessionListener?.('expired')
-        throw new ApiError('AUTH_002', 401, '로그인이 만료되었습니다.')
+      } catch (err) {
+        throw endSession(err)
       }
       config.headers.Authorization = `Bearer ${token}`
       return api(config)
@@ -110,7 +137,9 @@ api.interceptors.response.use(
       tokenStore.clear()
       sessionListener?.('expired')
     }
-    if (status === 403 && code === 'COMMON_003') {
+    // 관리자 화면의 역할 거부만 전역으로 처리한다(홈으로). 그 밖의 403(남의 작업·영상 등 소유 확인)은
+    // 화면이 직접 안내한다 — 모든 403을 '권한 없음 → 홈 이동'으로 보내면 낭독기 사용자는 왜 홈에 왔는지 모른다
+    if (status === 403 && code === 'COMMON_003' && (config?.url ?? '').startsWith('/admin')) {
       sessionListener?.('forbidden')
     }
 

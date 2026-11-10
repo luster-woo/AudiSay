@@ -208,10 +208,11 @@ export type YoutubeRejectReason =
 /** POST /videos/youtube/check — 확인만 하고 횟수는 쓰지 않는다 */
 export interface YoutubeCheck {
   youtubeVideoId: string
-  title: string
-  channelTitle: string
+  /** 지워졌거나 비공개라 찾지 못한 영상(rejectReason NOT_FOUND)이면 제목·채널·길이가 없다 */
+  title: string | null
+  channelTitle: string | null
   thumbnailUrl: string | null
-  durationSec: number
+  durationSec: number | null
   available: boolean
   rejectReason: YoutubeRejectReason | null
   videoId: number | null

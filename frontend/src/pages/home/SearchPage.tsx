@@ -4,11 +4,12 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { videosApi } from '@/api/videos'
 import { usersApi } from '@/api/users'
 import { queryKeys } from '@/api/queryKeys'
-import { ApiError } from '@/api/errors'
+import { ApiError, toUserMessage } from '@/api/errors'
 import type { YoutubeSearchItem } from '@/api/types'
 import { Button } from '@/components/ui/Button'
 import { Notice } from '@/components/ui/Notice'
 import { useAnnouncer } from '@/features/announcer/context'
+import { ListError } from '@/features/video/ListError'
 import { usePageEntry } from '@/features/page/usePageEntry'
 import { HomeTop } from '@/features/search/HomeTop'
 import { VideoListRow } from '@/features/video/VideoListRow'
@@ -80,6 +81,9 @@ function SearchResults({ q }: { q: string }) {
   const firstPage = result.data?.pages[0]?.items ?? []
   const described = firstPage.filter((i) => i.hasDescription).length
   const unavailable = result.error instanceof ApiError && result.error.code === 'VIDEO_008'
+  // 검색어가 너무 길면(100자 초과) 서버가 400(COMMON_001)을 준다. 다시 해도 같으니 검색어를 줄이라고 안내한다
+  const tooLong = result.error instanceof ApiError && result.error.code === 'COMMON_001'
+  const failed = result.isError && !unavailable
   const empty = result.isSuccess && items.length === 0
   const settled = !q || result.isSuccess || result.isError
 
@@ -87,15 +91,17 @@ function SearchResults({ q }: { q: string }) {
     title: q ? `"${q}" 검색 결과` : '검색',
     announce: unavailable
       ? '지금은 검색을 쓸 수 없어요. 유튜브 주소를 붙여 넣어 주세요. 검색 칸에 있어요.'
-      : result.isError
-        ? '검색하지 못했어요. 잠시 뒤에 다시 시도해 주세요. 검색 칸에 있어요.'
-        : !q || empty
-          ? `"${q}" 검색 결과가 없어요. 검색 칸에 있어요.`
-          : `"${q}" 검색 결과 ${firstPage.length}개. ${
-              described > 0
-                ? `해설 있는 영상 ${described}개가 먼저 나와요.`
-                : '해설 있는 영상은 없어요.'
-            }`,
+      : tooLong
+        ? '검색어가 너무 길어요. 100자 안으로 줄여 주세요. 검색 칸에 있어요.'
+        : result.isError
+          ? `검색하지 못했어요. ${toUserMessage(result.error)} 검색 칸에 있어요.`
+          : !q || empty
+            ? `"${q}" 검색 결과가 없어요. 검색 칸에 있어요.`
+            : `"${q}" 검색 결과 ${firstPage.length}개. ${
+                described > 0
+                  ? `해설 있는 영상 ${described}개가 먼저 나와요.`
+                  : '해설 있는 영상은 없어요.'
+              }`,
     focusRef: !q || empty || result.isError ? searchRef : headingRef,
     ready: settled,
   })
@@ -158,6 +164,27 @@ function SearchResults({ q }: { q: string }) {
           <Notice title="지금은 검색을 쓸 수 없어요">
             유튜브 주소를 붙여 넣으면 바로 확인할 수 있어요.
           </Notice>
+        )}
+
+        {/* 검색 실패(503 말고): 빈 화면 대신 제목 + 이유 + 다시 검색 (안내는 화면 진입 안내가 이미 읽는다) */}
+        {failed && (
+          <>
+            <h2 id="search-result" className="text-[1.75rem] font-bold">
+              {tooLong ? '검색어가 너무 길어요' : '검색하지 못했어요'}
+            </h2>
+            {tooLong ? (
+              <p className="mt-6 text-xl">검색어를 100자 안으로 줄여 주세요.</p>
+            ) : (
+              <ListError
+                title="검색 결과를 불러오지 못했어요"
+                error={result.error}
+                retryLabel="다시 검색"
+                retrying={result.isFetching}
+                onRetry={() => void result.refetch()}
+                announceText={null}
+              />
+            )}
+          </>
         )}
 
         {(empty || !q) && (

@@ -7,6 +7,8 @@ import type { Paged, VideoCategory, VideoSummary } from '@/api/types'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
 import { useAnnouncer } from '@/features/announcer/context'
+import { ListError } from '@/features/video/ListError'
+import { toUserMessage } from '@/api/errors'
 import { usePageEntry } from '@/features/page/usePageEntry'
 import { HomeTop } from '@/features/search/HomeTop'
 import { CATEGORY_LABELS, CATEGORY_OPTIONS } from '@/features/video/categories'
@@ -56,7 +58,7 @@ export default function HomePage() {
   const requested = Number(params.get('shown') ?? STEP)
   const shown = Number.isSafeInteger(requested) && requested >= STEP ? requested : STEP
 
-  const { data, isPlaceholderData, isError } = useQuery({
+  const { data, isPlaceholderData, isError, error, isFetching, refetch } = useQuery({
     queryKey: queryKeys.videos({ home: true, category, shown }),
     queryFn: () => fetchShown(category, shown),
     placeholderData: keepPreviousData,
@@ -114,6 +116,17 @@ export default function HomePage() {
     )
   }, [data, isPlaceholderData, announce])
 
+  // '더 보기'가 실패하면 목록이 통째로 사라지지 않게 이전 개수로 되돌리고(받아 둔 목록이 다시 보인다) 실패를 알린다
+  useEffect(() => {
+    if (!isError || shown <= STEP) return
+    if (focusFrom.current !== null) {
+      focusFrom.current = null
+      announce(`더 불러오지 못했어요. ${toUserMessage(error)}`, { politeness: 'assertive' })
+    }
+    update({ shown: Math.max(STEP, shown - STEP) })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 실패한 순간 한 번만
+  }, [isError])
+
   const changeCategory = (value: string) => {
     focusFrom.current = null
     update({ category: value as VideoCategory | '', shown: STEP })
@@ -158,7 +171,14 @@ export default function HomePage() {
           </div>
         </div>
 
-        {isError && <p className="mt-6 text-xl">영상 목록을 불러오지 못했어요.</p>}
+        {isError && shown <= STEP && (
+          <ListError
+            title="영상 목록을 불러오지 못했어요"
+            error={error}
+            retrying={isFetching}
+            onRetry={() => void refetch()}
+          />
+        )}
         {data && items.length === 0 && (
           <p className="mt-6 text-xl">아직 이 카테고리에는 해설이 준비된 영상이 없어요.</p>
         )}

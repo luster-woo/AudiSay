@@ -94,11 +94,11 @@ function CheckView({ url }: { url: string }) {
     ready: (check.isSuccess && quota.isFetched) || check.isError,
   })
 
+  // 실패한 영상도 같은 요청(POST /videos/youtube)으로 보낸다: 서버가 FAILED면 횟수를 줄이지 않고 다시 만든다.
+  // 다시 요청(retry)은 요청 기록이 있는 회원만 쓸 수 있어, 남이 요청했다 실패한 영상을 처음 본 회원은 403이 났다
   const request = useMutation({
     mutationFn: (): Promise<{ jobId: number | null; videoId: number }> =>
-      view === 'failed' && check.data?.videoId != null
-        ? videosApi.retry(check.data.videoId).then((r) => ({ jobId: r.jobId, videoId: r.videoId }))
-        : videosApi.youtubeRequest(url),
+      videosApi.youtubeRequest(url),
     onSuccess: (res) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.quota })
       void queryClient.invalidateQueries({ queryKey: ['me', 'videos'] })
@@ -118,6 +118,8 @@ function CheckView({ url }: { url: string }) {
   })
 
   const d = check.data
+  // 찾지 못한 영상(지워짐·비공개)은 제목·채널·길이가 없다. 빈 카드(빈 제목·'0초')를 그리지 않고 아래 이유 안내만 둔다
+  const hasInfo = d?.title != null
 
   return (
     <div className="grid gap-12 lg:grid-cols-[minmax(0,55rem)_19.375rem] lg:justify-between">
@@ -151,7 +153,7 @@ function CheckView({ url }: { url: string }) {
           </Notice>
         )}
 
-        {d && view && view !== 'limit' && (
+        {d && hasInfo && view && view !== 'limit' && (
           <div
             className={cn(
               'mt-8 grid gap-6 rounded-lg border-2 p-4 sm:grid-cols-[minmax(0,26rem)_1fr]',
@@ -161,8 +163,10 @@ function CheckView({ url }: { url: string }) {
             <Thumbnail src={d.thumbnailUrl} className="border-2 border-line" />
             <div className="flex flex-col gap-3 py-4">
               <h2 className="text-[1.75rem] leading-snug font-bold">{d.title}</h2>
-              <p className="text-2xl">{d.channelTitle}</p>
-              <p className="text-2xl">{formatDurationShort(d.durationSec)}</p>
+              {d.channelTitle && <p className="text-2xl">{d.channelTitle}</p>}
+              {d.durationSec != null && (
+                <p className="text-2xl">{formatDurationShort(d.durationSec)}</p>
+              )}
               {view === 'ready' && <p className="text-2xl font-bold text-navy">해설 있음</p>}
               {view === 'rejected' && (
                 <p className="text-2xl font-bold text-danger">해설 만들기 불가</p>

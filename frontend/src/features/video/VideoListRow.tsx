@@ -64,7 +64,8 @@ export function VideoListRow({
         <p
           id={statusId}
           className={cn(
-            'max-w-[40%] shrink-0 text-right text-xl font-bold break-keep',
+            // 고정 폭: 상태 글자 길이('해설 있음' / '해설 만들 수 없음, 10분 넘음')와 상관없이 줄마다 제목 폭이 같게
+            'w-[12rem] max-w-[40%] shrink-0 text-right text-xl font-bold break-keep',
             tone === 'danger' ? 'text-danger' : 'text-navy',
           )}
         >

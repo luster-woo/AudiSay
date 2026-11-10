@@ -6,6 +6,7 @@ import { usersApi } from '@/api/users'
 import { videosApi } from '@/api/videos'
 import { queryKeys } from '@/api/queryKeys'
 import { toUserMessage } from '@/api/errors'
+import { ListError } from '@/features/video/ListError'
 import type { Paged } from '@/api/types'
 import { Button } from '@/components/ui/Button'
 import { ButtonLink } from '@/components/ui/ButtonLink'
@@ -119,13 +120,6 @@ export default function MyVideosPage() {
     )
   }, [data, active.isPlaceholderData, announce])
 
-  useEffect(() => {
-    if (active.isError)
-      announce(`${label}을 불러오지 못했어요. ${toUserMessage(active.error)}`, {
-        politeness: 'assertive',
-      })
-  }, [active.isError, active.error, label, announce])
-
   const changeTab = (next: VideoTab) => {
     if (next === tab) return
     pendingFocus.current = 'tab'
@@ -165,18 +159,13 @@ export default function MyVideosPage() {
         </div>
         {active.isPending && <p className="py-12 text-xl">영상을 불러오는 중이에요.</p>}
         {active.isError && (
-          <div className="mt-6 rounded-lg border-2 border-line bg-paper p-6">
-            <p className="text-2xl font-bold">영상 목록을 불러오지 못했어요</p>
-            <p className="mt-2 text-xl">{toUserMessage(active.error)}</p>
-            <Button
-              className="mt-5"
-              variant="secondary"
-              loading={active.isFetching}
-              onClick={() => void active.refetch()}
-            >
-              다시 불러오기
-            </Button>
-          </div>
+          <ListError
+            title="영상 목록을 불러오지 못했어요"
+            error={active.error}
+            announceText={`${label}을 불러오지 못했어요. ${toUserMessage(active.error)}`}
+            retrying={active.isFetching}
+            onRetry={() => void active.refetch()}
+          />
         )}
         {!active.isError && data && data.content.length > 0 && (
           <>

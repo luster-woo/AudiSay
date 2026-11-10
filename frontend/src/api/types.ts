@@ -491,6 +491,11 @@ export interface NarrationLine {
   /** 1(낮음) ~ 3(높음). 시간이 모자라면 높은 것부터 남긴다 */
   importance: number
   text: string
+  /**
+   * NARRATION 화면 해설 / DIALOGUE 외국어 대사를 한국어로 읽어 주는 문장(더빙처럼 겹쳐 읽는다).
+   * 칸이 생기기 전 해설은 모두 NARRATION 이라 features/player/dubLines 가 대사 글과 비교해 한 번 더 가른다
+   */
+  lineType?: 'NARRATION' | 'DIALOGUE'
   /** S3 주소(6시간 유효). null 이면 브라우저 음성으로 읽는다 */
   audioUrl: string | null
   audioDurationMs: number | null

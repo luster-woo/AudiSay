@@ -138,6 +138,7 @@ export function Player({ video }: { video: VideoDetail }) {
     lines,
     markSeek,
     readLine,
+    dubIds,
   } = narration
   // 사용자 입장의 '재생 중': 해설·답을 읽느라 잠깐 멈춰 둔 상태도 재생 중으로 본다
   const playingNow = state.playing || holding
@@ -1110,7 +1111,7 @@ export function Player({ video }: { video: VideoDetail }) {
             {
               value: 'script',
               label: '해설',
-              panel: <ScriptPanel lines={lines} current={currentLine} onPick={onPickLine} />,
+              panel: <ScriptPanel lines={lines} dubIds={dubIds} current={currentLine} onPick={onPickLine} />,
             },
           ]}
         />

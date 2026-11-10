@@ -435,3 +435,38 @@ test('외국어 대사 번역은 해설 설정이 아니라 외국어 번역 읽
     description.dialogues.pop()
   }
 })
+
+test('외국어 대사 번역(DIALOGUE): 멈추지 않고 영상 소리를 줄여 겹쳐 읽고, 해설 상자에는 띄우지 않는다', async () => {
+  const fits = line(51, T(50), '총독 각하의 건배사입니다', {
+    detailLevel: 1,
+    lineType: 'DIALOGUE',
+    gapEndMs: null,
+    audioDurationMs: 2500,
+  })
+  const tooLong = line(52, T(56), '이는 조선 근대화의 새로운 이정표입니다', {
+    detailLevel: 1,
+    lineType: 'DIALOGUE',
+    gapEndMs: null,
+    audioDurationMs: 6000,
+  })
+  description.lines.push(fits, tooLong)
+  description.dialogues.push(
+    { startMs: T(50), endMs: T(52), text: '총독 각하의 건배사입니다', characterName: null },
+    { startMs: T(56), endMs: T(57), text: '이는 조선 근대화의 새로운 이정표입니다', characterName: null },
+  )
+  try {
+    const { hook, walk, controls, said } = setup({ originalVolume: 80 })
+    walk(T(49), T(50.2))
+    expect(said()).toEqual(['총독 각하의 건배사입니다'])
+    expect(controls.pause).not.toHaveBeenCalled() // 2.5초 번역 ≤ 대사 2초 + 여유 1.5초
+    expect(controls.setVolume).toHaveBeenCalledWith(24) // 80 × 0.3
+    await flush()
+    expect(controls.setVolume).toHaveBeenLastCalledWith(80) // 다 읽으면 되돌린다
+    expect(hook.result.current.currentLine?.lineId).not.toBe(51) // 해설 상자에는 해설만
+    walk(T(51), T(56.2))
+    expect(controls.pause).toHaveBeenCalled() // 6초 번역은 대사(1초)를 크게 넘어 멈추고 읽는다
+  } finally {
+    description.lines.splice(-2)
+    description.dialogues.splice(-2)
+  }
+})

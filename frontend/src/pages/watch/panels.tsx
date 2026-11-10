@@ -220,10 +220,13 @@ export function ChaptersPanel({
 
 export function ScriptPanel({
   lines,
+  dubIds,
   current,
   onPick,
 }: {
   lines: NarrationLine[]
+  /** 외국어 대사를 한국어로 읽어 주는 문장 id: 해설이 아니라 '대사'로 보인다 */
+  dubIds?: ReadonlySet<number>
   current: NarrationLine | null
   onPick: (l: NarrationLine) => void
 }) {
@@ -246,6 +249,7 @@ export function ScriptPanel({
         <ul ref={listRef} className={LIST} {...listProps}>
           {lines.map((l) => {
             const isCurrent = l.lineId === current?.lineId
+            const isDub = dubIds?.has(l.lineId) ?? false
             return (
               <li key={l.lineId} data-key={l.lineId}>
                 <TimeRow
@@ -253,8 +257,11 @@ export function ScriptPanel({
                   current={isCurrent}
                   tabStop={l.lineId === stopKey}
                   onClick={() => onPick(l)}
-                  label={`${formatPositionSpoken(l.startMs)}${isCurrent ? ', 지금 문장' : ''}. ${l.text}`}
+                  label={`${formatPositionSpoken(l.startMs)}${isCurrent ? ', 지금 문장' : ''}${isDub ? ', 대사 번역' : ''}. ${l.text}`}
                 >
+                  {isDub && (
+                    <span className="mr-2 rounded-sm border border-navy px-1.5 text-sm font-bold">대사</span>
+                  )}
                   {l.text}
                 </TimeRow>
               </li>

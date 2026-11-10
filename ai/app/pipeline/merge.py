@@ -186,8 +186,16 @@ def assemble(full: dict, chunks: list[dict], covered_until_ms: int | None = None
     for c in sorted(chunks, key=lambda c: c["chunkIndex"]):
         for x in c["lines"]:
             text = x["text"].strip()
-            for wrong, right in renames.items():
-                text = rename(text, wrong, right)
+            if DUB_FLAG in (x.get("flags") or []):
+                # 외국어 대사 낭독은 말한 사람("임승묵: ")만 바꾼다. 번역 글은 대사(transcript_segments)와 같아야
+                # BE 챗봇(DubLines)이 이 문장을 대사로 알아보고 화면 해설에서 뺀다
+                who, sep, said = text.partition(": ")
+                if sep and who in renames:
+                    text = (_speaker(who, renames) or "")
+                    text = f"{text}: {said}" if text else said
+            else:
+                for wrong, right in renames.items():
+                    text = rename(text, wrong, right)
             if text and int(x["startMs"]) <= duration:
                 lines.append({"detailLevel": int(x["detailLevel"]), "startMs": int(x["startMs"]), "gapEndMs": x.get("gapEndMs"),
                               "importance": int(x.get("importance") or 4 - int(x["detailLevel"])), "text": text,

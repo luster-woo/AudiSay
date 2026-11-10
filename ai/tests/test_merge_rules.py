@@ -137,3 +137,17 @@ def test_check_flags_prompt_v4_rules():
     assert "PRONOUN" in check("그녀가 마이크 앞에 앉는다.", 0, [], 2)
     assert "OVER_LEVEL_LENGTH" in check("가" * 31, 0, [], 1)
     assert check("최유리가 마이크 앞에 앉는다.", 0, [], 1) == []
+
+
+def test_dub_line_keeps_translation_and_only_fixes_speaker():
+    """외국어 대사 낭독 문장의 번역 글은 대사(transcript_segments)와 같아야 BE 챗봇(DubLines)이 대사로 알아보고 화면 해설에서 뺀다.
+    그래서 근거 없는 이름은 앞의 말한 사람만 고치고 번역 글은 건드리지 않는다."""
+    full = {**FULL, "title": "가경의 진심",
+            "dialogues": [{"startMs": 1000, "endMs": 3000, "speaker": "임승묵(박성웅)", "text": "승묵 씨 왔어요", "dub": True}],
+            "scenes": [{"startMs": 0, "endMs": 60_000, "title": "가경", "screenTexts": [],
+                        "people": [{"name": "금가경", "basis": "자막", "appearance": "재킷"},
+                                   {"name": "임승묵(박성웅)", "basis": "자막", "appearance": "중년 여성"}]}]}
+    dub = lambda t: {"detailLevel": 1, "startMs": 1000, "gapEndMs": None, "importance": 3, "text": t, "flags": ["DIALOGUE_DUB"]}
+    plan = assemble(full, [{"chunkIndex": 0, "screenTexts": [], "lines": [dub("임승묵: 승묵 씨 왔어요"), dub("금가경: 가자")]}])
+    assert [x["text"] for x in plan.lines] == ["승묵: 승묵 씨 왔어요", "가경: 가자"]
+    assert plan.lines[0]["text"].partition(": ")[2] == plan.dialogues[0]["text"]  # 번역 글은 대사와 같게

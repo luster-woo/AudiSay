@@ -351,15 +351,10 @@ export function Player({ video }: { video: VideoDetail }) {
     if (phase === 'playing') stopSummary()
     setDecided('playing')
     setSummaryInDialog(true)
-    void playSummary(null).then((end) => {
-      if (end === 'stopped') return // 건너뛰기·다시 듣기로 멈췄으면 그쪽에서 처리한다
-      if (end === 'cut') {
-        // 다른 소리에 끊겼으면 '끝났어요'라고 하지 않고 포커스도 옮기지 않는다
-        setDecided('done')
-        return
-      }
-      // 다 들었으면 창을 닫고 재생 버튼에서 기다린다 (재생은 하지 않는다)
-      waitAtPlay('요약이 끝났어요. Space를 누르면 재생해요.')
+    void playSummary(null).then((done) => {
+      if (!done) return // 건너뛰기·다시 듣기로 멈췄으면 그쪽에서 처리한다
+      setDecided('done')
+      announce('요약이 끝났어요. 다시 들으려면 Enter, 닫으려면 Esc.')
     })
   }
   // 건너뛰기(Esc): 듣는 중이면 요약을 멈추고, 창을 닫아 재생 버튼에서 기다린다. 재생은 하지 않는다

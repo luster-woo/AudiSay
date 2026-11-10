@@ -112,6 +112,27 @@ def test_name_must_appear_in_title_dialogue_or_screen():
     assert [c["name"] for c in old.characters] == ["박진영", "최유리", "사토 히데오"]
 
 
+def test_made_up_names_become_label_or_subtitle_name():
+    """2026-11-10 '100일의 거짓말': 자막엔 '가경'뿐인데 '금가경', 영상에 없는 '임승묵(박성웅)'을 지어 첫 해설에서 읽었다.
+    성을 뗀 이름이 자막에 있으면 그것으로, 아예 없으면 겉모습 호칭으로 바꾸고 조사도 맞춘다. 배우 괄호는 떼고 본다."""
+    full = {**FULL, "title": "마지막으로 꼭 전하고 싶었던 가경의 진심 아무것도 모르는 태웅",
+            "dialogues": [{"startMs": 1000, "endMs": 3000, "speaker": "임승묵(박성웅)", "text": "유모 이름은 금서희야"},
+                          {"startMs": 4000, "endMs": 5000, "speaker": "김태웅(진영)", "text": "김태웅이 아니라"}],
+            "scenes": [{"startMs": 0, "endMs": 60_000, "title": "떠나는 가경", "screenTexts": [],
+                        "people": [{"name": "금가경(김유정)", "basis": "자막", "appearance": "브라운 재킷 여성"},
+                                   {"name": "임승묵(박성웅)", "basis": "대사 및 자막", "appearance": "회색 원피스를 입은 중년 여성"},
+                                   {"name": "김태웅(진영)", "basis": "대사에서 언급", "appearance": "검은 수트"}]}]}
+    line = lambda t, s: {"detailLevel": 1, "startMs": s, "gapEndMs": None, "importance": 3, "text": t, "flags": []}
+    chunks = [{"chunkIndex": 0, "screenTexts": [], "lines": [line("임승묵과 금가경이 마주 앉는다.", 0),
+                                                             line("승묵이 부품을 조립한다.", 10_000),
+                                                             line("김태웅의 얼굴이 굳는다.", 20_000)]}]
+    plan = assemble(full, chunks)
+    assert [x["text"] for x in plan.lines] == ["원피스를 입은 중년 여성과 가경이 마주 앉는다.",  # 15자 안으로 앞 낱말을 뗌
+                                               "원피스를 입은 중년 여성이 부품을 조립한다.", "김태웅의 얼굴이 굳는다."]
+    assert [c["name"] for c in plan.characters] == ["가경", "김태웅"]
+    assert [d["speaker"] for d in plan.dialogues] == [None, "김태웅"]
+
+
 def test_check_flags_prompt_v4_rules():
     """프롬프트 v4 점검 항목을 코드로: 쓰지 않는 표현, 대명사, 상세도별 글자 수(2026-11-03)."""
     from app.pipeline.describe import check
@@ -120,3 +141,17 @@ def test_check_flags_prompt_v4_rules():
     assert "PRONOUN" in check("그녀가 마이크 앞에 앉는다.", 0, [], 2)
     assert "OVER_LEVEL_LENGTH" in check("가" * 31, 0, [], 1)
     assert check("최유리가 마이크 앞에 앉는다.", 0, [], 1) == []
+
+
+def test_dub_line_keeps_translation_and_only_fixes_speaker():
+    """외국어 대사 낭독 문장의 번역 글은 대사(transcript_segments)와 같아야 BE 챗봇(DubLines)이 대사로 알아보고 화면 해설에서 뺀다.
+    그래서 근거 없는 이름은 앞의 말한 사람만 고치고 번역 글은 건드리지 않는다."""
+    full = {**FULL, "title": "가경의 진심",
+            "dialogues": [{"startMs": 1000, "endMs": 3000, "speaker": "임승묵(박성웅)", "text": "승묵 씨 왔어요", "dub": True}],
+            "scenes": [{"startMs": 0, "endMs": 60_000, "title": "가경", "screenTexts": [],
+                        "people": [{"name": "금가경", "basis": "자막", "appearance": "재킷"},
+                                   {"name": "임승묵(박성웅)", "basis": "자막", "appearance": "중년 여성"}]}]}
+    dub = lambda t: {"detailLevel": 1, "startMs": 1000, "gapEndMs": None, "importance": 3, "text": t, "flags": ["DIALOGUE_DUB"]}
+    plan = assemble(full, [{"chunkIndex": 0, "screenTexts": [], "lines": [dub("임승묵: 승묵 씨 왔어요"), dub("금가경: 가자")]}])
+    assert [x["text"] for x in plan.lines] == ["승묵: 승묵 씨 왔어요", "가경: 가자"]
+    assert plan.lines[0]["text"].partition(": ")[2] == plan.dialogues[0]["text"]  # 번역 글은 대사와 같게

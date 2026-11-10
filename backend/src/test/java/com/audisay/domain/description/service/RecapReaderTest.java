@@ -6,6 +6,7 @@ import com.audisay.domain.description.entity.DescriptionLine;
 import com.audisay.domain.description.repository.ChapterRepository;
 import com.audisay.domain.description.repository.DescriptionLineRepository;
 import com.audisay.domain.description.repository.DescriptionRepository;
+import com.audisay.domain.description.repository.TranscriptSegmentRepository;
 import com.audisay.domain.video.entity.Video;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,7 +24,9 @@ class RecapReaderTest {
     private final DescriptionRepository descriptionRepository = mock(DescriptionRepository.class);
     private final ChapterRepository chapterRepository = mock(ChapterRepository.class);
     private final DescriptionLineRepository lineRepository = mock(DescriptionLineRepository.class);
-    private final RecapReader reader = new RecapReader(descriptionRepository, chapterRepository, lineRepository);
+    private final TranscriptSegmentRepository transcriptRepository = mock(TranscriptSegmentRepository.class);
+    private final RecapReader reader = new RecapReader(descriptionRepository, chapterRepository, lineRepository,
+            transcriptRepository);
 
     @BeforeEach
     void setUp() {

@@ -1,5 +1,6 @@
 from app.pipeline.describe import build_chunk, join_near, place, spread
 from app.pipeline.prepare import make_chunks, normalize, pick_model
+from app.pipeline.merge import assemble
 from tests.fixtures import RAW
 
 
@@ -108,11 +109,11 @@ def _foreign_raw():
     return {**RAW, "dialogue": [
         {"start": "00:05", "end": "00:09", "speaker": "김철수", "text": "오늘은 라면을 끓여 볼게요.", "language": "ko", "translation": None},
         {"start": "00:20", "end": "00:24", "speaker": "총독", "text": "本日は五月十五日。", "language": "ja", "translation": "금일 5월 15일."},
-        {"start": "00:30", "end": "00:50", "speaker": "태웅 (통역관)", "text": "His Excellency would like to make a toast. ...",
+        {"start": "00:30", "end": "00:50", "speaker": "태웅(진영)", "text": "His Excellency would like to make a toast. ...",
          "language": "en", "translation": "총독 각하의 건배사입니다. 조선 최초의 기송관이 성공적으로 개통되었습니다. "
                                           "이는 조선 근대화의 새로운 이정표이며 만선 번영의 첫걸음이 될 것입니다."},
         {"start": "00:50", "end": "00:52", "speaker": "태웅 (통역관)", "text": "Thank you.", "language": "en", "translation": "이상입니다."},
-        {"start": "00:55", "end": "00:56", "speaker": "총독", "text": "OK!", "language": "en", "translation": None},
+        {"start": "00:55", "end": "00:56", "speaker": "null", "text": "OK!", "language": "en", "translation": None},
     ]}
 
 
@@ -135,11 +136,20 @@ def test_foreign_dialogue_is_read_in_korean_at_its_time():
     assert len(near) == 2
 
 
-def test_spread_does_not_push_a_line_into_the_middle_of_dialogue():
-    """밀린 시각이 대사 한가운데면 대사 끝으로 다시 옮긴다(2026-11-10 점검: 2~8초 대사, 1.8초 문장이 2.5초로 밀려
-    대사가 시작되고 0.5초 만에 영상이 멈췄다)."""
-    talk = [{"startMs": 2000, "endMs": 8000, "text": "오늘은 그래프를 읽어 볼게요"}]
-    lines = [_ln(1, 0, "칠판 그래프가 보인다.", 2000), _ln(1, 1800, "선생님이 들어온다.", 2000)]  # 12자 → 2.66초까지 읽음
-    spread(lines, talk, 60_000)
-    assert lines[1]["startMs"] == 8000
-    assert lines[1]["gapEndMs"] == 60_000
+def test_dub_lines_are_read_but_kept_out_of_chapters_and_scenes():
+    """외국어 대사 번역 문장은 description_lines에 남겨 플레이어가 읽게 하고, 합쳐 저장하는 목차 요약·키워드·장면 설명에는 넣지 않는다.
+    (BE 챗봇이 목차·장면 설명을 '화면 해설'로 읽는다. 대사는 transcript_segments에 따로 있다)"""
+    f = normalize(_foreign_raw(), 15, "gemini-3.5-flash", 190_000)
+    plan = assemble(f, [{**build_chunk(f, 0, 0, 190_000), "chunkIndex": 0}])
+    dubs = [x["text"] for x in plan.lines if "DIALOGUE_DUB" in x["flags"]]
+    assert len(dubs) == 4  # 플레이어가 읽어 줄 문장은 그대로
+    assert any(d["text"] == "금일 5월 15일." for d in plan.dialogues)  # 대사에는 한국어 번역
+    stored = [c["summary"] or "" for c in plan.chapters] + [s["sceneDescription"] for s in plan.scenes]
+    assert stored and not any(d in t or d.split(": ", 1)[-1] in t for d in dubs for t in stored)
+    assert not any("건배사" in k or "기송관" in k for c in plan.chapters for k in c["keywords"])
+
+
+def test_dub_speaker_drops_actor_name_and_null():
+    from app.pipeline.describe import dub_lines
+    d = lambda s, sp: {"startMs": s, "endMs": s + 1000, "speaker": sp, "text": "건배!", "dub": True}
+    assert [x["text"] for x in dub_lines([d(0, "김태웅(진영)"), d(2000, "null")])] == ["김태웅: 건배!", "건배!"]

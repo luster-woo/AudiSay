@@ -26,7 +26,7 @@ from app.db import Db
 from app.errors import WorkerError
 from app.mq.envelope import Envelope
 from app.mq.worker import Events
-from app.pipeline.describe import join_near, spread
+from app.pipeline.describe import DUB_FLAG, join_near, spread
 from app.pipeline.keywords import extract
 from app.storage import Storage
 
@@ -46,6 +46,43 @@ NAME_SOURCE_HINTS = (("SCREEN_TEXT", ("자막", "제목", "이름표", "화면")
 def voiced_label_ok(label: str, seen_text: str) -> bool:
     """"빵 이발사"·"작은 컵케이크들"처럼 낱말 하나(끝의 '들'·'님' 뺀 2자 이상)가 제목·대사·화면 글자(공백 뺀)에 있으면 참."""
     return any(len(w) >= 2 and w in seen_text for w in (re.sub(r"(들|님)$", "", x) for x in label.split()))
+
+
+LABEL_MAX_CHARS = 15
+# 받침에 따라 바뀌는 조사: (받침 있을 때, 없을 때)
+JOSA = (("이", "가"), ("은", "는"), ("을", "를"), ("과", "와"), ("이랑", "랑"), ("아", "야"))
+
+
+def _label(appearance: str | None) -> str:
+    """근거 없는 이름 대신 부를 겉모습 호칭. 너무 길면 끝의 낱말 몇 개만(“…을 입은 중년 여성” → “중년 여성”)."""
+    words = (appearance or "").split()
+    while words and len(" ".join(words)) > LABEL_MAX_CHARS:
+        words = words[1:]
+    return " ".join(words) or "한 인물"
+
+
+def rename(text: str, wrong: str, right: str) -> str:
+    """문장 속 wrong을 right로 바꾸고 바로 뒤 조사를 right의 받침에 맞춘다."""
+    last = right[-1]
+    batchim = "가" <= last <= "힣" and (ord(last) - 0xAC00) % 28 != 0
+
+    def sub(m: re.Match) -> str:
+        josa = m.group(1) or ""
+        for pair in JOSA:
+            if josa in pair:
+                josa = pair[0] if batchim else pair[1]
+                break
+        return right + josa
+
+    return re.sub(re.escape(wrong) + r"(이랑|랑|이|가|은|는|을|를|과|와|아|야|의|에게|도|만)?(?=[\s.,!?:'\"]|$)", sub, text)
+
+
+def _speaker(speaker: str | None, renames: dict[str, str]) -> str | None:
+    """"김태웅(진영)" → "김태웅". 근거 없어 지운 이름이면 None. Gemini가 문자열 "null"을 줄 때도 None."""
+    s = re.sub(r"\s*\(.*?\)", "", speaker or "").strip()
+    if s in renames:
+        s = renames[s] if len(renames[s]) < len(s) and renames[s] in s else ""  # 성만 뗀 이름이면 그것으로
+    return None if s.lower() in ("", "null", "none") else s
 
 
 def trusted_name(name: str | None, basis: str | None) -> str | None:
@@ -99,6 +136,7 @@ def assemble(full: dict, chunks: list[dict], covered_until_ms: int | None = None
                                            + [t["text"] for s in full["scenes"] for t in s.get("screenTexts", [])]))
     names: dict[str, dict] = {}
     dropped: set[str] = set()
+    renames: dict[str, str] = {}  # 문장 속 근거 없는 이름 → 근거 있는 짧은 이름이나 겉모습 호칭
     voiced = set(full.get("voiceNames") or [])
     labels = bool(full.get("labelNames"))
     for s in full["scenes"]:
@@ -109,8 +147,22 @@ def assemble(full: dict, chunks: list[dict], covered_until_ms: int | None = None
                 # 호칭은 이름 근거 확인 대상이 아니다
                 names.setdefault(p["name"], {"name": p["name"], "appearance": p.get("appearance"), "nameSource": "AI"})
                 continue
-            if name and seen is not None and "사전" not in (p.get("basis") or "") and re.sub(r"\s+", "", name) not in seen:
-                name = None
+            if name and seen is not None and "사전" not in (p.get("basis") or ""):
+                # "임승묵(박성웅)"처럼 배우 이름을 붙여 와도 극중 이름이 제목·대사·화면 글자에 있는지 본다.
+                # 없으면 성을 뗀 이름("금가경" → 자막의 "가경")이 있는지 보고, 그것도 없으면 지운다.
+                # 2026-11-10 '100일의 거짓말': 자막엔 '가경'뿐인데 대사의 가짜 이름 '금서희'와 섞어 '금가경'으로, 나오지도 않는
+                # '임승묵(박성웅)'을 지어 첫 해설부터 "임승묵과 금가경이 마주 앉아"라고 읽었다
+                base = re.sub(r"\s*\(.*?\)", "", name).strip()
+                if re.sub(r"\s+", "", base) in seen:
+                    name = base
+                elif len(base) >= 3 and base[1:] in seen:
+                    renames[base], name = base[1:], base[1:]
+                else:
+                    label = _label(p.get("appearance"))
+                    renames.setdefault(base, label)
+                    if len(base) >= 3:  # 문장에서 성을 떼고 부른 것("승묵이")도
+                        renames.setdefault(base[1:], label)
+                    name = None
             if not name and seen is not None and p.get("name") in voiced and voiced_label_ok(p["name"], seen):
                 # 목소리로 대사와 짝지은 겉모습 호칭("빵 이발사")은 이름 근거가 없어도 남긴다(대사의 말한 사람이 되게).
                 # 호칭의 낱말 하나는 제목·대사·화면 글자에 있어야 한다(지어낸 이름 "김진수"는 여전히 뺌)
@@ -126,7 +178,7 @@ def assemble(full: dict, chunks: list[dict], covered_until_ms: int | None = None
     unsupported = {n: looks.get(n) for n in plan.dropped_names}
 
     plan.dialogues = sorted(({"startMs": min(int(d["startMs"]), duration), "endMs": min(int(d["endMs"]), duration),
-                              "speaker": (d.get("speaker") or "").split(" (")[0].strip() or None, "text": d["text"],
+                              "speaker": _speaker(d.get("speaker"), renames), "text": d["text"],
                               "original": d.get("original")}
                              for d in full["dialogues"] if int(d["startMs"]) < duration), key=lambda d: d["startMs"])
     for d in plan.dialogues:
@@ -137,6 +189,16 @@ def assemble(full: dict, chunks: list[dict], covered_until_ms: int | None = None
     for c in sorted(chunks, key=lambda c: c["chunkIndex"]):
         for x in c["lines"]:
             text = x["text"].strip()
+            if DUB_FLAG in (x.get("flags") or []):
+                # 외국어 대사 낭독은 말한 사람("임승묵: ")만 바꾼다. 번역 글은 대사(transcript_segments)와 같아야
+                # BE 챗봇(DubLines)이 이 문장을 대사로 알아보고 화면 해설에서 뺀다
+                who, sep, said = text.partition(": ")
+                if sep and who in renames:
+                    text = (_speaker(who, renames) or "")
+                    text = f"{text}: {said}" if text else said
+            else:
+                for wrong, right in renames.items():
+                    text = rename(text, wrong, right)
             if text and int(x["startMs"]) <= duration:
                 # 근거 없는 이름은 표시만 하지 않고 문장에서도 겉모습 호칭으로 바꾼다 (틀린 이름을 시각장애인은 확인할 수 없다)
                 had_name = any(n in text for n in plan.dropped_names)
@@ -152,8 +214,12 @@ def assemble(full: dict, chunks: list[dict], covered_until_ms: int | None = None
         x["lineIndex"] = i
     plan.lines = lines
 
+    # 외국어 대사를 읽어 주는 문장(DIALOGUE_DUB)은 해설이 아니라 대사 번역이다. 플레이어는 description_lines로 읽어 주지만
+    # 목차 요약·키워드·장면 설명에는 넣지 않는다(이 글들은 합쳐 저장돼 BE 챗봇이 나중에 가를 수 없다. 대사는 transcript_segments에 따로 있음)
+    narration = [x for x in lines if DUB_FLAG not in (x.get("flags") or [])]
+
     def chapter(idx: int, a: int, b: int, title: str) -> None:
-        in_range = [x for x in lines if a <= x["startMs"] < b]
+        in_range = [x for x in narration if a <= x["startMs"] < b]
         plan.chapters.append({"chapterIndex": idx, "startMs": a, "endMs": b, "title": title[:100],
                               "summary": " ".join(x["text"] for x in in_range if x["detailLevel"] <= 2) or None,
                               "keywords": extract(title, [x["text"] for x in in_range])})
@@ -176,7 +242,7 @@ def assemble(full: dict, chunks: list[dict], covered_until_ms: int | None = None
             continue
         n += 1
         prev_end = b
-        in_scene = [x for x in lines if a <= x["startMs"] < b]
+        in_scene = [x for x in narration if a <= x["startMs"] < b]
         people = []
         for p in s.get("people", []):
             name = p.get("name") if labels else trusted_name(p.get("name"), p.get("basis"))

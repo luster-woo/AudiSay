@@ -1,5 +1,6 @@
 package com.audisay.domain.chat.search;
 
+import com.audisay.domain.description.service.DubLines;
 import com.audisay.domain.description.service.ScreenTextTiming;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -11,8 +12,10 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * scene_search_lines·scene_search_indexes 읽기·쓰기. vector 칸 때문에 JPA 엔티티 없이 SQL로 다룬다(ddl-auto validate 유지).
@@ -34,7 +37,7 @@ public class SceneSearchStore {
     }
 
     /**
-     * 장면 찾기가 읽는 자료와 같은 네 종류. 빈 글은 뺀다.
+     * 장면 찾기가 읽는 자료와 같은 네 종류. 빈 글은 뺀다. 외국어 대사를 읽어 주는 해설 문장(DubLines)은 대사 줄과 같은 글이라 뺀다.
      * 화면 글자는 시각이 장면 시작이라 해설·대사가 읽은 시각으로 옮긴다(ScreenTextTiming, 못 찾으면 장면 시작)
      */
     public List<SceneSourceLine> readSources(long descriptionId) {
@@ -49,6 +52,8 @@ public class SceneSearchStore {
                         """, params,
                 (rs, i) -> new SceneSourceLine(rs.getString("source_type"), rs.getLong("source_id"),
                         rs.getInt("start_ms"), rs.getString("text"))));
+        Set<Long> dubs = dubLineIds(params);
+        lines.removeIf(line -> "NARRATION".equals(line.sourceType()) && dubs.contains(line.sourceId()));
         List<ScreenTextTiming.Line> spoken = lines.stream()
                 .filter(line -> !"SCENE".equals(line.sourceType()))
                 .map(line -> new ScreenTextTiming.Line(line.startMs(), line.text()))
@@ -66,6 +71,26 @@ public class SceneSearchStore {
                 .sorted(Comparator.comparingInt(SceneSourceLine::startMs).thenComparing(SceneSourceLine::sourceType)
                         .thenComparingLong(SceneSourceLine::sourceId))
                 .toList();
+    }
+
+    /** 외국어 대사를 한국어로 읽어 주는 해설 문장 id(DubLines, 상세도 1만 본다) */
+    private Set<Long> dubLineIds(MapSqlParameterSource params) {
+        List<DubLines.Spoken> dialogues = jdbc.query("""
+                SELECT start_ms, end_ms, text FROM transcript_segments WHERE description_id = :id
+                """, params, (rs, i) -> {
+            int start = rs.getInt("start_ms");
+            Integer end = rs.getObject("end_ms", Integer.class);
+            return new DubLines.Spoken(start, end == null ? start : end, rs.getString("text"));
+        });
+        if (dialogues.isEmpty()) {
+            return Set.of();
+        }
+        Set<Long> ids = new HashSet<>(jdbc.query("""
+                SELECT id, start_ms, text FROM description_lines WHERE description_id = :id AND detail_level = 1
+                """, params, (rs, i) -> DubLines.isDub(rs.getInt("start_ms"), 1, rs.getString("text"), dialogues)
+                ? rs.getLong("id") : null));
+        ids.remove(null);
+        return ids;
     }
 
     /**
@@ -134,7 +159,9 @@ public class SceneSearchStore {
 
     /**
      * 색인할 공개 해설: 상태 행 없음(공개 직후 색인을 놓침·배포 전 공개분) / FAILED가 retryBefore보다 오래됨 /
-     * PENDING이 stuckBefore보다 오래됨 / DONE인데 모델이 다르거나 해설 문장 글이 저장된 글과 다름(관리자 수정)
+     * PENDING이 stuckBefore보다 오래됨 / DONE인데 모델이 다르거나 색인한 해설 문장 글이 지금 글과 다름(관리자 수정).
+     * 색인에 없는 해설 문장은 보지 않는다: 외국어 대사를 읽어 주는 문장(DubLines)은 일부러 색인하지 않아
+     * "없음"으로 보면 5분마다 다시 색인한다. 해설 문장은 공개 뒤 새로 생기지 않고 글만 고쳐진다
      */
     public List<Long> findCandidates(String model, Instant retryBefore, Instant stuckBefore, int limit) {
         return jdbc.queryForList("""
@@ -145,10 +172,9 @@ public class SceneSearchStore {
                     OR (i.status = 'FAILED' AND i.updated_at < :retryBefore)
                     OR (i.status = 'PENDING' AND i.updated_at < :stuckBefore)
                     OR (i.status = 'DONE' AND (i.model <> :model OR EXISTS (
-                        SELECT 1 FROM description_lines l
-                        LEFT JOIN scene_search_lines s
-                            ON s.description_id = l.description_id AND s.source_type = 'NARRATION' AND s.source_id = l.id
-                        WHERE l.description_id = d.id AND btrim(l.text) <> '' AND (s.id IS NULL OR s.text <> l.text))))
+                        SELECT 1 FROM scene_search_lines s
+                        JOIN description_lines l ON l.id = s.source_id AND l.description_id = s.description_id
+                        WHERE s.description_id = d.id AND s.source_type = 'NARRATION' AND s.text <> l.text)))
                 )
                 ORDER BY d.id
                 LIMIT :limit

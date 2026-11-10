@@ -188,7 +188,8 @@ class Prepare:
     async def _describe_video(self, env: Envelope, events: Events, duration_sec: int | None) -> dict:
         p = env.payload
         yt = youtube_id(p.get("youtubeUrl"))
-        cached = await self._cached_raw(yt)
+        # 관리자 '해설 다시 만들기'(BE skipCache)면 예전 Gemini 결과를 쓰지 않고 새로 부른다(아래에서 캐시를 덮어쓴다)
+        cached = None if p.get("skipCache") else await self._cached_raw(yt)
         if cached:
             log.info("Gemini 결과 재사용 job=%s 영상=%s(%s, 크레딧 0)", env.jobId, yt, cached["model"])
             return normalize(cached["result"], p.get("videoId"), cached["model"], (duration_sec or 0) * 1000 or None, p.get("title"))

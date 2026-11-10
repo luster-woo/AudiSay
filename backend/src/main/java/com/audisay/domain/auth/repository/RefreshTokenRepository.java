@@ -35,6 +35,11 @@ public class RefreshTokenRepository {
         return hash(refreshToken).equals(redisTemplate.opsForValue().get(key(userId, sid)));
     }
 
+    /** 이 기기(sid)에 저장된 RefreshToken이 있는지 (값과 상관없이) */
+    public boolean exists(Long userId, String sid) {
+        return Boolean.TRUE.equals(redisTemplate.hasKey(key(userId, sid)));
+    }
+
     public void delete(Long userId, String sid) {
         redisTemplate.delete(key(userId, sid));
     }

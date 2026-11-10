@@ -77,7 +77,8 @@ class JobMessagePublisherTest {
                 .containsEntry("pipeline", "GEMINI_URL")
                 .containsEntry("youtubeUrl", "https://youtu.be/test")
                 .containsEntry("durationSec", 300)
-                .containsEntry("chunkSec", 120);
+                .containsEntry("chunkSec", 120)
+                .containsEntry("skipCache", false);
 
         outboxRepository.delete(saved);
     }

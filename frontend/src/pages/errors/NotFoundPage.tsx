@@ -19,7 +19,7 @@ export default function NotFoundPage() {
       <p className="mt-4 text-lg text-ink-muted">주소가 바뀌었거나 지워진 화면이에요.</p>
       <Link
         to="/"
-        className="mt-8 inline-flex min-h-touch items-center rounded-md bg-navy px-6 font-bold text-cream focus-visible:bg-navy focus-visible:outline-yellow"
+        className="mt-8 inline-flex min-h-touch items-center rounded-md bg-navy px-6 font-bold text-cream focus-visible:bg-navy"
       >
         처음 화면으로
       </Link>

@@ -1,4 +1,5 @@
-import { request } from './client'
+import { API_BASE_URL, request } from './client'
+import { tokenStore } from './token'
 import type {
   UploadCompleteResult,
   UploadPartUrls,
@@ -27,4 +28,21 @@ export const uploadsApi = {
     }),
   /** 업로드 중단. 올라간 조각을 지우고 횟수는 쓰지 않는다 */
   abort: (videoId: number) => request<null>({ method: 'DELETE', url: `/uploads/${videoId}` }),
+  /**
+   * 탭을 닫거나 새로고침할 때(pagehide) 업로드 중단을 보낸다. 페이지가 사라져도 요청이 끝까지 가도록 keepalive.
+   * 보내지 않으면 서버는 그 업로드를 '올리는 중'으로 24시간 붙잡아, 일반 회원은 그날 다시 올릴 수 없었다
+   */
+  abortOnUnload: (videoId: number) => {
+    const token = tokenStore.get()
+    try {
+      void fetch(`${API_BASE_URL}/uploads/${videoId}`, {
+        method: 'DELETE',
+        keepalive: true,
+        credentials: 'include',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      }).catch(() => undefined)
+    } catch {
+      /* 페이지가 닫히는 중이라 할 수 있는 일이 없다 (다음에 열 때 남은 업로드를 정리한다) */
+    }
+  },
 }

@@ -252,10 +252,7 @@ export function SceneTab({
                   </span>
                 </p>
               </div>
-              <p
-                ref={descTextRef}
-                className="mt-[0.8rem] text-[1.2rem] leading-relaxed break-keep [overflow-wrap:anywhere]"
-              >
+              <p ref={descTextRef} className="mt-[0.8rem] text-[1.2rem] leading-relaxed">
                 {scene.sceneDescription}
               </p>
             </section>
@@ -276,7 +273,7 @@ export function SceneTab({
                   {dialogues.map((d) => (
                     <li
                       key={`${d.startMs}-${d.text}`}
-                      className="flex gap-[0.8rem] py-[0.5333rem] text-[1.2rem] leading-snug break-keep [overflow-wrap:anywhere]"
+                      className="flex gap-[0.8rem] py-[0.5333rem] text-[1.2rem] leading-snug"
                     >
                       <span className="w-[3.2rem] shrink-0 pt-[0.2rem] font-mono text-[0.9333rem] text-ink-muted">
                         {formatClock(d.startMs)}

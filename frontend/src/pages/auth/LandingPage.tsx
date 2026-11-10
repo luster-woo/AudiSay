@@ -112,7 +112,8 @@ export default function LandingPage() {
             className={`flex min-h-12 items-center gap-3 rounded-md px-2 text-xl font-bold text-yellow hc:text-cream ${ON_NAVY_FOCUS}`}
           >
             단축키 안내
-            <span className="flex items-center gap-2">
+            {/* 키는 aria-keyshortcuts 로 읽히므로 눈에 보이는 키 글자는 이름에서 뺀다 (같은 키를 두 번 읽지 않게) */}
+            <span aria-hidden="true" className="flex items-center gap-2">
               <Key>Alt</Key>
               <span aria-hidden="true">+</span>
               <Key>Shift</Key>
@@ -127,13 +128,13 @@ export default function LandingPage() {
             <h1
               ref={headingRef}
               tabIndex={-1}
-              className="text-[4.5rem] leading-[1.25] font-bold break-keep outline-none"
+              className="text-[4.5rem] leading-[1.25] font-bold outline-none"
             >
               시각장애인을 위한
               <br />
               영상 화면해설
             </h1>
-            <p className="mt-6 text-[1.75rem] text-cream/90 break-keep">
+            <p className="mt-6 text-[1.75rem] text-cream/90">
               보이지 않는 장면까지 목소리로 들려드려요.
             </p>
             <Link
@@ -160,7 +161,7 @@ export default function LandingPage() {
               <span aria-hidden="true" className="text-cream/90">
                 {f.icon}
               </span>
-              <span className="text-2xl font-bold break-keep">{f.label}</span>
+              <span className="text-2xl font-bold">{f.label}</span>
             </li>
           ))}
         </ul>

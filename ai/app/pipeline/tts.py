@@ -1,12 +1,12 @@
 """job.tts / line.tts — 해설 음성 (워커 메시지 명세 7·8장, 진행률 80→100).
 
-- job.tts: 유튜브 영상은 상세도 1·2·3 문장 전부(2026-11-10 사용자 결정: 유튜브는 상세도 전부 Gemini TTS), 직접 올린 영상은
-  상세도 1·2 문장 + 30초 요약을 Gemini TTS(목소리 Kore)로 만들어 S3에 올리고
+- job.tts: 유튜브 영상은 상세도 1·2·3 문장 전부(2026-11-10 사용자 결정: 유튜브는 상세도 전부 Gemini TTS), 직접 올린 영상도
+  상세도 1·2·3 문장 전부(2026-11-10 점검 수정) + 30초 요약을 Gemini TTS(목소리 Kore)로 만들어 S3에 올리고
   description_lines.audio_key·audio_duration_ms, descriptions.summary_audio_key·summary_duration_ms를 채운다.
   payload(BE TtsPayload): {descriptionId, voiceCode("ko-female-1")} — 목소리가 하나뿐이라 voiceCode는 읽지 않는다.
   PROGRESS는 80→100을 10% 단위(90)로 보내고, 완료 result에 descriptionId를 넣는다(BE TtsResult가 그 값만 읽음).
   해설 공개(PUBLISHED·READY)는 BE가 TTS 완료 이벤트를 받고 한다(descriptionService.publish) → 여기서는 하지 않는다.
-- line.tts: 사용자가 상세도 3을 처음 고를 때 BE가 보낸다(유튜브는 job.tts가 이미 만들어 남은 문장이 없다). payload.lineIds가 있으면 그 문장만, 없으면 detailLevel(기본 3) 문장 중
+- line.tts: 관리자가 문장을 고칠 때 BE가 보낸다(상세도 3도 job.tts가 미리 만들어 남은 문장이 없다). payload.lineIds가 있으면 그 문장만, 없으면 detailLevel(기본 3) 문장 중
   음성이 없는 것 전부.
 - 한 문장이 실패하면 그 문장만 비워 둔다(FE가 브라우저 음성으로 읽음). 모델은 gemini-3.8-flash-tts → 실패하면 lite.
 - 직접 올린 영상(UPLOAD)은 해설·요약 음성을 H200 Supertonic 3(F1 수아, 크레딧 0)으로 만든다(2026-11-06 사용자 결정, 데모와 같음).
@@ -47,7 +47,9 @@ VOICE_NAME = "Kore"
 UPLOAD_VOICE = "F1"  # 직접 올린 영상의 해설 목소리: Supertonic 수아(안내 목소리 기본과 같음, 데모 2026-11-04 결정과 같음)
 # 음성 동시 요청 수. 데모 실측(2026-11-03): 5개씩 32개 18.5초(개당 0.58초) → 10개씩 47개 13.8초(개당 0.29초), 오류 0
 CONCURRENCY = 10
-PRE_TTS_LEVEL = 2  # 직접 올린 영상에서 job.tts가 미리 만드는 상세도. 3은 line.tts
+# 직접 올린 영상도 상세도 3까지 미리 만든다(2026-11-10 점검: BE가 상세도 3용 line.tts를 보내는 곳이 없어
+# 업로드 영상의 3단계 문장은 음성이 영영 만들어지지 않고 브라우저·안내 목소리로 읽혔다). Supertonic은 크레딧 0
+PRE_TTS_LEVEL = 3
 YOUTUBE_PRE_TTS_LEVEL = 3  # 유튜브는 상세도 3까지 미리 만든다(안 만들면 3단계만 안내 목소리·브라우저 음성으로 읽혀 목소리가 바뀐다)
 STAGE_START_PROGRESS, STAGE_END_PROGRESS = 80, 100
 PROGRESS_STEP = 10  # PROGRESS 이벤트는 10% 단위로(노션 워커 메시지 명세 7·9장)
@@ -132,7 +134,9 @@ async def decode_mp3(mp3: bytes) -> bytes:
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
         out, err = await proc.communicate()
     if proc.returncode != 0:
-        raise WorkerError("TRANSCODE_FAILED", f"ffmpeg mp3 읽기 실패: {err.decode(errors='replace')[:300]}")
+        # 음성 단계 내부 오류다(사용자 영상 파일과 상관없음). TRANSCODE_FAILED로 올리면 '영상 파일을 읽을 수 없어요'·다시 요청
+        # 불가가 되어, 유튜브 영상까지 잘못 안내됐다 → 다시 할 수 있는 UNKNOWN으로 (2026-11-10 점검)
+        raise WorkerError("UNKNOWN", f"TTS: ffmpeg mp3 읽기 실패: {err.decode(errors='replace')[:300]}")
     return out
 
 
@@ -154,7 +158,7 @@ async def encode_mp3(pcm: bytes) -> bytes:
         stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
     out, err = await proc.communicate(pcm)
     if proc.returncode != 0 or not out:
-        raise WorkerError("TRANSCODE_FAILED", f"ffmpeg mp3 변환 실패: {err.decode(errors='replace')[:300]}")
+        raise WorkerError("UNKNOWN", f"TTS: ffmpeg mp3 변환 실패: {err.decode(errors='replace')[:300]}")
     return out
 
 
@@ -195,6 +199,13 @@ async def synthesize(gms: GmsClient, text: str, ctx: CallContext) -> tuple[bytes
     for model in MODELS:
         try:
             r = await gms.generate(model, text, _config(), ctx, retries=1)
+        except WorkerError as e:
+            # 호출 한도 대기가 길어진 것(AI_LIMIT)은 이 문장만 비우지 않고 작업을 다시 시도하게 올린다.
+            # 문장마다 나눠 저장하므로 다시 할 때는 남은 문장만 만든다 (2026-11-10 점검)
+            if e.code == "AI_LIMIT":
+                raise
+            log.warning("TTS 실패 %s: %s", model, str(e)[:200])
+            continue
         except Exception as e:  # noqa: BLE001 — 다음 모델로
             log.warning("TTS 실패 %s: %s", model, str(e)[:200])
             continue
@@ -326,22 +337,41 @@ class Tts:
                 await events.progress(pct)
 
         inf = await _upload_inf(pool, desc_id, self.inf)
-        done = await synthesize_many(self.gms, self.storage, items, CallContext("TTS", job_id=job_id), progress, inf) if items else {}
-        async with pool.acquire() as con, con.transaction():
-            for r in rows:
-                key = line_key(desc_id, r["id"], r["text"])
-                if done.get(key):
-                    # 그 사이 관리자가 문장을 고쳤으면 옛 음성으로 덮지 않는다(명세 7·8장 WHERE id = ? AND text = ?)
-                    await con.execute("UPDATE description_lines SET audio_key = $1, audio_duration_ms = $2, updated_at = NOW()"
-                                      " WHERE id = $3 AND text = $4", key, done[key], r["id"], r["text"])
-            skey = summary_key(desc_id)
-            if done.get(skey):
-                await con.execute("UPDATE descriptions SET summary_audio_key = $1, summary_duration_ms = $2 WHERE id = $3",
-                                  skey, done[skey], desc_id)
+        ctx = CallContext("TTS", job_id=job_id)
+        done: dict[str, int | None] = {}
+        # SAVE_BATCH 문장마다 나눠 DB에 저장한다. 다 만든 뒤 한꺼번에 저장하면, 긴 영상이 시간 제한에 걸렸을 때
+        # 그때까지 만든 것이 모두 버려지고 처음부터 다시 했다. 다시 할 때는 audio_key가 빈 문장만 고른다(위 쿼리)
+        for i in range(0, len(items), SAVE_BATCH):
+            batch = items[i:i + SAVE_BATCH]
+
+            async def batch_progress(n: int, total: int, offset: int = i) -> None:
+                await progress(offset + n, len(items))
+
+            part = await synthesize_many(self.gms, self.storage, batch, ctx, batch_progress, inf)
+            done.update(part)
+            await _save_audio(pool, desc_id, rows, part)
         ok = sum(1 for v in done.values() if v)
         log.info("tts 완료 job=%s description=%s 음성 %s/%s", job_id, desc_id, ok, len(items))
         await events.completed({"descriptionId": desc_id, "audioMade": ok, "audioTotal": len(items),
                                 "failedKeys": [k for k, v in done.items() if not v]}, progress=STAGE_END_PROGRESS)
+
+
+SAVE_BATCH = 40  # job.tts가 한 번에 DB에 저장하는 문장 수
+
+
+async def _save_audio(pool, desc_id: int, rows, done: dict[str, int | None]) -> None:
+    """만든 음성을 문장·요약에 저장한다(done에 있는 것만)."""
+    async with pool.acquire() as con, con.transaction():
+        for r in rows:
+            key = line_key(desc_id, r["id"], r["text"])
+            if done.get(key):
+                # 그 사이 관리자가 문장을 고쳤으면 옛 음성으로 덮지 않는다(명세 7·8장 WHERE id = ? AND text = ?)
+                await con.execute("UPDATE description_lines SET audio_key = $1, audio_duration_ms = $2, updated_at = NOW()"
+                                  " WHERE id = $3 AND text = $4", key, done[key], r["id"], r["text"])
+        skey = summary_key(desc_id)
+        if done.get(skey):
+            await con.execute("UPDATE descriptions SET summary_audio_key = $1, summary_duration_ms = $2 WHERE id = $3",
+                              skey, done[skey], desc_id)
 
 
 class LineTts:
@@ -393,7 +423,7 @@ async def _source_type(pool, desc_id: int) -> str | None:
 
 
 async def _pre_tts_level(pool, desc_id: int) -> int:
-    """job.tts가 미리 음성을 만드는 상세도: 유튜브는 3(전부), 직접 올린 영상은 2."""
+    """job.tts가 미리 음성을 만드는 상세도: 유튜브·직접 올린 영상 모두 3(전부)."""
     return PRE_TTS_LEVEL if await _source_type(pool, desc_id) == "UPLOAD" else YOUTUBE_PRE_TTS_LEVEL
 
 

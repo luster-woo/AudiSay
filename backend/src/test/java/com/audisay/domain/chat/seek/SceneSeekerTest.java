@@ -182,6 +182,31 @@ class SceneSeekerTest {
     }
 
     @Test
+    void 분류_뒤_남은_예산이_LLM_제한보다_조금_적어도_LLM이_고른다() {
+        // 13초 예산에서 분류에 2초를 쓴 경우: 남은 11초는 제한(10초)보다 적지 않지만, 9초 남아도 고르기는 한다
+        long deadline = System.nanoTime() + 9_000_000_000L;
+        when(selector.select(anyString(), any(), any(), any(), any())).thenReturn(List.of());
+
+        SceneSeeker.Outcome outcome = seeker.seek(2L, DESCRIPTION_ID, "홈런", 31L, 0, deadline);
+
+        assertThat(outcome.timedOut()).isFalse();
+        verify(selector).select("홈런", scenes, 31L, 0, deadline);
+    }
+
+    @Test
+    void 임베딩과_확인을_다_할_시간이_없으면_RAG를_건너뛰고_고르기_몫을_남긴다() {
+        when(vectorSearch.ready(DESCRIPTION_ID)).thenReturn(true);
+        long deadline = System.nanoTime() + 11_000_000_000L;
+        when(selector.select(anyString(), any(), any(), any(), any())).thenReturn(List.of());
+
+        SceneSeeker.Outcome outcome = seeker.seek(2L, DESCRIPTION_ID, "홈런", 31L, 0, deadline);
+
+        assertThat(outcome.timedOut()).isFalse();
+        verify(vectorSearch, never()).search(anyLong(), anyString(), any(), anyInt());
+        verify(selector).select("홈런", scenes, 31L, 0, deadline);
+    }
+
+    @Test
     void 목차가_없으면_LLM을_부르지_않고_빈_결과() {
         when(reader.read(DESCRIPTION_ID)).thenReturn(List.of());
 

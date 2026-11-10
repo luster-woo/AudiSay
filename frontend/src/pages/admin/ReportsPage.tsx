@@ -1,9 +1,8 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { queryKeys } from '@/api/queryKeys'
 import type { ReportStatus } from '@/api/types'
-import { cn } from '@/components/ui/cn'
 import { AdminPagination } from '@/features/admin/AdminPagination'
 import { ReportDetail } from '@/features/admin/ReportDetail'
 import { ReportList } from '@/features/admin/ReportList'
@@ -15,6 +14,7 @@ import {
 } from '@/features/admin/reports'
 import { StatusSwitch } from '@/features/admin/StatusSwitch'
 import { usePendingReportCount } from '@/features/admin/usePendingReportCount'
+import { useAnnouncer } from '@/features/announcer/context'
 import { usePageEntry } from '@/features/page/usePageEntry'
 
 /** 게시판 한 쪽에 보일 문장(묶음) 수 */
@@ -54,6 +54,8 @@ export default function ReportsPage() {
 
 function ReportListView() {
   const navigate = useNavigate()
+  const { announce } = useAnnouncer()
+  const sortId = useId()
   const status = useStatus()
   const headingRef = useRef<HTMLHeadingElement>(null)
   const pendingCount = usePendingReportCount()
@@ -61,15 +63,29 @@ function ReportListView() {
   const [page, setPage] = useState(0)
   const { groups, isError, isFetched, data } = useReportGroups(status, sort)
 
-  usePageEntry({
-    title: '신고 처리',
-    announce:
+  // 화면 진입(제목 포커스·안내)은 처음 한 번만, 그때의 문구로 고정한다. 처리 상태를 바꿔 다시 받거나 처리 전 건수가
+  // 늦게 와도 제목으로 포커스가 튀거나 진입 안내를 다시 읽지 않게 한다 (상태 라디오를 ← → 로 옮기던 포커스를 지킨다)
+  const [entryText, setEntryText] = useState<string | null>(null)
+  if (entryText === null && isFetched)
+    setEntryText(
       pendingCount === undefined
         ? '신고 처리 화면이에요.'
         : `신고 처리 화면이에요. 처리 전 ${pendingCount}건.`,
+    )
+  usePageEntry({
+    title: '신고 처리',
+    announce: entryText ?? '',
     focusRef: headingRef,
-    ready: isFetched,
+    ready: entryText !== null,
   })
+
+  // 상태를 바꾼 뒤에는 포커스를 그대로 두고 결과만 알린다 ('처리 완료 12건')
+  const announcedStatus = useRef(status)
+  useEffect(() => {
+    if (!isFetched || announcedStatus.current === status) return
+    announcedStatus.current = status
+    announce(`${STATUS_LABELS[status]} ${groups.length}건.`)
+  }, [status, isFetched, groups.length, announce])
 
   const totalPages = Math.max(1, Math.ceil(groups.length / PAGE_SIZE))
   const current = Math.min(page, totalPages - 1)
@@ -83,23 +99,6 @@ function ReportListView() {
     setPage(next)
     headingRef.current?.focus()
   }
-
-  const sortButton = (value: ReportSort, label: string) => (
-    <button
-      type="button"
-      aria-pressed={sort === value}
-      onClick={() => {
-        setSort(value)
-        setPage(0)
-      }}
-      className={cn(
-        'min-h-0 border-b-2 py-0.5 text-[0.8667rem]',
-        sort === value ? 'border-navy font-bold text-ink' : 'border-transparent text-ink-muted',
-      )}
-    >
-      {label}
-    </button>
-  )
 
   return (
     <div>
@@ -118,12 +117,23 @@ function ReportListView() {
             </h2>
             <StatusSwitch value={status} onChange={changeStatus} pendingCount={pendingCount} />
           </div>
-          <div role="group" aria-label="정렬" className="flex items-center gap-2">
-            {sortButton('oldest', '오래된 순')}
-            <span aria-hidden="true" className="text-[0.8rem] text-line">
-              |
-            </span>
-            {sortButton('most', '신고 많은 순')}
+          {/* 정렬 고르기는 관리자 화면 모두 같은 select (회원 화면과 같은 모양·높이, 키보드는 ↑ ↓) */}
+          <div className="flex items-center gap-2">
+            <label htmlFor={sortId} className="text-[0.8667rem] text-ink-muted">
+              정렬
+            </label>
+            <select
+              id={sortId}
+              value={sort}
+              onChange={(e) => {
+                setSort(e.target.value as ReportSort)
+                setPage(0)
+              }}
+              className="h-[2.5333rem] min-h-0 rounded-sm border-2 border-ink-muted/70 bg-paper px-[0.8rem] text-[0.9333rem] focus-visible:border-ink"
+            >
+              <option value="oldest">오래된 순</option>
+              <option value="most">신고 많은 순</option>
+            </select>
           </div>
         </div>
         {isError && <p className="px-4 py-6">신고 목록을 불러오지 못했어요.</p>}

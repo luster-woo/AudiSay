@@ -61,7 +61,7 @@ export default function MyInfoPage() {
   const row = 'grid items-center gap-x-6 gap-y-2 @min-[34rem]:grid-cols-[10.5rem_minmax(0,1fr)]'
 
   return (
-    <div className="grid min-w-0 items-start gap-10 max-sm:-mx-10 lg:grid-cols-[minmax(0,55rem)_19.375rem] lg:justify-between lg:gap-16">
+    <div className="grid min-w-0 items-start gap-10 lg:grid-cols-[minmax(0,55rem)_19.375rem] lg:justify-between lg:gap-16">
       <div className="min-w-0">
         <h1 ref={headingRef} tabIndex={-1} className="text-4xl font-bold outline-none">
           내 정보

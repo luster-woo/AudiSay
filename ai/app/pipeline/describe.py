@@ -89,7 +89,9 @@ def dub_lines(dialogues: list[dict]) -> list[dict]:
         if not d.get("dub"):
             prev = None
             continue
-        speaker = (d.get("speaker") or "").split(" (")[0].strip() or None
+        # "김태웅(진영)" → "김태웅". Gemini가 모르는 사람을 문자열 "null"로 줄 때가 있다(2026-11-10 '100일의 거짓말')
+        speaker = re.sub(r"\s*\(.*?\)", "", d.get("speaker") or "").strip()
+        speaker = None if speaker.lower() in ("", "null", "none") else speaker
         parts: list[str] = []
         for s in SENTENCE_END.split(d["text"].strip()):
             if parts and len(parts[-1]) + 1 + len(s) <= MAX_CHARS:
@@ -141,6 +143,10 @@ def spread(lines: list[dict], dialogues: list[dict], duration_ms: int) -> list[d
     for x in lines:
         start = max(x["startMs"], min(free, max(0, duration_ms - TAIL_MS)))
         if start != x["startMs"]:
+            # 밀린 시각이 대사 한가운데면 place처럼 대사 끝으로 다시 옮긴다(MAX_SHIFT_MS 안에서). 안 그러면 대사가 시작되고
+            # 곧 영상이 멈추고 해설이 끼어든다(2026-11-10 점검: 2~8초 대사 사이 1.8초 문장이 2.5초로 밀림)
+            if any(d["startMs"] <= start < d["endMs"] for d in dialogues):
+                start = min(place(start, dialogues, duration_ms)[0], max(start, duration_ms - TAIL_MS))
             x["startMs"], x["gapEndMs"] = start, gap_end(start, dialogues, duration_ms)
         need = max(READ_MIN_MS, len(x["text"]) * READ_MS_PER_CHAR)
         fits = x["gapEndMs"] is not None and need <= x["gapEndMs"] - start + FITS_SLACK_MS

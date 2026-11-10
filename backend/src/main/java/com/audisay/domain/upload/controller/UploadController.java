@@ -62,6 +62,6 @@ public class UploadController {
     public ApiResponse<Void> abort(@AuthenticationPrincipal AuthUser authUser,
                                    @PathVariable("videoId") Long videoId) {
         uploadService.abort(authUser.userId(), videoId);
-        return ApiResponse.success("업로드를 취소했습니다.");
+        return ApiResponse.success("업로드를 취소했어요.");
     }
 }

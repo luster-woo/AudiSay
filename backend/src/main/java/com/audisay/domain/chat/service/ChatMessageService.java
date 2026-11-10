@@ -101,7 +101,10 @@ public class ChatMessageService {
         return new ChatMessageResponse(chatLog.getId(), chatLog.getInputMode(), chatLog.getUtterance(), intent, result);
     }
 
-    /** 하나면 그곳으로(targetMs·chapterId), 여럿이면 후보 전부(지금 이후부터 시간순), 없으면 안내. 하나일 때만 이동 시각을 기록 */
+    /** 장면 후보 수 상한 (FE useAsk.MAX_CANDIDATES 와 같다) */
+    static final int MAX_CANDIDATES = 3;
+
+    /** 하나면 그곳으로(targetMs·chapterId), 여럿이면 후보 3개까지(지금 이후부터 시간순), 없으면 안내. 하나일 때만 이동 시각을 기록 */
     private ChatResult seekScene(Long userId, String query, Long chatLogId, Long descriptionId, Integer videoTimeMs,
                                  long deadlineNanos) {
         SceneSeeker.Outcome outcome = sceneSeeker.seek(userId, descriptionId, query, chatLogId, videoTimeMs, deadlineNanos);
@@ -112,7 +115,9 @@ public class ChatMessageService {
                     log.target(single == null ? null : single.targetMs(),
                             single == null ? null : single.scene().chapterId(), outcome.source())));
         }
+        // 후보는 3개까지만 (번호를 기억할 수 있게, 낭독이 길어지지 않게). 지금 이후부터 시간순이라 가까운 것이 남는다
         List<ChatResult.SceneCandidate> candidates = hits.stream()
+                .limit(MAX_CANDIDATES)
                 .map(h -> new ChatResult.SceneCandidate(h.scene().chapterId(), h.scene().title(), h.targetMs(), h.snippet()))
                 .toList();
         if (single != null) {
@@ -135,7 +140,7 @@ public class ChatMessageService {
             return ChatResult.message(IN_VIDEO_SEARCH_MESSAGE);
         }
         if (descriptionId == null && NEEDS_DESCRIPTION.contains(intent)) {
-            throw new BusinessException(ErrorCode.DESCRIPTION_NOT_FOUND, "아직 해설이 없습니다.");
+            throw new BusinessException(ErrorCode.DESCRIPTION_NOT_FOUND, "아직 해설이 없어요.");
         }
         return switch (intent) {
             case QUESTION, SCENE_NOW, RECAP -> ChatResult.answerStream(chatLogId);

@@ -94,11 +94,14 @@ public class AdminDescriptionService {
     @Transactional
     public LineUpdateResponse editLine(Long lineId, LineUpdateRequest request) {
         DescriptionLine line = getLine(lineId);
-        line.edit(request.text().strip(), request.importanceOrNull());
+        // 중요도만 바꿨으면 음성을 지우거나 다시 만들지 않는다 (사용자는 계속 녹음 음성으로 듣고, TTS 비용도 들지 않는다)
+        boolean textChanged = line.edit(request.text().strip(), request.importanceOrNull());
         // 응답의 updatedAt이 바뀐 값이 되도록 먼저 반영한다
         descriptionLineRepository.flush();
-        requestAudio(line);
-        return LineUpdateResponse.from(line);
+        if (textChanged) {
+            requestAudio(line);
+        }
+        return LineUpdateResponse.from(line, textChanged);
     }
 
     /** 워커는 음성이 비어 있는 문장만 만들어서, 기존 음성을 비우고 넣는다 */

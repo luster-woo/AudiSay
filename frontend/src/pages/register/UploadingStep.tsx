@@ -108,10 +108,8 @@ export function UploadingStep({
           variant="secondary"
           size="2xl"
           disabled={phase !== 'uploading'}
-          onClick={() => {
-            setConfirmStop(true)
-            announce('업로드를 멈출까요? 계속 올리기 버튼에 있어요.')
-          }}
+          // 창이 열리며 창 이름('업로드를 멈출까요?')과 처음 포커스('계속 올리기')를 읽는다. 안내로 또 읽지 않는다
+          onClick={() => setConfirmStop(true)}
           className="mt-8 min-w-[14rem]"
         >
           업로드 멈추기

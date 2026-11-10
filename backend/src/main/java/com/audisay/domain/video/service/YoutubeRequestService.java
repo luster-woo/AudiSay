@@ -71,7 +71,7 @@ public class YoutubeRequestService {
             }
         } catch (BusinessException e) {
             if (REJECTIONS.contains(e.getErrorCode())) {
-                recordRejected(userId, youtubeVideoId);
+                recordRejected(userId, youtubeVideoId, e.getErrorCode());
             }
             throw e;
         }
@@ -81,6 +81,10 @@ public class YoutubeRequestService {
         User user = userService.getActiveUser(userId);
         LocalDate today = GenerationRequestService.todayKst();
         Video video = videoRepository.findByYoutubeVideoId(youtubeVideo.id()).orElse(null);
+        if (video != null) {
+            // 방금 유튜브에서 볼 수 있다고 확인했다 (예전에 볼 수 없음으로 표시했으면 되돌린다)
+            video.markAvailable();
+        }
         DescriptionState state = video == null ? DescriptionState.NONE : descriptionStateReader.read(video.getId());
         return switch (state.status()) {
             case READY -> {
@@ -92,6 +96,10 @@ public class YoutubeRequestService {
                 yield response(video, GenerationResult.JOINED_JOB, state.activeJobId(), null, false, user, today);
             }
             case FAILED -> {
+                // 다시 할 수 없는 실패(TRANSCODE_FAILED 등)면 다시 만들지 않는다. 영상은 방금 다시 확인했다(getRequestableVideo)
+                if (descriptionStateReader.latestFailureNotRetryable(video.getId(), true)) {
+                    throw new BusinessException(ErrorCode.JOB_NOT_RETRYABLE);
+                }
                 RetryLauncher.Retried retried = retryLauncher.launch(video, user, PreparePayloadFactory.youtube(video));
                 yield response(video, GenerationResult.NEW_JOB, retried.job().getId(), null, false, user, today);
             }
@@ -103,7 +111,7 @@ public class YoutubeRequestService {
     private YoutubeRequestResponse newJob(User user, Video registered, YoutubeVideo youtubeVideo, LocalDate today) {
         Integer remaining = remaining(user, today);
         if (remaining != null && remaining == 0) {
-            throw new BusinessException(ErrorCode.DAILY_LIMIT_EXCEEDED, "오늘 유튜브 해설 요청 횟수를 모두 사용했습니다.");
+            throw new BusinessException(ErrorCode.DAILY_LIMIT_EXCEEDED, "오늘 유튜브 해설 횟수를 다 썼어요.");
         }
         Video video = registered != null ? registered : register(youtubeVideo);
         Job job = jobLauncher.launch(video, user, JobType.GENERATE, PreparePayloadFactory.youtube(video));
@@ -121,10 +129,16 @@ public class YoutubeRequestService {
         }
     }
 
-    private void recordRejected(Long userId, String youtubeVideoId) {
+    private void recordRejected(Long userId, String youtubeVideoId, ErrorCode reason) {
         transactionTemplate.executeWithoutResult(status -> videoRepository.findByYoutubeVideoId(youtubeVideoId)
-                .ifPresent(video -> generationRequestRepository.save(GenerationRequest.rejected(
-                        userService.getActiveUser(userId), video, GenerationRequestService.todayKst()))));
+                .ifPresent(video -> {
+                    // 지워졌거나 비공개로 바뀐 영상은 목록·즐겨찾기에 '볼 수 없음'으로 보이게 표시해 둔다
+                    if (reason == ErrorCode.YOUTUBE_VIDEO_UNAVAILABLE) {
+                        video.markUnavailable();
+                    }
+                    generationRequestRepository.save(GenerationRequest.rejected(
+                            userService.getActiveUser(userId), video, GenerationRequestService.todayKst()));
+                }));
     }
 
     private YoutubeRequestResponse response(Video video, GenerationResult result, Long jobId, Long descriptionId,

@@ -111,7 +111,9 @@ export function PickStep({
             {checking ? '파일을 확인하고 있어요' : '파일 고르기'}
           </span>
           <span id={hintId} className="text-2xl text-ink-muted">
-            {hint} 이하
+            {/* '이하'는 길이·용량 제한이 있을 때만 붙인다 ('MP4 · MOV · WebM 파일 이하'가 되지 않게) */}
+            {hint}
+            {(limits.maxDurationSec != null || limits.maxSizeBytes != null) && ' 이하'}
           </span>
         </label>
       </div>

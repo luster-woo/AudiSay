@@ -71,6 +71,11 @@ export function Dialog({
   const registerLiveHost = useContext(LiveHostContext)
   const liveHostId = useId()
   const unregisterRef = useRef<(() => void) | null>(null)
+  // 부모가 정한 열림 상태 (네이티브 close 이벤트에서 읽는다)
+  const openRef = useRef(open)
+  useEffect(() => {
+    openRef.current = open
+  }, [open])
 
   useEffect(() => {
     const el = ref.current
@@ -124,6 +129,20 @@ export function Dialog({
       aria-describedby={description ? descId : undefined}
       onCancel={(e) => {
         e.preventDefault()
+        onClose()
+      }}
+      // 브라우저가 창을 강제로 닫을 때가 있다(크롬은 사용자 동작 없이 Esc 를 두 번 누르면 cancel 을 막을 수 없게 하고 닫는다).
+      // 부모 상태는 아직 열림이라, 그대로 두면 안내 영역이 닫힌 창에 남아 이후 안내가 전부 읽히지 않고
+      // 닫으면 안 되는 창(업로드 끊김 등)은 화면에서 사라져 갇힌다. 창을 다시 띄우고 닫기 요청(onClose)을 보낸다:
+      // 부모가 닫으면 위 effect 가 정상적으로 닫고 정리하며, 닫지 않는 창은 그대로 남는다
+      onClose={() => {
+        const el = ref.current
+        if (!el || !openRef.current || el.open) return
+        try {
+          el.showModal()
+        } catch {
+          /* 문서에서 빠진 창이면 다시 띄울 수 없다 */
+        }
         onClose()
       }}
       // Tab 을 창 안에서만 돌게 한다. 크롬은 모달 창의 마지막 요소에서 Tab 을 누르면 포커스를 body 로 보내는데,

@@ -40,7 +40,7 @@ class JobStreamFinisherTest {
         when(emitters.jobIds()).thenReturn(Set.of(1L, 2L));
         when(jobQueryService.findFinished(Set.of(1L, 2L))).thenReturn(List.of(new JobStatusResponse(1L, 10L,
                 JobType.GENERATE, JobStatus.SUCCEEDED, JobStage.MERGE, 100, null, null, 7L, null, null, false,
-                null, null, null)));
+                null, null, null, null)));
 
         finisher.finishMissed();
 

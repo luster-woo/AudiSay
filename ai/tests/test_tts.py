@@ -84,3 +84,14 @@ def test_normalize_reads_english_words_whole():
     assert normalize_ko("Shaun the Sheep") == "숀 더 쉽"
     assert normalize_ko("Pingu와 Larva") == "핑구와 라바"
     assert normalize_ko("TTS 시험") == "티티에스 시험"
+
+
+def test_normalize_reads_ages_steps_tilde_and_lists():
+    """2026-11-10 점검: '30대'·'3단계'·'~'를 잘못 읽고, 숫자 뒤 띄어쓰기를 지우던 것."""
+    assert normalize_ko("30대 남성") == "삼십 대 남성"
+    assert normalize_ko("3대의 차") == "세 대의 차"
+    assert normalize_ko("글자 크기 3단계.") == "글자 크기 삼단계."
+    assert normalize_ko("반가워요~") == "반가워요"
+    assert normalize_ko("1~3초") == "일에서 삼 초"
+    assert normalize_ko("1, 2, 3 하나씩") == "일, 이, 삼 하나씩"
+    assert normalize_ko("10,000원") == "만 원"

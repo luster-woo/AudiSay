@@ -54,7 +54,14 @@ const paged = (
   { total = content.length, number = 0, last = true } = {},
 ): Paged<AdminUser> => ({
   content,
-  page: { number, size: 10, totalElements: total, totalPages: 1, first: number === 0, last },
+  page: {
+    number,
+    size: 10,
+    totalElements: total,
+    totalPages: Math.max(1, Math.ceil(total / 10)),
+    first: number === 0,
+    last,
+  },
 })
 
 beforeEach(() => {
@@ -78,10 +85,15 @@ beforeEach(() => {
     const list = USERS.filter(
       (u) => (!p.role || u.role === p.role) && (!p.keyword || u.email.includes(p.keyword)),
     )
-    // 정렬용 전체 받기(size 50)는 한 쪽으로 끝난다
-    if (p.size === 50) return paged(list, { last: true })
-    // 역할·검색어 없이 부르면 서버는 관리자까지 세어 129명 (관리자 1명)
-    return paged(list, {
+    // 서버가 정렬한다 (가짜 서버도 같은 규칙으로)
+    const sorted =
+      p.sort === 'OLDEST'
+        ? [...list].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+        : p.sort === 'NAME'
+          ? [...list].sort((a, b) => a.name.localeCompare(b.name, 'ko'))
+          : list
+    // 역할·검색어 없이 부르면 서버는 관리자까지 세어 129명
+    return paged(sorted, {
       total: p.role || p.keyword ? list.length : 129,
       number: p.page ?? 0,
       last: false,
@@ -90,22 +102,23 @@ beforeEach(() => {
 })
 
 describe('회원', () => {
-  test('회원을 표로 보여 주고, 제목에 포커스를 둔다. 관리자는 줄과 인원수에서 뺀다', async () => {
+  test('회원을 표로 보여 주고, 제목에 포커스를 둔다. 관리자도 서버가 준 그대로 보인다', async () => {
     const { container } = renderRoute('/admin/users')
 
     const heading = await screen.findByRole('heading', { level: 1, name: '회원' })
     await waitFor(() => expect(heading).toHaveFocus())
-    expect(adminApi.users).toHaveBeenCalledWith({ page: 0, size: 10 })
-    expect(adminApi.users).toHaveBeenCalledWith({ role: 'ADMIN', size: 1 })
+    expect(adminApi.users).toHaveBeenCalledWith({ sort: 'NEWEST', page: 0, size: 10 })
+    // 관리자 수를 따로 세어 빼지 않는다 (쪽 수가 서버와 달라 마지막 쪽 회원을 볼 수 없었다)
+    expect(adminApi.users).not.toHaveBeenCalledWith(expect.objectContaining({ role: 'ADMIN' }))
     expect(await screen.findByRole('rowheader', { name: '박도윤' })).toBeInTheDocument()
     // 오른쪽 위 인원수 글자는 두지 않는다
     expect(screen.queryByText(/전체 \d+명/)).not.toBeInTheDocument()
-    expect(screen.queryByText('admin@ssafy.com')).not.toBeInTheDocument()
+    expect(screen.getByText('admin@ssafy.com')).toBeInTheDocument()
     // 회원 화면엔 위쪽 줄(현재 위치)이 없다 (Figma)
     expect(screen.queryByRole('navigation', { name: '현재 위치' })).not.toBeInTheDocument()
 
     const rows = within(screen.getByRole('table')).getAllByRole('row')
-    expect(rows).toHaveLength(3) // 머리 줄 + 2명
+    expect(rows).toHaveLength(4) // 머리 줄 + 3명(관리자 포함)
     expect(within(rows[1]).getByRole('rowheader', { name: '박도윤' })).toBeInTheDocument()
     expect(rows[1]).toHaveTextContent('시각장애인')
     expect(rows[2]).toHaveTextContent('인증 안 함')
@@ -144,7 +157,12 @@ describe('회원', () => {
           .map((c) => c.textContent),
       ).toEqual(['이서진']),
     )
-    expect(adminApi.users).toHaveBeenLastCalledWith({ role: 'GENERAL', page: 0, size: 10 })
+    expect(adminApi.users).toHaveBeenLastCalledWith({
+      role: 'GENERAL',
+      sort: 'NEWEST',
+      page: 0,
+      size: 10,
+    })
     expect(within(screen.getByRole('table')).getAllByRole('row')).toHaveLength(2)
     await waitFor(() => expect(screen.getByText('회원 1명을 찾았어요.')).toBeInTheDocument())
   })
@@ -157,9 +175,12 @@ describe('회원', () => {
     await userEvent.type(box, '  nobody  ')
     await userEvent.click(screen.getByRole('button', { name: '검색' }))
 
-    expect(adminApi.users).toHaveBeenCalledWith({ keyword: 'nobody', page: 0, size: 10 })
-    // 관리자 수도 같은 검색어로 센다
-    expect(adminApi.users).toHaveBeenCalledWith({ role: 'ADMIN', keyword: 'nobody', size: 1 })
+    expect(adminApi.users).toHaveBeenCalledWith({
+      keyword: 'nobody',
+      sort: 'NEWEST',
+      page: 0,
+      size: 10,
+    })
     expect(await screen.findByText('찾는 회원이 없어요.', { selector: 'p' })).toBeInTheDocument()
   })
 
@@ -169,7 +190,7 @@ describe('회원', () => {
 
     await userEvent.click(screen.getByRole('button', { name: '다음 페이지' }))
 
-    expect(adminApi.users).toHaveBeenLastCalledWith({ page: 1, size: 10 })
+    expect(adminApi.users).toHaveBeenLastCalledWith({ sort: 'NEWEST', page: 1, size: 10 })
     expect(screen.getByRole('heading', { name: '회원 목록' })).toHaveFocus()
   })
 
@@ -179,10 +200,10 @@ describe('회원', () => {
     const nav = () => screen.getByRole('navigation', { name: '페이지' })
 
     await userEvent.click(within(nav()).getByRole('button', { name: '5쪽' }))
-    expect(adminApi.users).toHaveBeenLastCalledWith({ page: 4, size: 10 })
+    expect(adminApi.users).toHaveBeenLastCalledWith({ sort: 'NEWEST', page: 4, size: 10 })
     await userEvent.click(within(nav()).getByRole('button', { name: '다음 페이지' }))
-    expect(adminApi.users).toHaveBeenLastCalledWith({ page: 5, size: 10 })
-    // 128명 / 10명 = 13쪽 → 6~10 묶음
+    expect(adminApi.users).toHaveBeenLastCalledWith({ sort: 'NEWEST', page: 5, size: 10 })
+    // 129명 / 10명 = 13쪽 → 6~10 묶음
     await waitFor(() =>
       expect(
         within(nav())
@@ -196,7 +217,7 @@ describe('회원', () => {
     )
   })
 
-  test('정렬을 고르면 같은 조건의 회원을 모두 받아 화면에서 정렬한다 (관리자는 빼고)', async () => {
+  test('정렬을 고르면 서버에 정렬을 맡겨 그 쪽만 받는다. 포커스는 정렬 칸에 그대로', async () => {
     renderRoute('/admin/users')
     await screen.findByRole('rowheader', { name: '박도윤' })
 
@@ -208,14 +229,17 @@ describe('회원', () => {
     ).toEqual(['기본', '가입일(최신 순)', '가입일(오래된 순)', '이름(가나다순)'])
 
     await userEvent.selectOptions(sort, '가입일(오래된 순)')
-    expect(adminApi.users).toHaveBeenCalledWith({ page: 0, size: 50 })
+    expect(adminApi.users).toHaveBeenCalledWith({ sort: 'OLDEST', page: 0, size: 10 })
+    expect(adminApi.users).not.toHaveBeenCalledWith(expect.objectContaining({ size: 50 }))
     await waitFor(() =>
       expect(
         within(screen.getByRole('table'))
           .getAllByRole('rowheader')
           .map((c) => c.textContent),
-      ).toEqual(['이서진', '박도윤']),
+      ).toEqual(['admin', '이서진', '박도윤']),
     )
+    expect(sort).toHaveFocus()
+    expect(screen.getByRole('heading', { level: 1, name: '회원' })).not.toHaveFocus()
 
     await userEvent.selectOptions(sort, '이름(가나다순)')
     await waitFor(() =>
@@ -223,7 +247,7 @@ describe('회원', () => {
         within(screen.getByRole('table'))
           .getAllByRole('rowheader')
           .map((c) => c.textContent),
-      ).toEqual(['박도윤', '이서진']),
+      ).toEqual(['박도윤', '이서진', 'admin']),
     )
   })
 })

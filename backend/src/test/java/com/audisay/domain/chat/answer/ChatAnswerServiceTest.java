@@ -333,6 +333,19 @@ class ChatAnswerServiceTest {
     }
 
     @Test
+    void 지금_장면은_LLM이_자료에_없다고_하면_그_말은_보내지_않고_장면_설명을_읽는다() {
+        ChatLog chat = chatLog(31L, ChatIntent.SCENE_NOW, "지금 뭐가 나와?");
+        stream("그건 해설 자료에 없어요.");
+
+        service.subscribe(USER, 31L);
+
+        assertThat(emitter.data(Sentence.class)).extracting(Sentence::text)
+                .containsExactly("투수가 공을 던집니다.", "타자가 기다립니다.");
+        assertThat(chat.getAnswerText()).isEqualTo("투수가 공을 던집니다. 타자가 기다립니다.");
+        assertThat(chat.getAnswerSource()).isEqualTo(AnswerSource.STORED);
+    }
+
+    @Test
     void 지금_장면은_LLM_한도면_LLM_없이_장면_설명() {
         chatLog(31L, ChatIntent.SCENE_NOW, "지금 뭐가 나와?");
         doThrow(new BusinessException(ErrorCode.CHAT_RATE_LIMIT)).when(rateLimiter).acquireLlm(2L);

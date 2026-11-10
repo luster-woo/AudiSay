@@ -128,6 +128,10 @@
   body {
     @apply bg-cream text-ink font-sans antialiased;
     line-height: 1.5;
+    /* 한국어 줄바꿈: 낱말 중간('만들/어요')에서 끊지 않는다. 띄어쓰기 없는 긴 글(주소·영문)은 넘치지 않게 어디서든 끊는다.
+       화면마다 break-keep 을 따로 붙이던 것을 전역 한 곳으로 모았다 (2026-11-10 점검) */
+    word-break: keep-all;
+    overflow-wrap: anywhere;
   }
   button,
   input,

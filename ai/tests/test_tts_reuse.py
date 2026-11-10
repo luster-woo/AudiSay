@@ -122,7 +122,8 @@ async def test_old_cache_audio_is_fixed_once(monkeypatch, tmp_path):
 
 
 async def test_youtube_pre_makes_all_levels_upload_only_two():
-    """유튜브는 상세도 3까지 job.tts에서 Gemini TTS로 미리 만든다(2026-11-10). 직접 올린 영상은 1·2만."""
+    """유튜브·직접 올린 영상 모두 상세도 3까지 job.tts에서 미리 만든다(2026-11-10).
+    BE는 상세도 3용 line.tts를 보내지 않아, 업로드 영상을 1·2만 만들면 3단계 문장은 음성이 영영 생기지 않았다."""
     class Pool:
         def __init__(self, source):
             self.source = source
@@ -131,4 +132,69 @@ async def test_youtube_pre_makes_all_levels_upload_only_two():
             return self.source
 
     assert await tts._pre_tts_level(Pool("YOUTUBE"), 1) == 3
-    assert await tts._pre_tts_level(Pool("UPLOAD"), 1) == 2
+    assert await tts._pre_tts_level(Pool("UPLOAD"), 1) == 3
+
+
+async def test_job_tts_saves_in_batches_so_a_timeout_keeps_earlier_audio(monkeypatch):
+    """job.tts는 SAVE_BATCH 문장마다 저장한다. 중간에 끊겨도 앞서 만든 음성은 남고, 다시 할 때 남은 문장만 만든다(2026-11-10 점검)."""
+    import pytest
+
+    from app.mq.envelope import Envelope
+
+    monkeypatch.setattr(tts, "SAVE_BATCH", 2)
+    saved: list[int] = []
+
+    class Con:
+        async def execute(self, sql, *args):
+            if sql.startswith("UPDATE description_lines"):
+                saved.append(args[2])
+
+        def transaction(self):
+            return self
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+    class Pool:
+        async def fetchval(self, sql, *args):
+            return "YOUTUBE" if "source_type" in sql else 1
+
+        async def fetchrow(self, sql, *args):
+            return {"summary_text": None, "summary_audio_key": None}
+
+        async def fetch(self, sql, *args):
+            return [{"id": i, "text": f"문장 {i}."} for i in range(1, 6)]
+
+        def acquire(self):
+            return Con()
+
+    class Db:
+        pool = Pool()
+
+    batches = []
+
+    async def many(gms, storage, items, ctx, on_done=None, inf=None):
+        batches.append([k for k, _ in items])
+        if len(batches) == 2:
+            raise TimeoutError("시간 제한")
+        return {k: 100 for k, _ in items}
+
+    monkeypatch.setattr(tts, "synthesize_many", many)
+
+    class Events:
+        async def started(self):
+            pass
+
+        async def progress(self, pct):
+            pass
+
+        async def completed(self, result, progress=None):
+            pass
+
+    env = Envelope(messageId="t", type="JOB_TTS", jobId=1, payload={"descriptionId": 1})
+    with pytest.raises(TimeoutError):
+        await tts.Tts(None, None, Db())(env, Events())
+    assert saved == [1, 2]  # 첫 묶음은 저장됐다

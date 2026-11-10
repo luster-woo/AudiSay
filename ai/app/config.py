@@ -66,6 +66,13 @@ class Settings(BaseSettings):
 
     # 처리 규칙 (워커 메시지 명세)
     message_timeout_sec: int = 600
+    # 큐·경로별 처리 시간 제한(2026-11-10 점검). 업로드 영상 분석(job.prepare LOCAL)은 H200이 영상 길이의 약 1.4배가 걸려
+    # 10분 제한이면 약 7분 넘는 영상이 매번 AI_TIMEOUT으로 끝났다 → 영상 길이 × 이 배수 + message_timeout_sec
+    prepare_local_timeout_factor: float = 2.0
+    # 유튜브 Gemini 분석(job.prepare GEMINI_URL)은 예상 시간이 길이 × 0.15라, 긴 영상이 600초에 닿지 않게 길이 × 이 배수 + 기본
+    prepare_youtube_timeout_factor: float = 0.3
+    # job.tts는 문장 수에 비례(GMS 1초에 1번). 긴 영상이 600초를 넘지 않게 따로 둔다
+    tts_timeout_sec: int = 1800
     max_attempts: int = 3
 
 

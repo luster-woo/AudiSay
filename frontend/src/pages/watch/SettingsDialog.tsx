@@ -7,36 +7,22 @@ import { Dialog } from '@/components/ui/Dialog'
 import { Stepper } from '@/components/ui/Stepper'
 import { useAnnouncer } from '@/features/announcer/context'
 import { useSettings } from '@/features/settings/context'
+import {
+  DETAIL_LABELS,
+  MIX_LABELS,
+  MODE_LABELS,
+  SEEK_LABELS,
+  SUBTITLE_LABELS,
+  SUMMARY_LABELS,
+} from '@/features/settings/labels'
 
-const DETAIL: { value: UserSettings['detailLevel']; label: string }[] = [
-  { value: 1, label: '1 짧은 해설' },
-  { value: 2, label: '2 기본 해설' },
-  { value: 3, label: '3 자세한 해설' },
-]
-const MODE: { value: UserSettings['narrationMode']; label: string }[] = [
-  { value: 'AUTO', label: '자동' },
-  { value: 'WITH_VIDEO', label: '영상과 함께' },
-  { value: 'PAUSE_AFTER', label: '멈추고' },
-]
-const MIX: { value: UserSettings['soundMix']; label: string }[] = [
-  { value: 'DIALOGUE_AND_NARRATION', label: '대사 + 해설' },
-  { value: 'DIALOGUE_ONLY', label: '대사만' },
-]
-const SUBTITLE: { value: UserSettings['subtitleReading']; label: string }[] = [
-  { value: 'ALL', label: '모두' },
-  { value: 'DIFFERENT_ONLY', label: '다른 것만' },
-  { value: 'OFF', label: '끄기' },
-]
-const SEEK: { value: UserSettings['seekStepSec']; label: string }[] = [
-  { value: 5, label: '5초' },
-  { value: 10, label: '10초' },
-  { value: 30, label: '30초' },
-]
-const SUMMARY: { value: UserSettings['summaryMode']; label: string }[] = [
-  { value: 'ASK', label: '묻기' },
-  { value: 'ALWAYS', label: '항상' },
-  { value: 'NEVER', label: '안 듣기' },
-]
+// 이름은 상세도 버튼·챗봇 답과 같게 한 곳(features/settings/labels)에 둔다
+const DETAIL = DETAIL_LABELS
+const MODE = MODE_LABELS
+const MIX = MIX_LABELS
+const SUBTITLE = SUBTITLE_LABELS
+const SEEK = SEEK_LABELS
+const SUMMARY = SUMMARY_LABELS
 const FONT = [1, 2, 3, 4, 5].map((n) => ({ value: n, label: String(n) }))
 
 const labelOf = <T,>(list: readonly { value: T; label: string }[], v: T) =>

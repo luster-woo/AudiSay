@@ -64,15 +64,22 @@ public class DescriptionLine {
     private Instant updatedAt;
 
     /**
-     * 관리자가 문장을 고친다. 옛 문장의 음성은 비우고 line.tts로 다시 만든다. importance가 null이면 그대로 둔다.
+     * 관리자가 문장을 고친다. importance가 null이면 그대로 둔다.
+     * 문장 글자가 바뀐 경우에만 옛 음성을 비운다(line.tts로 다시 만든다). 중요도만 바꿨으면 음성은 그대로 둔다.
      * 상세도는 (해설, 문장 순서, 상세도) 유니크 키라 바꾸지 않는다.
+     *
+     * @return 글자가 바뀌어 음성을 다시 만들어야 하면 true
      */
-    public void edit(String text, Short importance) {
+    public boolean edit(String text, Short importance) {
+        boolean textChanged = !text.equals(this.text);
         this.text = text;
         if (importance != null) {
             this.importance = importance;
         }
-        clearAudio();
+        if (textChanged) {
+            clearAudio();
+        }
+        return textChanged;
     }
 
     /** 음성을 비운다. 새 음성이 나올 때까지 플레이어는 브라우저 음성으로 읽는다 */
@@ -80,4 +87,4 @@ public class DescriptionLine {
         this.audioKey = null;
         this.audioDurationMs = null;
     }
-}
+}

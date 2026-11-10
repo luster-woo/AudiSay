@@ -53,6 +53,9 @@ export function useVoiceRecorder({ onResult, onUnavailable, onAsking, onRecovere
   const cancelledRef = useRef(false)
   const timerRef = useRef<number | null>(null)
   const blockedRef = useRef(false) // 차단돼서 실패했는지 (풀리면 onRecovered)
+  // 녹음을 시작해 아직 끝나지 않았는지 (preparing·listening·processing). state 는 다음 렌더에야 바뀌어 ref 로 막는다:
+  // 듣는 중에 Alt+Shift+Q 를 또 누르면 녹음기가 겹쳐 마이크가 꺼지지 않고, 이전 타이머가 새 녹음을 끊었다
+  const activeRef = useRef(false)
   // preparing 중 기다림을 끝내는 함수 (취소·화면 떠남 때 바로 풀어 준다)
   const leadTimerRef = useRef<number | null>(null)
   const leadDoneRef = useRef<(() => void) | null>(null)
@@ -95,10 +98,12 @@ export function useVoiceRecorder({ onResult, onUnavailable, onAsking, onRecovere
       try {
         const { text } = await sttApi.transcribe(blob)
         if (!text.trim()) throw new ApiError('CHAT_001', 422, '')
+        activeRef.current = false
         setState('idle')
         onResult(text.trim())
       } catch {
         // CHAT_001(못 알아들음)이든 서버 문제든, 사용자가 할 일은 같다: 다시 말하거나 글자로 찾기
+        activeRef.current = false
         setState('error')
       }
     },
@@ -115,15 +120,19 @@ export function useVoiceRecorder({ onResult, onUnavailable, onAsking, onRecovere
     endLead()
     stop()
     releaseMic()
+    activeRef.current = false
     setState('idle')
   }, [stop])
 
   const start = useCallback(
     async ({ prepare }: StartOptions = {}) => {
+      // 이미 녹음 중·알아듣는 중이면 새로 시작하지 않는다
+      if (activeRef.current) return false
       if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
         onUnavailable(MIC_MESSAGES.unsupported)
         return false
       }
+      activeRef.current = true
       const permission = await queryMic()
       // 처음이면 브라우저가 팝업을 띄우고 고를 때까지 기다린다. 그 전에 무슨 일인지 알린다
       if (permission === 'prompt') onAsking?.()
@@ -140,6 +149,7 @@ export function useVoiceRecorder({ onResult, onUnavailable, onAsking, onRecovere
       } catch (err) {
         const { message, blocked } = await micErrorMessage(err)
         blockedRef.current = blocked
+        activeRef.current = false
         onUnavailable(message)
         return false
       }
@@ -155,6 +165,7 @@ export function useVoiceRecorder({ onResult, onUnavailable, onAsking, onRecovere
         const blob = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' })
         releaseMic()
         if (!cancelledRef.current) void transcribe(blob)
+        else activeRef.current = false
       }
       // 순서: 안내 → (낭독기가 읽는 동안) 기다림 → '띠' → 녹음. 녹음 중에 낭독기가 말하지 않게 한다
       setElapsed(0)
@@ -170,12 +181,14 @@ export function useVoiceRecorder({ onResult, onUnavailable, onAsking, onRecovere
       }
       if (cancelledRef.current) {
         releaseMic()
+        activeRef.current = false
         return false
       }
       setState('listening')
       playBeep()
       recorder.start()
       const startedAt = Date.now()
+      clearTimer() // 혹시 남은 이전 타이머가 새 녹음을 끊지 않게
       timerRef.current = window.setInterval(() => {
         const sec = Math.floor((Date.now() - startedAt) / 1000)
         setElapsed(sec)

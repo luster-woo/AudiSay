@@ -6,6 +6,7 @@ import { usersApi } from '@/api/users'
 import { videosApi } from '@/api/videos'
 import { queryKeys } from '@/api/queryKeys'
 import { toUserMessage } from '@/api/errors'
+import { ListError } from '@/features/video/ListError'
 import type { Paged } from '@/api/types'
 import { Button } from '@/components/ui/Button'
 import { ButtonLink } from '@/components/ui/ButtonLink'
@@ -95,12 +96,12 @@ export default function MyVideosPage() {
     focusRef: headingRef,
   })
 
-  // 탭을 바꾼 뒤: 개수를 읽어 준다 (포커스는 탭에 둔다)
+  // 탭을 바꾼 뒤: 개수는 탭 이름('즐겨찾기 3, 탭')에 이미 있어 다시 읽지 않는다 (원칙 2장). 비어 있을 때만 알린다
   useEffect(() => {
     if (!pendingFocus.current || active.isPlaceholderData || total === undefined) return
     pendingFocus.current = null
-    announce(`${label} ${total}개.${total === 0 ? ' 아직 영상이 없어요.' : ''}`)
-  }, [active.isPlaceholderData, total, label, announce])
+    if (total === 0) announce('아직 영상이 없어요.')
+  }, [active.isPlaceholderData, total, announce])
 
   // 더 보기 뒤: 새로 붙은 첫 영상 제목으로 포커스를 옮기고 몇 개 불러왔는지 알린다
   useEffect(() => {
@@ -118,13 +119,6 @@ export default function MyVideosPage() {
       `${added}개 더 불러왔어요. 전체 ${data.page.totalElements}개 중 ${data.content.length}개.${done ? ' 모든 영상을 불러왔어요.' : ''}`,
     )
   }, [data, active.isPlaceholderData, announce])
-
-  useEffect(() => {
-    if (active.isError)
-      announce(`${label}을 불러오지 못했어요. ${toUserMessage(active.error)}`, {
-        politeness: 'assertive',
-      })
-  }, [active.isError, active.error, label, announce])
 
   const changeTab = (next: VideoTab) => {
     if (next === tab) return
@@ -165,18 +159,13 @@ export default function MyVideosPage() {
         </div>
         {active.isPending && <p className="py-12 text-xl">영상을 불러오는 중이에요.</p>}
         {active.isError && (
-          <div className="mt-6 rounded-lg border-2 border-line bg-paper p-6">
-            <p className="text-2xl font-bold">영상 목록을 불러오지 못했어요</p>
-            <p className="mt-2 text-xl">{toUserMessage(active.error)}</p>
-            <Button
-              className="mt-5"
-              variant="secondary"
-              loading={active.isFetching}
-              onClick={() => void active.refetch()}
-            >
-              다시 불러오기
-            </Button>
-          </div>
+          <ListError
+            title="영상 목록을 불러오지 못했어요"
+            error={active.error}
+            announceText={`${label}을 불러오지 못했어요. ${toUserMessage(active.error)}`}
+            retrying={active.isFetching}
+            onRetry={() => void active.refetch()}
+          />
         )}
         {!active.isError && data && data.content.length > 0 && (
           <>

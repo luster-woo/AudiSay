@@ -37,7 +37,8 @@ function toSubmitError(err: unknown): SubmitError & { code?: string } {
         return {
           code: err.code,
           title: '서류를 확인하지 못했어요',
-          message: `${err.message} 파일을 다시 골라 올려 주세요.`,
+          // 서버 문구에 할 일('다시 올려 주세요')이 이미 들어 있다. 덧붙이면 같은 말을 두 번 읽는다
+          message: err.message || '파일을 다시 골라 올려 주세요.',
         }
       case 'USER_007':
         return { code: err.code, title: '오늘은 더 신청할 수 없어요', message: err.message }

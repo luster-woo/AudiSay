@@ -41,6 +41,14 @@ public class SceneSeeker {
      * 없으면 그 단계를 건너뛴다(거르기는 생략, 다시 고르기는 못 찾음)
      */
     public static final Duration RECEIVE_BUDGET = Duration.ofSeconds(13);
+    /**
+     * LLM 한 번에 남겨 둘 시간을 seek 시간 제한(10초)보다 이만큼 적게 본다. FE는 15초에 끊고 예산은 13초라,
+     * 마지막 LLM이 제한을 거의 다 써도 FE 안에 든다. 예전에는 제한을 꽉 채워 요구해서, 분류(1~2초) 뒤에는
+     * 실제로 느린 게 없어도 '시간이 오래 걸려요'가 쉽게 나왔다
+     */
+    static final Duration LLM_SLACK = Duration.ofMillis(1500);
+    /** 장면 검색 임베딩 한 번(audisay.embedding.query-timeout). RAG는 이것과 확인 LLM 한 번이 다 남아야 시작한다 */
+    static final Duration EMBEDDING_ALLOWANCE = Duration.ofSeconds(3);
 
     private final SceneTextReader sceneTextReader;
     private final KeywordSceneScorer scorer;
@@ -137,7 +145,9 @@ public class SceneSeeker {
     private Outcome rag(Long userId, Long descriptionId, String query, Long chatLogId, Integer nowMs, Long deadlineNanos,
                         List<SceneText> scenes, KeywordSceneScorer.Result keyword) {
         SceneSearchProperties.Search search = searchProperties.search();
-        if (!hasTimeForLlm(deadlineNanos, "RAG") || !vectorSearch.ready(descriptionId)) {
+        // 임베딩 전에 미리 본다: 임베딩까지 하고 나서 'RAG 확인'에 시간이 모자라면, 그 뒤 LLM 고르기 몫까지 써 버려
+        // 못 찾음(시간이 오래 걸려요)이 된다. 임베딩 + 확인 한 번이 다 남지 않으면 RAG를 건너뛰고 고르기 몫을 남긴다
+        if (!hasTime(deadlineNanos, EMBEDDING_ALLOWANCE.plus(llmNeed()), "RAG") || !vectorSearch.ready(descriptionId)) {
             return null;
         }
         List<VectorLine> lines;
@@ -186,11 +196,21 @@ public class SceneSeeker {
     }
 
     private boolean hasTimeForLlm(Long deadlineNanos, String step) {
+        return hasTime(deadlineNanos, llmNeed(), step);
+    }
+
+    /** LLM 한 번에 필요한 시간: seek 시간 제한 - LLM_SLACK (최소 1초) */
+    private Duration llmNeed() {
+        Duration need = gmsProperties.timeout(LlmPurpose.SEEK).minus(LLM_SLACK);
+        return need.compareTo(Duration.ofSeconds(1)) < 0 ? Duration.ofSeconds(1) : need;
+    }
+
+    private boolean hasTime(Long deadlineNanos, Duration need, String step) {
         if (deadlineNanos == null) {
             return true;
         }
         long remaining = deadlineNanos - System.nanoTime();
-        if (remaining >= gmsProperties.timeout(LlmPurpose.SEEK).toNanos()) {
+        if (remaining >= need.toNanos()) {
             return true;
         }
         log.info("[CHAT] 응답 시간 예산이 {}ms 남아 장면 {} 생략", remaining / 1_000_000, step);

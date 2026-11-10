@@ -31,6 +31,19 @@ public class DescriptionStateReader {
     }
 
     /**
+     * 마지막 작업이 다시 해도 같은 이유로 실패할 오류(TRANSCODE_FAILED·DURATION_MISMATCH 등, Job.isRetryable)로 끝났으면 true.
+     * VIDEO_UNAVAILABLE은 방금 유튜브에서 다시 확인해 볼 수 있으면(availabilityRechecked) 다시 할 수 있다고 본다
+     */
+    @Transactional(readOnly = true)
+    public boolean latestFailureNotRetryable(Long videoId, boolean availabilityRechecked) {
+        return jobRepository.findLatestByVideoIds(List.of(videoId)).stream()
+                .findFirst()
+                .filter(job -> Boolean.FALSE.equals(job.isRetryable()))
+                .filter(job -> !(availabilityRechecked && "VIDEO_UNAVAILABLE".equals(job.getErrorCode())))
+                .isPresent();
+    }
+
+    /**
      * 공개 해설이 있으면 READY, 진행 중 작업이 있으면 GENERATING, 마지막 작업이 실패했으면 FAILED, 그 밖은 NONE.
      * 모든 영상 ID가 결과에 들어 있다.
      */

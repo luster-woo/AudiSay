@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useEffectEvent, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import type { Description, NarrationLine, Scene, ScreenText, UserSettings } from '@/api/types'
 import { estimateSpeechMs, type Narrator } from './Narrator'
 import type { PlayerControls, PlayerState } from './usePlayerSource'
@@ -88,6 +88,11 @@ export function useNarration({
   const playingRef = useRef(state.playing)
   const speakingImportance = useRef<number | null>(null)
   const coveredWarned = useRef(false)
+  /**
+   * 재생 중이던 영상을 해설(또는 답·요약)을 읽느라 잠깐 멈춰 둔 상태인지.
+   * 사용자 입장에선 '재생 중'이다: 재생 버튼 글자·K·'멈춰' 판단에 state.playing 과 함께 쓴다
+   */
+  const [holding, setHolding] = useState(false)
 
   useEffect(() => {
     playingRef.current = state.playing
@@ -109,6 +114,7 @@ export function useNarration({
       const token = Symbol('hold')
       holdRef.current = token
       heldPlayingRef.current = wasPlaying
+      setHolding(wasPlaying)
       controls.pause()
       try {
         await fn()
@@ -116,6 +122,7 @@ export function useNarration({
         // 뒤에 온 멈춤이 이어받았으면 그쪽이 끝날 때 재생한다
         if (holdRef.current === token) {
           holdRef.current = null
+          setHolding(false)
           if (wasPlaying && resume) controls.play()
         }
       }
@@ -127,12 +134,14 @@ export function useNarration({
   /**
    * 사용자가 직접 재생·멈춤·이동했을 때: 우리가 걸어 둔 멈춤과 읽던 소리를 모두 거둔다.
    * 해설 때문에 멈춰 둔 상태였으면(resume) 영상을 이어서 재생한다 — 사용자는 재생 중이라고 알고 있다.
-   * 돌려주는 값: 해설 때문에 멈춰 둔 상태였는지 (= 사용자 입장에선 재생 중이었는지)
+   * 돌려주는 값: 재생 중이던 영상을 해설 때문에 멈춰 둔 상태였는지 (= 사용자 입장에선 재생 중이었는지).
+   * 원래 멈춰 있던 영상에서 다시 듣기 등을 하던 중이면 false 이고, 재생하지도 않는다
    */
   const interrupt = useCallback(
     (resume = true): boolean => {
-      const wasHolding = holdRef.current !== null
+      const wasHolding = holdRef.current !== null && heldPlayingRef.current
       holdRef.current = null
+      setHolding(false)
       narrator.stop()
       speakingImportance.current = null
       if (wasHolding && resume) controls.play()
@@ -241,22 +250,40 @@ export function useNarration({
 
   // 영상이 끝나면 읽던 소리도 멈춘다
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 끝난 순간 한 번 멈춤 표시(holding)를 거둔다. 영상 상태(외부)에 맞추는 것
     if (state.ended) interrupt(false)
   }, [state.ended, interrupt])
 
-  /** 지금 화면 글자의 긴 글(fullText) 읽기 — '자세히' (READ_DETAIL) */
-  const readDetail = useCallback(() => {
-    const t = screenTexts.find(
-      (s) => s.startMs <= state.currentMs && state.currentMs < s.endMs && s.headline,
-    )
-    if (!t) return false
-    void holdWhile(() => narrator.say({ text: t.fullText, rate: settings.speechRate }))
-    return true
-  }, [screenTexts, state.currentMs, holdWhile, narrator, settings.speechRate])
+  /**
+   * 지금 화면 글자의 긴 글(fullText) 읽기 — '자세히' (READ_DETAIL).
+   * resume:false 면 읽은 뒤 이어서 재생하지 않는다 (챗봇 명령으로 읽을 때).
+   * hold: 멈추고 읽는 방법 (기본 holdWhile. 시청 화면은 Esc 로 멈출 수 있게 감싼 것을 넘긴다)
+   */
+  const readDetail = useCallback(
+    ({
+      resume = true,
+      hold = holdWhile,
+    }: {
+      resume?: boolean
+      hold?: (fn: () => Promise<unknown>, opts?: { resume?: boolean }) => Promise<unknown>
+    } = {}) => {
+      const t = screenTexts.find(
+        (s) => s.startMs <= state.currentMs && state.currentMs < s.endMs && s.headline,
+      )
+      if (!t) return false
+      void hold(() => narrator.say({ text: t.fullText, rate: settings.speechRate }), { resume })
+      return true
+    },
+    [screenTexts, state.currentMs, holdWhile, narrator, settings.speechRate],
+  )
 
   return {
     lines,
     currentLine,
+    /** 재생 중이던 영상을 해설·답 때문에 잠깐 멈춰 둔 상태 (사용자 입장에선 재생 중) */
+    holding,
+    /** holding 과 같지만 지금 이 순간의 값 (렌더를 기다리지 않는다) */
+    isHoldingNow: () => holdRef.current !== null && heldPlayingRef.current,
     holdWhile,
     interrupt,
     readDetail,

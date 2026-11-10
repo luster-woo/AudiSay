@@ -107,7 +107,7 @@ test('단축키는 분류 탭 없이 어디서나 4개, 영상 찾을 때 1개, 
     '홈으로 가기',
     '방금 안내 스크린리더로 다시 듣기',
     '지금 화면의 단축키 보기',
-    '사용법 보기',
+    '튜토리얼 보기',
   ])
   fireEvent(dialog, new Event('cancel', { bubbles: true, cancelable: true }))
   expect(await axe(container)).toHaveNoViolations()

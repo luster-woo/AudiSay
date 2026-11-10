@@ -109,13 +109,20 @@ export function VisibilityStep({
         >
           <Checkbox
             ref={agreeRef}
-            label="이 영상을 올릴 권리가 저에게 있어요 (필수)"
+            // 필수 표시는 약관 동의와 같은 모양('[필수]' 앞에 붙임)
+            label={
+              <>
+                <span className="font-bold text-danger">[필수]</span> 이 영상을 올릴 권리가 저에게
+                있어요
+              </>
+            }
             checked={agreed}
             onChange={(e) => {
               setAgreed(e.target.checked)
               if (e.target.checked) setAgreeError(false)
             }}
-            required
+            // 네이티브 required 는 체크 전엔 늘 :invalid 라 낭독기가 처음부터 '입력 오류'로 읽는다 (약관 동의와 같게)
+            aria-required="true"
             aria-invalid={agreeError || undefined}
             aria-describedby={agreeError ? 'agree-error' : undefined}
             className="[&_input]:size-10 [&_label]:text-2xl [&_label]:font-bold"

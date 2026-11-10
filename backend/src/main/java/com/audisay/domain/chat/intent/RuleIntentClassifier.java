@@ -270,8 +270,9 @@ public class RuleIntentClassifier {
         if (find(c, "해설(?:을|좀|다시)?(?:켜|넣|같이)")) {
             return ClassifiedIntent.setting("soundMix", "DIALOGUE_AND_NARRATION");
         }
-        // "외국어 번역 꺼 줘", "번역 읽어 줘". "번역 자막만"은 아래 자막 읽기 설정
-        if (!find(c, "자막") && find(c, "번역|외국어")) {
+        // "외국어 번역 꺼 줘", "번역 읽어 줘". "번역 자막만"은 아래 자막 읽기 설정.
+        // 묻는 말("외국어로 뭐라고 했는지 들려 줘")은 설정이 아니라 질문
+        if (!question && !find(c, "자막") && find(c, "번역|외국어")) {
             if (find(c, "꺼|끄|읽지마|안읽|그만|빼")) {
                 return ClassifiedIntent.setting("translationReading", "false");
             }

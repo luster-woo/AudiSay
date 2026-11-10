@@ -10,6 +10,8 @@ import com.audisay.domain.chat.entity.ChatLog;
 import com.audisay.domain.chat.entity.InputMode;
 import com.audisay.domain.chat.ratelimit.ChatRateLimiter;
 import com.audisay.domain.chat.repository.ChatLogRepository;
+import com.audisay.domain.chat.screen.ScreenAnswerJudge;
+import com.audisay.domain.chat.screen.ScreenChecker;
 import com.audisay.domain.chat.search.AnswerRetriever;
 import com.audisay.domain.chat.search.SceneSearchProperties.Mode;
 import com.audisay.domain.chat.search.ChapterTitle;
@@ -672,6 +674,150 @@ class ChatAnswerServiceTest {
     }
 
     @Test
+    void 뒤에도_답이_없으면_유튜브_화면을_다시_보고_답한다() {
+        ScreenChecker screen = screenChecker();
+        ChatLog chat = chatLog(31L, ChatIntent.QUESTION, "감독은 무슨 옷 입었어?");
+        noAnswerAnywhere();
+        when(screen.check(YOUTUBE, 200_000, "감독은 무슨 옷 입었어?", 31L)).thenReturn(Optional.of(
+                new ScreenAnswerJudge.Verdict("감독은 남색 점퍼를 입었어요. 모자는 안 썼어요.", true, "숫자 없음(한 모델)")));
+
+        service.subscribe(USER, 31L);
+
+        assertThat(emitter.data(Sentence.class)).extracting(Sentence::text)
+                .containsExactly(ScreenChecker.CHECKING, "감독은 남색 점퍼를 입었어요.", "모자는 안 썼어요.");
+        assertThat(emitter.data(Done.class).get(0).answerSource()).isEqualTo(AnswerSource.GEMINI_REQUERY);
+        assertThat(chat.getAnswerSource()).isEqualTo(AnswerSource.GEMINI_REQUERY);
+    }
+
+    @Test
+    void 화면에서도_모른다고_하면_그_말을_읽고_UNANSWERABLE() {
+        ScreenChecker screen = screenChecker();
+        ChatLog chat = chatLog(31L, ChatIntent.QUESTION, "페이커 KDA 몇이야?");
+        noAnswerAnywhere();
+        when(screen.check(YOUTUBE, 200_000, "페이커 KDA 몇이야?", 31L)).thenReturn(Optional.of(
+                new ScreenAnswerJudge.Verdict(ScreenAnswerJudge.UNSURE, false, "모두 다름")));
+
+        service.subscribe(USER, 31L);
+
+        assertThat(emitter.data(Sentence.class)).extracting(Sentence::text)
+                .containsExactly(ScreenChecker.CHECKING, ScreenAnswerJudge.UNSURE);
+        assertThat(chat.getAnswerSource()).isEqualTo(AnswerSource.UNANSWERABLE);
+    }
+
+    @Test
+    void 화면_다시_보기가_모두_실패하면_확인하지_못했다고_읽는다() {
+        ScreenChecker screen = screenChecker();
+        ChatLog chat = chatLog(31L, ChatIntent.QUESTION, "감독은 무슨 옷 입었어?");
+        noAnswerAnywhere();
+        when(screen.check(anyString(), anyInt(), anyString(), anyLong())).thenReturn(Optional.empty());
+
+        service.subscribe(USER, 31L);
+
+        assertThat(emitter.data(Sentence.class)).extracting(Sentence::text)
+                .containsExactly(ScreenChecker.CHECKING, ScreenChecker.FAILED);
+        assertThat(chat.getAnswerSource()).isEqualTo(AnswerSource.UNANSWERABLE);
+    }
+
+    @Test
+    void 화면을_다시_볼_수_없는_영상이면_예전처럼_자료에_없다고_읽는다() {
+        ScreenChecker screen = screenChecker();
+        when(screen.youtubeUrl(9301L)).thenReturn(Optional.empty());
+        chatLog(31L, ChatIntent.QUESTION, "감독은 무슨 옷 입었어?");
+        noAnswerAnywhere();
+
+        service.subscribe(USER, 31L);
+
+        assertThat(emitter.data(Sentence.class)).extracting(Sentence::text).containsExactly(AnswerPrompt.UNANSWERABLE);
+        verify(screen, never()).check(anyString(), anyInt(), anyString(), anyLong());
+    }
+
+    @Test
+    void 뒤에_답이_있어도_화면이_답하면_그_답으로_끝낸다() {
+        ScreenChecker screen = screenChecker();
+        ChatLog chat = chatLog(31L, ChatIntent.QUESTION, "우리카드 유니폼 무슨 색이야?");
+        answerOnlyLater();
+        when(screen.check(YOUTUBE, 200_000, "우리카드 유니폼 무슨 색이야?", 31L)).thenReturn(Optional.of(
+                new ScreenAnswerJudge.Verdict("우리카드 선수들은 보라색 유니폼을 입었어요.", true, "숫자 없음(한 모델)")));
+
+        service.subscribe(USER, 31L);
+
+        assertThat(emitter.data(Sentence.class)).extracting(Sentence::text)
+                .containsExactly(ScreenChecker.CHECKING, "우리카드 선수들은 보라색 유니폼을 입었어요.");
+        assertThat(emitter.data(Done.class).get(0).futureAvailable()).isFalse();
+        assertThat(chat.getAnswerSource()).isEqualTo(AnswerSource.GEMINI_REQUERY);
+        verify(futureOffer, never()).offer(anyLong());
+    }
+
+    @Test
+    void 뒤에_답이_있고_화면이_모르면_모른다는_말_대신_들을지_묻는다() {
+        ScreenChecker screen = screenChecker();
+        chatLog(31L, ChatIntent.QUESTION, "간판에 뭐라고 써 있어?");
+        answerOnlyLater();
+        when(screen.check(YOUTUBE, 200_000, "간판에 뭐라고 써 있어?", 31L)).thenReturn(Optional.of(
+                new ScreenAnswerJudge.Verdict("화면에서 확인할 수 없어요.", false, "숫자 없음(한 모델)")));
+
+        service.subscribe(USER, 31L);
+
+        assertThat(emitter.data(Sentence.class)).extracting(Sentence::text)
+                .containsExactly(ScreenChecker.CHECKING, AnswerPrompt.FUTURE_PROMPT);
+        assertThat(emitter.data(Done.class).get(0).futureAvailable()).isTrue();
+        verify(futureOffer).offer(31L);
+    }
+
+    @Test
+    void 뒤에_답이_있는_사건_질문은_화면을_보지_않고_들을지_묻는다() {
+        ScreenChecker screen = screenChecker();
+        chatLog(31L, ChatIntent.QUESTION, "농부가 창문을 깨?");
+        answerOnlyLater();
+
+        service.subscribe(USER, 31L);
+
+        assertThat(emitter.data(Sentence.class)).extracting(Sentence::text).containsExactly(AnswerPrompt.FUTURE_PROMPT);
+        verify(screen, never()).check(anyString(), anyInt(), anyString(), anyLong());
+        verify(futureOffer).offer(31L);
+    }
+
+    @Test
+    void 화면을_다시_볼_수_없으면_뒤에_답이_있을_때_예전처럼_들을지_묻는다() {
+        ScreenChecker screen = screenChecker();
+        when(screen.youtubeUrl(9301L)).thenReturn(Optional.empty());
+        chatLog(31L, ChatIntent.QUESTION, "감독 이름이 뭐야?");
+        answerOnlyLater();
+
+        service.subscribe(USER, 31L);
+
+        assertThat(emitter.data(Sentence.class)).extracting(Sentence::text).containsExactly(AnswerPrompt.FUTURE_PROMPT);
+        verify(screen, never()).check(anyString(), anyInt(), anyString(), anyLong());
+    }
+
+    @Test
+    void 글자_내용을_물었는데_목록이_적혀_있다고만_하면_화면에서_읽는다() {
+        ScreenChecker screen = screenChecker();
+        ChatLog chat = chatLog(31L, ChatIntent.QUESTION, "메모지에 뭐 해야 한다고 적혀 있어?");
+        stream("노란 메모지에는 마감 할 일 목록이 적혀 있습니다.");
+        when(screen.check(YOUTUBE, 200_000, "메모지에 뭐 해야 한다고 적혀 있어?", 31L)).thenReturn(Optional.of(
+                new ScreenAnswerJudge.Verdict("휘핑크림 만들기, 블루베리 퓨레 만들기가 적혀 있어요.", true, "숫자 없음(한 모델)")));
+
+        service.subscribe(USER, 31L);
+
+        assertThat(emitter.data(Sentence.class)).extracting(Sentence::text).containsExactly(
+                "노란 메모지에는 마감 할 일 목록이 적혀 있습니다.", ScreenChecker.CHECKING,
+                "휘핑크림 만들기, 블루베리 퓨레 만들기가 적혀 있어요.");
+        assertThat(chat.getAnswerSource()).isEqualTo(AnswerSource.GEMINI_REQUERY);
+    }
+
+    @Test
+    void 글자를_따옴표로_옮긴_답이면_화면을_보지_않는다() {
+        ScreenChecker screen = screenChecker();
+        chatLog(31L, ChatIntent.QUESTION, "간판에 뭐라고 써 있어?");
+        stream("간판에는 '컴포즈커피'라는 글자가 적혀 있어요.");
+
+        service.subscribe(USER, 31L);
+
+        verify(screen, never()).check(anyString(), anyInt(), anyString(), anyLong());
+    }
+
+    @Test
     void 뒤_확인을_끄면_자료에_없다는_답을_그대로_읽는다() {
         ChatAnswerService plain = new ChatAnswerService(chatLogRepository, contextReader,
                 new AnswerPrompt(JsonMapper.builder().build()), llmClient, aiServerClient, rateLimiter, inProgress,
@@ -854,6 +1000,33 @@ class ChatAnswerServiceTest {
         assertThatThrownBy(() -> service.subscribe(USER, chatLogId))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(errorCode);
+    }
+
+    private static final String YOUTUBE = "https://www.youtube.com/watch?v=abc";
+
+    /** 유튜브 영상(9301)을 다시 볼 수 있는 화면 다시 보기를 서비스에 넣는다 */
+    private ScreenChecker screenChecker() {
+        ScreenChecker screen = mock(ScreenChecker.class);
+        when(screen.youtubeUrl(9301L)).thenReturn(Optional.of(YOUTUBE));
+        when(screen.maxDuration()).thenReturn(Duration.ofSeconds(16));
+        service.setScreenChecker(screen);
+        return screen;
+    }
+
+    /** 지금 자료에는 없고 뒤 자료에 답이 있다 */
+    private void answerOnlyLater() {
+        stream("그건 해설 자료에 없어요.");
+        when(contextReader.readFuture(DESC, 200_000)).thenReturn(Optional.of(future));
+        when(llmClient.generate(any())).thenReturn(
+                new LlmResult("{\"evidence\": \"김태형 감독\"}", "gemini-3.1-flash-lite", 500, 5, 400, false, 2L));
+    }
+
+    /** 지금 자료에도 뒤 자료에도 답이 없다 */
+    private void noAnswerAnywhere() {
+        stream("그건 해설 자료에 없어요.");
+        when(contextReader.readFuture(DESC, 200_000)).thenReturn(Optional.of(future));
+        when(llmClient.generate(any())).thenReturn(
+                new LlmResult("{\"evidence\": \"\"}", "gemini-3.1-flash-lite", 500, 5, 400, false, 2L));
     }
 
     private ChatLog chatLog(Long id, ChatIntent intent, String utterance) {

@@ -207,9 +207,7 @@ export function usePlayerSource(
               poll = setInterval(() => {
                 // 재생 전에 옮겨 둔 위치가 있으면 그 시각을 그대로 보인다 (플레이어는 아직 0)
                 if (ytPendingSeekRef.current != null) return
-                // 재생 전에 옮겨 둔 위치가 있으면 그 시각을 그대로 보인다 (플레이어는 아직 0)
-              if (ytPendingSeekRef.current != null) return
-              patch({ currentMs: Math.round(player.getCurrentTime() * 1000) })
+                patch({ currentMs: Math.round(player.getCurrentTime() * 1000) })
               }, POLL_MS)
             },
             onStateChange: (e) => {
@@ -217,8 +215,7 @@ export function usePlayerSource(
               // 자막 모듈은 재생이 시작될 때 다시 올라올 수 있어 그때마다 내린다
               if (s === YT.PlayerState.PLAYING) {
                 ytPendingSeekRef.current = null
-                ytPendingSeekRef.current = null
-              unloadCaptions(player)
+                unloadCaptions(player)
                 patch({ playing: true, ended: false })
               } else if (s === YT.PlayerState.ENDED) patch({ playing: false, ended: true })
               else if (s === YT.PlayerState.PAUSED) patch({ playing: false })

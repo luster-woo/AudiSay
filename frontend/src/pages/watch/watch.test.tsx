@@ -16,6 +16,7 @@ import {
   type VideoDetail,
 } from '@/api/types'
 import type { PlayerControls, PlayerState } from '@/features/player/usePlayerSource'
+import { QueryClient } from '@tanstack/react-query'
 import { renderRoute } from '@/test/renderWithProviders'
 import { sttApi } from '@/api/stt'
 import { afterScreenChangeMs, screenReaderLeadMs } from '@/features/search/speechLead'
@@ -1345,4 +1346,22 @@ test('Alt+Shift+/ 안내 창은 시청 화면에서 쓰는 키 8줄과 어디서
     '사용법 보기',
   ])
   expect(dialog).toHaveAccessibleDescription(/단축키 12개예요/)
+})
+
+test('즐겨찾기를 바꾸면 내 영상(즐겨찾기 탭·요청한 영상)과 홈 목록을 새로 받게 한다 (뒤로 가기 때 옛 목록 방지)', async () => {
+  const user = userEvent.setup()
+  vi.mocked(favoritesApi.add).mockResolvedValue({ videoId: 15, isFavorite: true })
+  const invalidate = vi.spyOn(QueryClient.prototype, 'invalidateQueries')
+  renderRoute('/watch/15')
+  await user.click(await screen.findByRole('button', { name: '즐겨찾기' }))
+  await waitFor(() => expect(band()).toHaveTextContent('즐겨찾기에 넣었어요.'))
+  const keys = invalidate.mock.calls.map(([f]) => JSON.stringify(f?.queryKey))
+  expect(keys).toEqual(
+    expect.arrayContaining([
+      JSON.stringify(['videos']),
+      JSON.stringify(['favorites']),
+      JSON.stringify(['me', 'videos']),
+    ]),
+  )
+  invalidate.mockRestore()
 })

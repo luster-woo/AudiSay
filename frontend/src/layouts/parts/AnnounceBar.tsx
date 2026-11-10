@@ -18,7 +18,7 @@ export function AnnounceBar() {
       <div className="mx-auto flex max-w-[90rem] flex-wrap items-center gap-x-6 gap-y-1 px-4 py-1 sm:px-8 lg:px-16">
         <span className="text-sm text-cream/80 hc:text-ink-muted">방금 안내</span>
         {/* 늘 두 줄 높이를 잡아 둔다. 안내 문구 길이가 바뀔 때마다 띠 높이가 바뀌면 아래 화면 전체가 위아래로 움직인다 */}
-        <p className="flex min-h-[3em] min-w-[16rem] flex-1 items-center font-bold text-yellow">
+        <p className="flex min-h-[3em] min-w-[min(16rem,100%)] flex-1 items-center font-bold text-yellow">
           {lastMessage}
         </p>
         {/* 읽는 주체는 사용자의 스크린리더다 (AudiSay 가 소리를 내지 않는다). 스크린리더 없이 누르면 아무 소리도

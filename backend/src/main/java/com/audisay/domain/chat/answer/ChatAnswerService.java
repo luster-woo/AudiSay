@@ -231,7 +231,9 @@ public class ChatAnswerService {
 
     /** 끝까지 만들었으면 answer_source까지, 실패·취소면 받은 글자와 시간만 남긴다 */
     private void respond(ChatLog chatLog, AnswerSink sink, boolean llmAllowed, long startedAt, boolean includeFuture) {
-        boolean checkFuture = !includeFuture && chatLog.getIntent() == ChatIntent.QUESTION && tuning.answerFutureCheck();
+        // 낱말 뜻·개념(영상 밖 지식)은 뒤 내용·화면에 답이 없다 → 뒤 확인·화면 다시 보기 없이 "자료에 없어요"
+        boolean checkFuture = !includeFuture && chatLog.getIntent() == ChatIntent.QUESTION && tuning.answerFutureCheck()
+                && !AnswerPrompt.asksMeaning(chatLog.getUtterance());
         Mode ragMode = includeFuture || chatLog.getIntent() != ChatIntent.QUESTION ? Mode.OFF : answerRetriever.mode();
         // 지금 장면도 첫 문장을 잡아 둔다: LLM이 "자료에 없어요"로 시작하면 보내지 않고 장면 설명(대체)을 읽는다
         AnswerSession session = new AnswerSession(sink, this::speech, executors.tts(), startedAt,

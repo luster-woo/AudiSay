@@ -62,6 +62,26 @@ class AnswerPromptTest {
                 .isEqualTo(prompt.questionUser(context, "질문"));
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"한타라는 개념을 알아?", "한타 뜻이 뭐야?", "바론이란 뭐야?", "한타라는 게 뭐야?",
+            "갱킹이 무슨 의미야?", "그 용어 설명해 줘", "한타가 뭐야?", "한타가 머야", "바론이 뭐예요?"})
+    void 낱말_뜻을_묻는_질문(String question) {
+        assertThat(AnswerPrompt.asksMeaning(question)).isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"누가 이겨?", "감독 이름이 뭐야?", "뜻밖의 결과야?", "상자 안에 든 게 뭐야?", "한타에서 누가 죽었어?",
+            "점수가 뭐야?", "결과가 뭐야?", "저게 뭐야?", "다음이 뭐야?"})
+    void 뜻을_묻지_않는_질문(String question) {
+        assertThat(AnswerPrompt.asksMeaning(question)).isFalse();
+    }
+
+    @Test
+    void 뒤_확인_규칙에_낱말만_들어_있는_줄은_답이_아니라는_규칙이_있다() {
+        assertThat(List.of(AnswerPrompt.FUTURE_CHECK_SYSTEM, AnswerPrompt.FUTURE_CHECK_LINES_SYSTEM))
+                .allSatisfy(system -> assertThat(system).contains(AnswerPrompt.FUTURE_EVIDENCE_RULE));
+    }
+
     @Test
     void 질문_규칙에_지금_상태와_묻는_것만_답하는_규칙이_있다() {
         assertThat(List.of(AnswerPrompt.QUESTION_SYSTEM, AnswerPrompt.QUESTION_EARLIER_SYSTEM))

@@ -43,6 +43,22 @@ public class AnswerPrompt {
     /** 묻는 것(방법·수·이름·때)이 자료에 없는데 같은 주제의 다른 내용으로 대신 답하던 것을 막는다(그래야 뒤 확인으로 간다) */
     static final String SAME_ASK_RULE = "주제가 같아도 묻는 것과 다른 내용(예: 몇 분 끓이는지 물었는데 재료 양)으로 대신 답하지 말고 "
             + "'그건 해설 자료에 없어요.'라고 답하세요. ";
+    /**
+     * 뒤 확인이 질문 낱말이 들어 있기만 한 줄을 답으로 잡던 것을 막는다(2026-11-10 시연 리허설: "한타라는 개념을 알아?" →
+     * 뒤의 "한타가 밀렸어요"로 "이후에 나와요" → 들을게요 하면 "자료에 없어요")
+     */
+    static final String FUTURE_EVIDENCE_RULE = "질문이 묻는 것(뜻·방법·이유·수·결과·누가·언제)에 실제로 답하는 줄만 근거입니다. "
+            + "질문의 낱말이 들어 있기만 한 줄은 답이 아닙니다. 낱말의 뜻·개념처럼 영상 밖 지식을 묻는데 뒤 내용이 그 뜻을 풀어 말하지 않으면 "
+            + "답이 없는 것입니다(예: '한타가 뭐야?'에 '한타에서 밀렸어요'는 답이 아님). ";
+    /** 낱말의 뜻·개념을 묻는 질문(영상 밖 지식). '뜻밖'은 아님 */
+    private static final Pattern MEANING_Q = Pattern.compile(
+            "뜻(?!밖)|의미|개념|용어|(?:이)?란\\s?(?:뭐|무엇|무슨)|(?:이)?라는\\s?(?:게|건|것|말|단어)");
+    /** 낱말 하나만 "~가 뭐야?"로 묻는 말("한타가 뭐야?", "바론이 머야"). 영상 내용을 묻는 낱말(점수·결과·이름…)은 뺀다 */
+    private static final Pattern TERM_Q = Pattern.compile(
+            "^\\s*([가-힣A-Za-z0-9]{1,10}?)(?:이|가)\\s?(?:(?:뭐|머)(?:야|예요|에요|지|니|냐)|뭔데|뭡니까)\\s*[?？.!~]*\\s*$");
+    private static final Pattern CONTENT_WORD = Pattern.compile(
+            "이름|결과|점수|스코어|정답|답|제목|메뉴|재료|순위|상황|문제|차이|이유|비결|방법|내용|목표|역할|직업|정체|비밀|계획"
+                    + "|다음|마지막|처음|주제|요리|노래|곡|가사|시간|날짜|장소|가격|상품|선물|우승|승자");
     static final String QUESTION_SYSTEM = "당신은 시각장애인이 영상을 보다가 한 질문에 답하는 도우미입니다. "
             + "아래 '해설 자료'(현재 시각 근처의 장면·대사)만 근거로 한국어로 1~2문장, 짧게 말하듯 답하세요. "
             + "자료에 답이 없으면 지어내거나 설명을 붙이지 말고 '그건 해설 자료에 없어요.' 한 문장만 답하세요. "
@@ -82,11 +98,13 @@ public class AnswerPrompt {
     static final int RECAP_MAX_OUTPUT_TOKENS = 500;
     static final String FUTURE_CHECK_SYSTEM = "시각장애인이 영상을 보다가 한 질문입니다. 아래 '뒤 내용'(질문한 시각 이후의 장면·해설 문장·대사·화면 글자와 "
             + "영상 전체 요약)에서 질문에 대한 답이 되는 부분을 찾아 40자 이내 한 구절로 옮기세요. 영상 요약에 답이 있어도 됩니다. "
+            + FUTURE_EVIDENCE_RULE
             + "답이 없거나 비슷한 내용뿐이면 빈 문자열로 두세요. "
             + "설명 없이 JSON 한 줄만 답하세요: {\"evidence\": \"답이 되는 문장\"} 또는 {\"evidence\": \"\"}";
     static final String FUTURE_CHECK_LINES_SYSTEM = "시각장애인이 영상을 보다가 한 질문입니다. 아래 '뒤 내용'(질문한 시각 이후에 나온 "
             + "장면 설명·해설 문장·대사·화면 글자 중 질문과 비슷한 줄)에서 질문에 대한 답이 되는 줄을 찾아 40자 이내 한 구절로 옮기세요. "
             + "영상 요약에 답이 있어도 됩니다. "
+            + FUTURE_EVIDENCE_RULE
             + "답이 없거나 비슷한 내용뿐이면 빈 문자열로 두세요. "
             + "설명 없이 JSON 한 줄만 답하세요: {\"evidence\": \"답이 되는 문장\"} 또는 {\"evidence\": \"\"}";
     static final String FUTURE_SYSTEM = "당신은 시각장애인이 영상을 보다가 한 질문에 답하는 도우미입니다. "
@@ -173,6 +191,21 @@ public class AnswerPrompt {
      * {"evidence": "..."}에서 뒤 내용의 답 문장. 비었거나 읽을 수 없으면 null(뒤에 답이 없는 것으로).
      * 근거를 길게 옮기다 출력 한도로 잘린 응답({"evidence": "...)도 글자가 있으면 답이 있는 것으로 본다
      */
+    /**
+     * 낱말의 뜻·개념을 묻는 질문("한타라는 개념을 알아?", "바론이 무슨 뜻이야?"). 영상 뒤 내용·화면에 답이 없으니
+     * 뒤 확인·화면 다시 보기를 하지 않는다("이후에 나와요"라고 해 놓고 들을게요 하면 "자료에 없어요"가 되던 것)
+     */
+    public static boolean asksMeaning(String question) {
+        if (question == null) {
+            return false;
+        }
+        if (MEANING_Q.matcher(question).find()) {
+            return true;
+        }
+        Matcher term = TERM_Q.matcher(question);
+        return term.find() && !CONTENT_WORD.matcher(term.group(1)).matches();
+    }
+
     public String evidence(String text) {
         if (text == null) {
             return null;

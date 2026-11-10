@@ -1,11 +1,12 @@
 """job.tts / line.tts — 해설 음성 (워커 메시지 명세 7·8장, 진행률 80→100).
 
-- job.tts: 상세도 1·2 문장 전부 + 30초 요약을 Gemini TTS(목소리 Kore)로 만들어 S3에 올리고
+- job.tts: 유튜브 영상은 상세도 1·2·3 문장 전부(2026-11-10 사용자 결정: 유튜브는 상세도 전부 Gemini TTS), 직접 올린 영상은
+  상세도 1·2 문장 + 30초 요약을 Gemini TTS(목소리 Kore)로 만들어 S3에 올리고
   description_lines.audio_key·audio_duration_ms, descriptions.summary_audio_key·summary_duration_ms를 채운다.
   payload(BE TtsPayload): {descriptionId, voiceCode("ko-female-1")} — 목소리가 하나뿐이라 voiceCode는 읽지 않는다.
   PROGRESS는 80→100을 10% 단위(90)로 보내고, 완료 result에 descriptionId를 넣는다(BE TtsResult가 그 값만 읽음).
   해설 공개(PUBLISHED·READY)는 BE가 TTS 완료 이벤트를 받고 한다(descriptionService.publish) → 여기서는 하지 않는다.
-- line.tts: 사용자가 상세도 3을 처음 고를 때 BE가 보낸다. payload.lineIds가 있으면 그 문장만, 없으면 detailLevel(기본 3) 문장 중
+- line.tts: 사용자가 상세도 3을 처음 고를 때 BE가 보낸다(유튜브는 job.tts가 이미 만들어 남은 문장이 없다). payload.lineIds가 있으면 그 문장만, 없으면 detailLevel(기본 3) 문장 중
   음성이 없는 것 전부.
 - 한 문장이 실패하면 그 문장만 비워 둔다(FE가 브라우저 음성으로 읽음). 모델은 gemini-3.8-flash-tts → 실패하면 lite.
 - 직접 올린 영상(UPLOAD)은 해설·요약 음성을 H200 Supertonic 3(F1 수아, 크레딧 0)으로 만든다(2026-11-06 사용자 결정, 데모와 같음).
@@ -46,7 +47,8 @@ VOICE_NAME = "Kore"
 UPLOAD_VOICE = "F1"  # 직접 올린 영상의 해설 목소리: Supertonic 수아(안내 목소리 기본과 같음, 데모 2026-11-04 결정과 같음)
 # 음성 동시 요청 수. 데모 실측(2026-11-03): 5개씩 32개 18.5초(개당 0.58초) → 10개씩 47개 13.8초(개당 0.29초), 오류 0
 CONCURRENCY = 10
-PRE_TTS_LEVEL = 2  # job.tts가 미리 만드는 상세도. 3은 line.tts
+PRE_TTS_LEVEL = 2  # 직접 올린 영상에서 job.tts가 미리 만드는 상세도. 3은 line.tts
+YOUTUBE_PRE_TTS_LEVEL = 3  # 유튜브는 상세도 3까지 미리 만든다(안 만들면 3단계만 안내 목소리·브라우저 음성으로 읽혀 목소리가 바뀐다)
 STAGE_START_PROGRESS, STAGE_END_PROGRESS = 80, 100
 PROGRESS_STEP = 10  # PROGRESS 이벤트는 10% 단위로(노션 워커 메시지 명세 7·9장)
 MP3_BITRATE = "64k"
@@ -297,7 +299,7 @@ async def synthesize_many(gms: GmsClient, storage: Storage, items: list[tuple[st
 
 
 class Tts:
-    """job.tts: 상세도 1·2 문장 + 요약."""
+    """job.tts: 상세도 1·2(유튜브는 1·2·3) 문장 + 요약."""
 
     def __init__(self, storage: Storage, gms: GmsClient, db: Db, inf: inference.Inference | None = None):
         self.storage, self.gms, self.db, self.inf = storage, gms, db, inf
@@ -308,7 +310,7 @@ class Tts:
         desc_id = await _description_id(pool, p, job_id)
         d = await pool.fetchrow("SELECT summary_text, summary_audio_key FROM descriptions WHERE id = $1", desc_id)
         rows = await pool.fetch("SELECT id, text FROM description_lines WHERE description_id = $1 AND detail_level <= $2"
-                                " AND audio_key IS NULL ORDER BY line_index", desc_id, PRE_TTS_LEVEL)
+                                " AND audio_key IS NULL ORDER BY line_index", desc_id, await _pre_tts_level(pool, desc_id))
         await events.started()
         items = [(line_key(desc_id, r["id"], r["text"]), r["text"]) for r in rows]
         if d["summary_text"] and not d["summary_audio_key"]:
@@ -377,16 +379,22 @@ class LineTts:
 async def _upload_inf(pool, desc_id: int, inf: inference.Inference | None) -> inference.Inference | None:
     """직접 올린 영상(videos.source_type = UPLOAD)이면 Supertonic으로 읽을 추론 클라이언트, 유튜브면 None(Gemini TTS).
     GPU 서버(터널)가 끊겼으면 업로드 영상도 None → 유튜브처럼 Gemini TTS로 만든다(문장이 비지 않게, 2026-11-06)."""
-    if inf is None:
-        return None
-    source = await pool.fetchval("SELECT v.source_type FROM descriptions d JOIN videos v ON v.id = d.video_id WHERE d.id = $1",
-                                 desc_id)
-    if source != "UPLOAD":
+    if inf is None or await _source_type(pool, desc_id) != "UPLOAD":
         return None
     if not await inf.healthy():
         log.warning("H200이 응답하지 않아 업로드 영상 해설 음성을 Gemini TTS로 description=%s", desc_id)
         return None
     return inf
+
+
+async def _source_type(pool, desc_id: int) -> str | None:
+    return await pool.fetchval("SELECT v.source_type FROM descriptions d JOIN videos v ON v.id = d.video_id WHERE d.id = $1",
+                               desc_id)
+
+
+async def _pre_tts_level(pool, desc_id: int) -> int:
+    """job.tts가 미리 음성을 만드는 상세도: 유튜브는 3(전부), 직접 올린 영상은 2."""
+    return PRE_TTS_LEVEL if await _source_type(pool, desc_id) == "UPLOAD" else YOUTUBE_PRE_TTS_LEVEL
 
 
 def _pool(db: Db):

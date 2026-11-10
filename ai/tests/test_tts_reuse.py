@@ -119,3 +119,16 @@ async def test_old_cache_audio_is_fixed_once(monkeypatch, tmp_path):
     assert await tts.reuse(storage, text) == (b"ID3fixed", 900)
     assert await tts.reuse(storage, text) == (b"ID3fixed", 900)
     assert fixes == [b"ID3old"]
+
+
+async def test_youtube_pre_makes_all_levels_upload_only_two():
+    """유튜브는 상세도 3까지 job.tts에서 Gemini TTS로 미리 만든다(2026-11-10). 직접 올린 영상은 1·2만."""
+    class Pool:
+        def __init__(self, source):
+            self.source = source
+
+        async def fetchval(self, sql, desc_id):
+            return self.source
+
+    assert await tts._pre_tts_level(Pool("YOUTUBE"), 1) == 3
+    assert await tts._pre_tts_level(Pool("UPLOAD"), 1) == 2

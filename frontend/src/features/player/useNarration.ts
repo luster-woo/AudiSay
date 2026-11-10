@@ -79,8 +79,12 @@ export function useNarration({
     return found
   }, [lines, state.currentMs])
 
-  const lastMsRef = useRef(state.currentMs)
-  const holdRef = useRef(false)
+  // 1 을 빼 둔다: 처음 시각(0초)에 딱 맞춰 시작하는 문장도 '아직 안 지난 문장'이어야 읽힌다
+  const lastMsRef = useRef(state.currentMs - 1)
+  /** 지금 걸려 있는 멈춤의 표. 멈춤이 겹치면 맨 나중 것만 영상을 다시 재생한다 */
+  const holdRef = useRef<symbol | null>(null)
+  /** 멈춤을 걸기 전에 재생 중이었는지 (겹친 멈춤이 이어받는다) */
+  const heldPlayingRef = useRef(false)
   const playingRef = useRef(state.playing)
   const speakingImportance = useRef<number | null>(null)
   const coveredWarned = useRef(false)
@@ -92,18 +96,26 @@ export function useNarration({
   /**
    * 영상을 멈추고 fn 을 끝낸 뒤 원래 재생 중이었으면 이어서 재생한다 (원칙 1장).
    * resume:false 면 이어서 재생하지 않고, 원래 재생 중이었는지만 돌려준다 (부르는 쪽이 안내를 마친 뒤 재생할 때)
+   * queue:true 면 이미 멈추고 읽던 소리를 끊지 않고 그 뒤에 줄 세운다 (같은 시각에 겹친 해설 문장)
    */
   const holdWhile = useCallback(
-    async (fn: () => Promise<unknown>, { resume = true }: { resume?: boolean } = {}) => {
-      const wasPlaying = playingRef.current
-      if (holdRef.current) narrator.stop()
-      holdRef.current = true
+    async (
+      fn: () => Promise<unknown>,
+      { resume = true, queue = false }: { resume?: boolean; queue?: boolean } = {},
+    ) => {
+      const joining = holdRef.current !== null
+      const wasPlaying = joining ? heldPlayingRef.current : playingRef.current
+      if (joining && !queue) narrator.stop()
+      const token = Symbol('hold')
+      holdRef.current = token
+      heldPlayingRef.current = wasPlaying
       controls.pause()
       try {
         await fn()
       } finally {
-        if (holdRef.current) {
-          holdRef.current = false
+        // 뒤에 온 멈춤이 이어받았으면 그쪽이 끝날 때 재생한다
+        if (holdRef.current === token) {
+          holdRef.current = null
           if (wasPlaying && resume) controls.play()
         }
       }
@@ -119,8 +131,8 @@ export function useNarration({
    */
   const interrupt = useCallback(
     (resume = true): boolean => {
-      const wasHolding = holdRef.current
-      holdRef.current = false
+      const wasHolding = holdRef.current !== null
+      holdRef.current = null
       narrator.stop()
       speakingImportance.current = null
       if (wasHolding && resume) controls.play()
@@ -149,8 +161,9 @@ export function useNarration({
         rate,
         refreshUrl: () => refreshAudioUrl(line.lineId),
       }
-      if (mustPause) {
-        void holdWhile(() => narrator.say(item))
+      // 자동: 앞 문장을 아직 읽는 중이면(1초 간격·같은 시각 문장) 버리지 않고, 영상을 멈춘 채 이어서 읽는다
+      if (mustPause || (mode === 'AUTO' && narrator.busy)) {
+        void holdWhile(() => narrator.say(item), { queue: true })
         return true
       }
       if (narrator.busy) {
@@ -182,7 +195,8 @@ export function useNarration({
 
   const onTick = useEffectEvent((now: number) => {
     const prev = lastMsRef.current
-    lastMsRef.current = now
+    // 맨 처음 0초에 멈춰 있는 동안은 올리지 않는다 (올리면 0초 문장이 지난 문장이 돼 재생해도 읽히지 않는다)
+    if (now > 0 || prev >= 0 || playingRef.current) lastMsRef.current = now
     if (!description || !playingRef.current) return
     if (Math.abs(now - prev) > JUMP_MS) {
       // 재생바로 옮겼다. 읽던 소리는 끊고 여기서부터 새로 센다

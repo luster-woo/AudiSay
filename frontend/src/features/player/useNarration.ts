@@ -76,13 +76,18 @@ export function useNarration({
    */
   const dubEnds = useMemo(() => {
     const dialogues = description?.dialogues ?? []
-    return new Map(lines.filter((l) => isDubLine(l, dialogues)).map((l) => [l.lineId, dubEndMs(l, dialogues)]))
+    return new Map(
+      lines.filter((l) => isDubLine(l, dialogues)).map((l) => [l.lineId, dubEndMs(l, dialogues)]),
+    )
   }, [description, lines])
   const dubIds = useMemo(() => new Set(dubEnds.keys()), [dubEnds])
   /** 이 문장을 지금 설정에서 읽는가 */
   const willRead = useCallback(
     (line: NarrationLine) =>
-      dubIds.has(line.lineId) ? settings.translationReading : settings.soundMix !== 'DIALOGUE_ONLY',
+      // 설정 칸이 없는 서버(배포 전)에서는 기본값(켜기)
+      dubIds.has(line.lineId)
+        ? settings.translationReading !== false
+        : settings.soundMix !== 'DIALOGUE_ONLY',
     [dubIds, settings.translationReading, settings.soundMix],
   )
   const screenTexts = useMemo(

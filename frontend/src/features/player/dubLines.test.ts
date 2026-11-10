@@ -14,7 +14,12 @@ const line = (startMs: number, text: string, detailLevel: 1 | 2 | 3 = 1): Narrat
 })
 const dialogues: Dialogue[] = [
   { startMs: 461_000, endMs: 462_000, text: '신사 숙녀 여러분!', characterName: null },
-  { startMs: 491_000, endMs: 526_000, text: '총독 각하의 건배사입니다. 금일 쇼와 7년', characterName: null },
+  {
+    startMs: 491_000,
+    endMs: 526_000,
+    text: '총독 각하의 건배사입니다. 금일 쇼와 7년',
+    characterName: null,
+  },
 ]
 
 test('외국어 대사 번역 문장: 상세도 1, "이름: "을 뗀 글이 그 시각 대사 안에 있다 (BE DubLines 와 같은 규칙)', () => {

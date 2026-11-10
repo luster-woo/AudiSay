@@ -158,14 +158,12 @@ export function SettingsDialog({
           <ChoiceGroup
             legend="외국어 번역 읽기"
             options={TRANSLATION}
-            value={settings.translationReading ? 'ON' : 'OFF'}
+            value={settings.translationReading === false ? 'OFF' : 'ON'}
             onChange={(v) =>
               set(
                 'translationReading',
                 v === 'ON',
-                v === 'ON'
-                  ? '외국어 대사를 한국어로 읽어요.'
-                  : '외국어 대사 번역을 읽지 않아요.',
+                v === 'ON' ? '외국어 대사를 한국어로 읽어요.' : '외국어 대사 번역을 읽지 않아요.',
               )
             }
             className={row}

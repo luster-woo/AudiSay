@@ -1111,7 +1111,14 @@ export function Player({ video }: { video: VideoDetail }) {
             {
               value: 'script',
               label: '해설',
-              panel: <ScriptPanel lines={lines} dubIds={dubIds} current={currentLine} onPick={onPickLine} />,
+              panel: (
+                <ScriptPanel
+                  lines={lines}
+                  dubIds={dubIds}
+                  current={currentLine}
+                  onPick={onPickLine}
+                />
+              ),
             },
           ]}
         />

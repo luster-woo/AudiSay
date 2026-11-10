@@ -260,7 +260,9 @@ export function ScriptPanel({
                   label={`${formatPositionSpoken(l.startMs)}${isCurrent ? ', 지금 문장' : ''}${isDub ? ', 대사 번역' : ''}. ${l.text}`}
                 >
                   {isDub && (
-                    <span className="mr-2 rounded-sm border border-navy px-1.5 text-sm font-bold">대사</span>
+                    <span className="mr-2 rounded-sm border border-navy px-1.5 text-sm font-bold">
+                      대사
+                    </span>
                   )}
                   {l.text}
                 </TimeRow>

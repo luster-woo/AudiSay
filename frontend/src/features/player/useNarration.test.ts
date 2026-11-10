@@ -422,7 +422,12 @@ test('sceneAtMs: 시각이 든 장면을 찾는다 (끝 시각은 다음 장면)
 test('외국어 대사 번역은 해설 설정이 아니라 외국어 번역 읽기 설정을 따른다', () => {
   const dub = line(50, T(50), '태웅: 총독 각하의 건배사입니다', { detailLevel: 1 })
   description.lines.push(dub)
-  description.dialogues.push({ startMs: T(50), endMs: T(53), text: '총독 각하의 건배사입니다', characterName: null })
+  description.dialogues.push({
+    startMs: T(50),
+    endMs: T(53),
+    text: '총독 각하의 건배사입니다',
+    characterName: null,
+  })
   try {
     const off = setup({ soundMix: 'DIALOGUE_ONLY' }).hook.result.current
     expect(off.willRead(dub)).toBe(true) // 해설을 꺼도 번역은 읽는다
@@ -452,7 +457,12 @@ test('외국어 대사 번역(DIALOGUE): 멈추지 않고 영상 소리를 줄�
   description.lines.push(fits, tooLong)
   description.dialogues.push(
     { startMs: T(50), endMs: T(52), text: '총독 각하의 건배사입니다', characterName: null },
-    { startMs: T(56), endMs: T(57), text: '이는 조선 근대화의 새로운 이정표입니다', characterName: null },
+    {
+      startMs: T(56),
+      endMs: T(57),
+      text: '이는 조선 근대화의 새로운 이정표입니다',
+      characterName: null,
+    },
   )
   try {
     const { hook, walk, controls, said } = setup({ originalVolume: 80 })

@@ -832,11 +832,11 @@ export function Player({ video }: { video: VideoDetail }) {
   /**
    * 대본에서 문장을 골랐을 때: 그 시각으로 옮기고 그 문장을 해설 음성으로 읽는다.
    * 안내 전광판(낭독기가 읽는다)에는 위치만 짧게 — 문장까지 넣으면 낭독기와 해설 음성이 같은 문장을 겹쳐 읽는다 (원칙 1장).
-   * '해설 끄기' 설정이라 해설 음성이 읽지 않을 때만 문장을 전광판에 함께 넣는다.
+   * 설정상 해설 음성이 읽지 않을 때만(해설 끄기, 외국어 번역 읽기 끄기) 문장을 전광판에 함께 넣는다.
    * readLine 은 seekTo(interrupt → seek → markSeek) 뒤에 불러야 끊기지 않고, 다음 tick 이 또 읽지도 않는다.
    */
   const onPickLine = (l: NarrationLine) => {
-    const willRead = settings.soundMix !== 'DIALOGUE_ONLY'
+    const willRead = narration.willRead(l)
     const at = formatPositionSpoken(l.startMs)
     seekTo(l.startMs, willRead ? `${withRo(at)} 옮겼어요.` : `${at}. ${l.text}`)
     readLine(l)

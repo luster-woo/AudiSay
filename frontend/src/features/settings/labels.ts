@@ -18,6 +18,11 @@ export const MIX_LABELS: { value: UserSettings['soundMix']; label: string }[] = 
   { value: 'DIALOGUE_AND_NARRATION', label: '켜기' },
   { value: 'DIALOGUE_ONLY', label: '끄기' },
 ]
+/** 외국어 대사 번역 읽기 (값은 boolean 이라 버튼에는 ON/OFF 로 넘긴다) */
+export const TRANSLATION_LABELS: { value: 'ON' | 'OFF'; label: string }[] = [
+  { value: 'ON', label: '켜기' },
+  { value: 'OFF', label: '끄기' },
+]
 export const SUBTITLE_LABELS: { value: UserSettings['subtitleReading']; label: string }[] = [
   { value: 'ALL', label: '모두' },
   { value: 'DIFFERENT_ONLY', label: '다른 것만' },
@@ -45,6 +50,7 @@ export const SETTING_NAMES: Partial<Record<keyof UserSettings, string>> = {
   narrationMode: '해설 방식',
   soundMix: '해설',
   subtitleReading: '자막 읽기',
+  translationReading: '외국어 번역 읽기',
   summaryMode: '보기 전 30초 요약',
 }
 

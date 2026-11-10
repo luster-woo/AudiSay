@@ -418,3 +418,20 @@ test('sceneAtMs: 시각이 든 장면을 찾는다 (끝 시각은 다음 장면)
   expect(sceneAtMs(description.scenes, T(60))).toBeNull()
   expect(sceneAtMs(undefined, 0)).toBeNull()
 })
+
+test('외국어 대사 번역은 해설 설정이 아니라 외국어 번역 읽기 설정을 따른다', () => {
+  const dub = line(50, T(50), '태웅: 총독 각하의 건배사입니다', { detailLevel: 1 })
+  description.lines.push(dub)
+  description.dialogues.push({ startMs: T(50), endMs: T(53), text: '총독 각하의 건배사입니다', characterName: null })
+  try {
+    const off = setup({ soundMix: 'DIALOGUE_ONLY' }).hook.result.current
+    expect(off.willRead(dub)).toBe(true) // 해설을 꺼도 번역은 읽는다
+    expect(off.willRead(description.lines[0])).toBe(false)
+    const noTr = setup({ translationReading: false }).hook.result.current
+    expect(noTr.willRead(dub)).toBe(false)
+    expect(noTr.willRead(description.lines[0])).toBe(true)
+  } finally {
+    description.lines.pop()
+    description.dialogues.pop()
+  }
+})

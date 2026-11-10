@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import type { Description, NarrationLine, Scene, ScreenText, UserSettings } from '@/api/types'
+import { isDubLine } from './dubLines'
 import { estimateSpeechMs, type Narrator } from './Narrator'
 import type { PlayerControls, PlayerState } from './usePlayerSource'
 
@@ -63,6 +64,17 @@ export function useNarration({
         .filter((l) => l.detailLevel <= level)
         .sort((a, b) => a.startMs - b.startMs || a.detailLevel - b.detailLevel),
     [description, level],
+  )
+  /** 외국어 대사를 읽어 주는 문장(해설이 아님): '해설' 설정 대신 '외국어 번역 읽기' 설정을 따른다 */
+  const dubIds = useMemo(() => {
+    const dialogues = description?.dialogues ?? []
+    return new Set(lines.filter((l) => isDubLine(l, dialogues)).map((l) => l.lineId))
+  }, [description, lines])
+  /** 이 문장을 지금 설정에서 읽는가 */
+  const willRead = useCallback(
+    (line: NarrationLine) =>
+      dubIds.has(line.lineId) ? settings.translationReading : settings.soundMix !== 'DIALOGUE_ONLY',
+    [dubIds, settings.translationReading, settings.soundMix],
   )
   const screenTexts = useMemo(
     () => [...(description?.screenTexts ?? [])].sort((a, b) => a.startMs - b.startMs),
@@ -151,12 +163,13 @@ export function useNarration({
   )
 
   /**
-   * 문장 하나를 해설 방식대로 읽는다. 읽기 시작했으면 true, '해설 끄기' 설정이라 읽지 않으면 false.
+   * 문장 하나를 해설 방식대로 읽는다. 읽기 시작했으면 true, 설정상 읽지 않으면 false
+   * (해설은 '해설 끄기', 외국어 대사 번역은 '외국어 번역 읽기 끄기').
    * onTick 이 시각을 지날 때 부르고, 대본에서 문장을 골랐을 때(readLine)도 같은 길을 탄다.
    */
   const speakLine = useCallback(
     (line: NarrationLine): boolean => {
-      if (settings.soundMix === 'DIALOGUE_ONLY') return false
+      if (!willRead(line)) return false
       // 이 문장은 지금 읽으므로, 다음 tick 이 시각을 지났다고 또 읽지 않게 센 자리를 넘겨 둔다
       lastMsRef.current = Math.max(lastMsRef.current, line.startMs)
       const rate = settings.speechRate
@@ -186,7 +199,7 @@ export function useNarration({
       return true
     },
     [
-      settings.soundMix,
+      willRead,
       settings.speechRate,
       settings.narrationMode,
       holdWhile,
@@ -288,7 +301,9 @@ export function useNarration({
     interrupt,
     readDetail,
     markSeek,
-    /** 사용자가 고른 문장을 지금 읽는다 (대본 탭). 해설 방식을 따르고, 다음 tick 이 또 읽지 않는다. '해설 끄기'면 false */
+    /** 사용자가 고른 문장을 지금 읽는다 (대본 탭). 해설 방식을 따르고, 다음 tick 이 또 읽지 않는다. 설정상 안 읽으면 false */
     readLine: speakLine,
+    /** 이 문장을 지금 설정에서 읽는가 (해설 끄기·외국어 번역 읽기 끄기면 false) */
+    willRead,
   }
 }

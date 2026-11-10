@@ -14,6 +14,7 @@ import {
   SEEK_LABELS,
   SUBTITLE_LABELS,
   SUMMARY_LABELS,
+  TRANSLATION_LABELS,
 } from '@/features/settings/labels'
 
 // 이름은 상세도 버튼·챗봇 답과 같게 한 곳(features/settings/labels)에 둔다
@@ -21,6 +22,7 @@ const DETAIL = DETAIL_LABELS
 const MODE = MODE_LABELS
 const MIX = MIX_LABELS
 const SUBTITLE = SUBTITLE_LABELS
+const TRANSLATION = TRANSLATION_LABELS
 const SEEK = SEEK_LABELS
 const SUMMARY = SUMMARY_LABELS
 const FONT = [1, 2, 3, 4, 5].map((n) => ({ value: n, label: String(n) }))
@@ -151,6 +153,21 @@ export function SettingsDialog({
             options={SUBTITLE}
             value={settings.subtitleReading}
             onChange={(v) => set('subtitleReading', v, `자막 읽기 ${labelOf(SUBTITLE, v)}.`)}
+            className={row}
+          />
+          <ChoiceGroup
+            legend="외국어 번역 읽기"
+            options={TRANSLATION}
+            value={settings.translationReading ? 'ON' : 'OFF'}
+            onChange={(v) =>
+              set(
+                'translationReading',
+                v === 'ON',
+                v === 'ON'
+                  ? '외국어 대사를 한국어로 읽어요.'
+                  : '외국어 대사 번역을 읽지 않아요.',
+              )
+            }
             className={row}
           />
         </Section>

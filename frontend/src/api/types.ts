@@ -58,6 +58,8 @@ export interface UserSettings {
   speechRate: number // 0.5 ~ 2.5
   soundMix: 'DIALOGUE_ONLY' | 'DIALOGUE_AND_NARRATION'
   subtitleReading: 'ALL' | 'DIFFERENT_ONLY' | 'OFF'
+  /** 외국어 대사 번역 읽기. 해설(soundMix)과 따로 켜고 끈다 */
+  translationReading: boolean
   originalVolume: number // 0 ~ 100
   seekStepSec: 5 | 10 | 30
   summaryMode: 'ASK' | 'ALWAYS' | 'NEVER'
@@ -73,6 +75,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   speechRate: 1.0,
   soundMix: 'DIALOGUE_AND_NARRATION',
   subtitleReading: 'DIFFERENT_ONLY',
+  translationReading: true,
   originalVolume: 100,
   seekStepSec: 10,
   summaryMode: 'ASK',

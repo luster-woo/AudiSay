@@ -1,6 +1,6 @@
 """업로드 영상(LOCAL) 분석: 데모에서 검증한 규칙이 그대로 옮겨졌는지, 그리고 가짜 H200으로 분석 → full.json → merge까지.
 
-ffmpeg·PySceneDetect·H200·GMS·DB는 부르지 않는다(장면 나누기와 사진 뽑기는 가짜로 바꿔 끼움).
+ffmpeg·PySceneDetect·H200·GMS·DB는 부르지 않는다(장면 나누기와 사진 뽑기, 줄거리용 사진은 가짜로 바꿔 끼움).
 """
 import asyncio
 from pathlib import Path
@@ -96,16 +96,35 @@ def test_local_analysis_end_to_end_with_mock_h200(tmp_path, monkeypatch):
         async def ocr(self, images):
             return {"texts": [["STEP 1"] for _ in images]}
 
+        async def sounds(self, wav):
+            return {"events": [{"startMs": 22_000, "endMs": 26_000, "label": "Sizzle", "ko": "지글거리는 소리"}], "model": "sound"}
+
+        async def story(self, payload):
+            assert payload["frames"] == [(1500, tmp_path / "a.jpg")] and "겉모습 호칭" in payload["guide"]
+            assert payload["transcript"] == "1초 양파 두 개를 넣어요.\n21초 잘 저어요." and payload["sounds"] == "22~26초 지글거리는 소리"
+            return {"model": "Qwen3-VL-32B", "events": [{"atMs": 2000, "text": "양파를 냄비에 넣는다"}],
+                    "names": [{"name": "백종원", "what": "앞치마 입은 남성"}, {"name": "양파", "what": ""}]}
+
         async def describe(self, payload):
             assert "외국어" in payload["guide"] and "요리 영상 해설 지침" in payload["guide"]
             assert payload["scenes"][0]["transcript"] == "양파 두 개를 넣어요."
+            # 줄거리·인물표: 제목·화면 글자·대사에 없는 이름(백종원)은 겉모습 호칭으로 바뀌어 모든 장면에 넘어간다
+            assert payload["storyline"] == "2초 양파를 냄비에 넣는다" and payload["names"] == "앞치마 입은 남성, 양파"
+            assert "정해 둔 인물·물건 이름" in payload["guide"]
+            assert [s["events"] for s in payload["scenes"]] == ["양파를 냄비에 넣는다", ""]
+            assert [s["sounds"] for s in payload["scenes"]] == ["", "22~26초 지글거리는 소리"]
             return {"model": "Qwen3-VL-8B", "scenes": [
                 {"title": "양파 넣기", "people": [{"name": None, "basis": None, "appearance": "앞치마 입은 손"}],
                  "lines": [{"atMs": 500, "level": 1, "text": "양파가 냄비에 들어가 있음"}, {"atMs": 2000, "level": 3, "text": "냄비가 빨갛습니다"}]},
                 {"title": "볶기", "people": [], "lines": [{"atMs": 25_000, "level": 1, "text": "주걱으로 볶습니다"}]}]}
 
+        async def summarize(self, payload):
+            assert payload["lines"][0] == "양파를 냄비에 넣는다"  # 줄거리 사건이 요약 입력 앞에
+            return await super().summarize(payload)
+
     scenes = [{"startMs": 0, "endMs": 20_000}, {"startMs": 20_000, "endMs": 40_000}]
     monkeypatch.setattr(local, "detect_scenes", lambda path, ms: scenes)
+    monkeypatch.setattr(local, "timeline_frames", lambda playback, work, ms: [(1500, tmp_path / "a.jpg")])
     monkeypatch.setattr(local, "frames", lambda playback, work, sc, per_scene=4: [[tmp_path / "a.jpg"] for _ in sc])
     files = {"playback": tmp_path / "playback.mp4", "wav": tmp_path / "a.wav"}
     seen = []
@@ -135,6 +154,16 @@ def test_local_analysis_end_to_end_with_mock_h200(tmp_path, monkeypatch):
     assert plan.dialogue_language == "en" and plan.dialogues[0]["original"] == "Add two onions."  # DB 저장은 V5 뒤(지금은 full.json에만)
     assert [s["title"] for s in plan.scenes] == ["양파 넣기", "볶기"]
     assert "이름 모르는 인물(앞치마 입은 손)" in plan.scenes[0]["sceneDescription"]
+
+
+def test_ground_names_keeps_only_names_with_evidence(monkeypatch):
+    names = [{"name": "철수", "what": "빨간 모자 남성"}, {"name": "영희", "what": "안경 쓴 여성"}, {"name": "민수", "what": ""}]
+    segs = [{"text": "영희야 이리 와"}]
+    out = local.ground_names(names, "철수의 하루", [["OPEN"]], segs)
+    assert [n["name"] for n in out] == ["철수", "영희", "민수"] and out[2]["what"] == ""  # 제목·대사에 있으면 그대로, 호칭이 없으면 이름 유지
+    monkeypatch.setattr(local, "NAME_SOURCE", "screen")  # 대사에서만 들린 이름은 화면의 누구인지 몰라 쓰지 않는다
+    out = local.ground_names(names, "철수의 하루", [["OPEN"]], segs)
+    assert out[1] == {"name": "안경 쓴 여성", "what": ""} and out[0]["name"] == "철수"
 
 
 def test_engine_fallback_to_gemini_when_h200_fails(tmp_path):

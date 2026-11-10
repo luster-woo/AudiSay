@@ -8,16 +8,19 @@ inference.RemoteInference), 결과는 SQLite 대신 full.json/prepare.json(그 �
 1. S3 원본(uploads/{videoId}/original.*) → 임시 폴더. ffprobe로 길이·코덱 확인
 2. 재생용 MP4(H.264면 재포장, 아니면 변환) → S3 playback/{videoId}.mp4, 받아쓰기용 16kHz wav, 썸네일 → uploads/{videoId}/thumb.jpg
 3. 동시에: 장면 나누기(PySceneDetect, 이 서버 CPU) + 장면별 대표 사진 / H200 받아쓰기(faster-whisper, 언어 자동) → 외국어면 번역
-4. H200 화면 글자(PaddleOCR) → H200 장면 해설(Qwen3-VL, 사진+대사+글자) → 개조식 끝 고치기·문장 수 줄이기 → H200 요약
+   / 영상 전체를 3초 간격으로 훑은 사진 + H200 효과음 → H200 줄거리(32B: 핵심 사건과 인물표)
+4. H200 화면 글자(PaddleOCR) → H200 장면 해설(Qwen3-VL, 사진+대사+글자+줄거리·인물표) → 개조식 끝 고치기·문장 수 줄이기 → H200 요약
 5. Gemini 응답과 같은 모양(raw)으로 모아 prepare.normalize → full.json
 H200이 실패하면 Gemini 엔진(영상 파일을 Gemini에 넣음, 크레딧)으로, UPLOAD_ENGINE=gemini면 그 반대 순서.
 """
 import asyncio
 import json
 import logging
+import os
 import re
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from google.genai import types
@@ -108,6 +111,26 @@ def frames(playback: Path, work: Path, scenes: list[dict], per_scene=4) -> list[
     return result
 
 
+def timeline_frames(playback: Path, work: Path, duration_ms: int, every_ms: int = 3000, limit: int = 72) -> list[tuple[int, Path]]:
+    """영상 전체를 고르게 훑는 사진(줄거리 보기, H200 /story). 3초 간격, 많아야 72장(격자 8장 × 9칸).
+    영상이 길면 간격을 넓힌다. 실패한 시각(영상 트랙이 소리보다 먼저 끝난 끝부분 등)은 건너뛴다."""
+    out_dir = work / "timeline"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    step = max(every_ms, -(-duration_ms // limit))
+    plan = [(at, out_dir / f"t{at}.jpg") for at in range(step // 2, duration_ms, step)]
+
+    def grab(job: tuple[int, Path]) -> None:
+        at, p = job
+        try:
+            _ff("-ss", f"{at / 1000:.2f}", "-i", str(playback), "-frames:v", "1", "-vf", "scale=384:-2", "-q:v", "5", str(p))
+        except WorkerError:
+            p.unlink(missing_ok=True)
+
+    with ThreadPoolExecutor(max_workers=8) as pool:  # 사진 한 장에 ffmpeg 한 번(장당 약 0.1초)이라 여러 개를 함께 돌린다
+        list(pool.map(grab, plan))
+    return [(at, p) for at, p in plan if p.exists()]
+
+
 # ---------- 3·4. 오픈소스 분석(데모 local_pipeline.py) ----------
 
 MIN_SCENE_SEC = 4.0  # 2초였을 때 2분 요리 영상이 25장면(평균 5초)으로 잘게 나뉨
@@ -118,7 +141,20 @@ STYLE_GUIDE = ("누적형 해설(level 1~3). 화면에 보이는 것만 쓰고 �
                "모든 문장은 \"~합니다\", \"~있습니다\", \"~입니다\"처럼 현재형으로 끝나는 완결된 문장으로 씁니다. "
                "\"표시됨\", \"구성됨\", \"있음\"처럼 명사형으로 끝내지 않습니다. 한 문장 40자 안팎. "
                "문장 수는 장면 길이에 맞춥니다: 6초에 1문장 정도, level 1은 장면마다 1문장. "
-               "숫자·표·그래프의 값은 화면 글자에 적힌 대로 정확히 읽습니다.")
+               "숫자·표·그래프의 값은 화면 글자에 적힌 대로 정확히 읽습니다. "
+               "'선수1', '인물A'처럼 번호·기호를 붙인 임시 이름은 쓰지 않습니다(이름을 모르면 '한 선수', '안경 쓴 남자'처럼 겉모습으로). "
+               "확실히 보이지 않는 물건·특징은 쓰지 않고, 같은 물건은 영상 내내 같은 이름으로 부릅니다.")
+
+# 장면을 따로 써서 같은 사람을 장면마다 다른 이름·옷으로 불렀고(한 사람이 줄무늬·검은 코트·베이지·검은 지퍼), 문장 다수가
+# "○○ 스웨터 남자가 말하고 있습니다"나 대사 옮기기였다(2026-11-09 데모 예능). 영상 전체를 한 번 보고(줄거리 단계) 인물표를
+# 만들어 모든 장면에 넘기고 같은 기준으로 쓰게 한다. 앞은 줄거리 단계, 뒤는 장면 해설에 붙이는 지침
+SCENE_CAST_GUIDE = (" 인물 이름은 영상 제목·화면 자막·대사에 그대로 나올 때만 쓰고, 확실하지 않으면 name에 겉모습 호칭"
+                    "(예: '회색 니트 안경 남성')을 씁니다. what에는 그 사람을 다른 사람과 구별할 겉모습(옷 색과 종류, 안경, 머리)을 씁니다.")
+SCENE_FIX_GUIDE = (" 인물은 '정해 둔 인물·물건 이름'의 호칭과 생김새를 그대로 씁니다. 목록에 없는 이름을 붙이지 않고 목록과 다른 옷을 쓰지 않습니다."
+                   " 옷차림만 말하거나 '말하고 있습니다'만 있는 문장은 쓰지 않습니다. 대사로 들리는 내용은 옮기지 않습니다."
+                   " 대사로는 알 수 없는 것, 곧 누가 무엇을 하는지(동작), 표정·몸짓·리액션, 화면 자막의 핵심 문구, 장소와 상황의 변화를 씁니다.")
+# all: 제목·화면 글자·대사에 나온 이름을 쓴다. screen: 대사에서만 들린 이름은 쓰지 않는다(들려도 화면의 누가 그 사람인지는 모른다)
+NAME_SOURCE = os.getenv("NAME_SOURCE", "all")
 
 FOREIGN_GUIDE = (" 이 영상의 대사는 외국어라 이용자가 알아듣지 못합니다. 주어진 대사는 한국어로 옮긴 것입니다. "
                  "대사와 화면 글자에 나오는 핵심 정보(재료 이름과 분량, 조리 순서, 불 세기·시간, 사람이 설명하는 요점)는 "
@@ -229,6 +265,14 @@ async def fix_translations(out: list[dict], title: str | None, gms: GmsClient | 
     return out
 
 
+def ground_names(names: list[dict], title: str | None, ocr_by_scene: list[list[str]], segs: list[dict]) -> list[dict]:
+    """줄거리 단계가 정한 이름 가운데 근거(제목·화면 글자·대사)가 없는 것은 겉모습 호칭(what)으로 바꾼다.
+    32B가 제목에 있는 이름을 아무에게나 붙이거나 없는 이름을 지어냈다(2026-11-09 데모)."""
+    heard = [] if NAME_SOURCE == "screen" else [x["text"] for x in segs]
+    seen = " ".join([title or ""] + [w for ws in ocr_by_scene for w in ws] + heard)
+    return [n if n["name"] in seen else {**n, "name": n.get("what") or n["name"], "what": ""} for n in names]
+
+
 def build_guide(title: str | None) -> str:
     """추론 서버 /describe에 보내는 지침: 문장 규칙 + 시리즈 등장인물 사전 + 요리 지침(유튜브 해설과 같은 사전 재사용)."""
     extra, _ = prompts.genre_guide(title)
@@ -276,15 +320,31 @@ def split_scenes(cuts: list[tuple[int, int]], duration_ms: int) -> list[dict]:
 
 async def analyze_opensource(inf, title: str | None, files: dict, work: Path, duration_ms: int, progress,
                              gms: GmsClient | None, job_id: int | None, db=None) -> tuple[dict, str]:
-    """오픈소스 경로: 받아쓰기·장면·화면 글자·해설·요약을 나눠 분석해 Gemini 형식(raw)으로 모은다."""
+    """오픈소스 경로: 받아쓰기·장면·화면 글자·줄거리·해설·요약을 나눠 분석해 Gemini 형식(raw)으로 모은다."""
+    from app.pipeline.video import sound_lines  # video가 local을 불러와서 여기서 부른다
+
     playback, wav = files["playback"], files["wav"]
 
     def scenes_and_shots():
         scenes = detect_scenes(playback, duration_ms)
         return scenes, frames(playback, work, scenes, per_scene=frames_for)
 
-    # 장면 찾기·사진 뽑기는 이 서버 CPU 일이라 H200의 받아쓰기·번역과 동시에 돌린다
+    async def story_pass() -> dict:
+        """장면을 따로 보기 전에 영상 전체(3초 간격 사진 + 소리 + 대사)로 핵심 사건과 인물·물건 이름을 먼저 정한다(32B).
+        장면만 따로 봐서 핵심 장면을 놓치고 같은 물건·사람을 장면마다 다르게 불렀다. 문장 규칙은 주지 않는다(주면 사건 대신
+        문장을 채웠다). 32B가 꺼져 있으면 빈 결과로 장면별 해설만 한다."""
+        t0 = time.monotonic()
+        r = await inf.story({"title": title or "", "guide": prompts.genre_guide(title)[0] + SCENE_CAST_GUIDE,
+                             "frames": await timeline_job, "sounds": sound_lines(sound_events, 0, duration_ms),
+                             "transcript": "\n".join(f"{x['startMs'] // 1000}초 {x['text']}" for x in segs)})
+        await inference.log_remote(db, "DESCRIBE", f"story:{r.get('model')}", t0, job_id=job_id)  # purpose에 STORY 없음
+        return r
+
+    # 장면 찾기·사진 뽑기는 이 서버 CPU 일이라 H200의 받아쓰기·번역과 동시에 돌린다. 줄거리용 사진·효과음도 함께
     scene_job = asyncio.create_task(asyncio.to_thread(scenes_and_shots))
+    timeline_job = asyncio.create_task(asyncio.to_thread(timeline_frames, playback, work, duration_ms))
+    sound_job = asyncio.create_task(inf.sounds(wav))
+    story_job = None
     try:
         await progress(6)
         t0 = time.monotonic()
@@ -296,15 +356,20 @@ async def analyze_opensource(inf, title: str | None, files: dict, work: Path, du
         segs = await translate_segments(inf, stt["segments"], language, title, gms, job_id)
         if any(x.get("original") for x in segs):
             await inference.log_remote(db, "STT", "translate", t0, job_id=job_id)  # purpose에 TRANSLATE 없음
+        sound_events = (await sound_job).get("events", [])
+        story_job = asyncio.create_task(story_pass())  # 화면 글자를 읽는 동안 돈다
         scenes, shots = await scene_job
+        await progress(11)
+        flat = [p for group in shots for p in group]
+        t0 = time.monotonic()
+        texts = (await inf.ocr(flat))["texts"] if flat else []
+        await inference.log_remote(db, "DESCRIBE", "paddleocr", t0, job_id=job_id)  # purpose에 OCR 없음
+        story = await story_job
     except BaseException:
-        scene_job.cancel()
+        for job in (scene_job, timeline_job, sound_job, story_job):
+            if job:
+                job.cancel()
         raise
-    await progress(11)
-    flat = [p for group in shots for p in group]
-    t0 = time.monotonic()
-    texts = (await inf.ocr(flat))["texts"] if flat else []
-    await inference.log_remote(db, "DESCRIBE", "paddleocr", t0, job_id=job_id)  # purpose에 OCR 없음
     ocr_by_scene, k = [], 0
     for group in shots:
         words: list[str] = []
@@ -314,10 +379,16 @@ async def analyze_opensource(inf, title: str | None, files: dict, work: Path, du
         k += len(group)
 
     await progress(13)
+    events = story.get("events", [])
+    cast = ground_names(story.get("names", []), title, ocr_by_scene, segs)
     foreign = bool(segs) and language not in (None, "ko")
-    payload = {"title": title or "", "guide": build_guide(title) + (FOREIGN_GUIDE if foreign else ""),
+    payload = {"title": title or "", "guide": build_guide(title) + (FOREIGN_GUIDE if foreign else "") + SCENE_FIX_GUIDE,
+               "storyline": "\n".join(f"{e['atMs'] // 1000}초 {e['text']}" for e in events),
+               "names": ", ".join(f"{n['name']}({n['what']})" if n.get("what") else n["name"] for n in cast),
                "scenes": [{"startMs": s["startMs"], "endMs": s["endMs"],
                            "transcript": " ".join(x["text"] for x in segs if overlaps(x, s)),
+                           "sounds": sound_lines(sound_events, s["startMs"], s["endMs"]),
+                           "events": " ".join(e["text"] for e in events if s["startMs"] <= e["atMs"] < s["endMs"]),
                            "ocr": ocr_by_scene[i], "frames": [str(p) for p in shots[i]]} for i, s in enumerate(scenes)]}
     t0 = time.monotonic()
     desc = await inf.describe(payload)
@@ -329,7 +400,8 @@ async def analyze_opensource(inf, title: str | None, files: dict, work: Path, du
     await progress(17)
     t0 = time.monotonic()
     summ = await inf.summarize({"title": title or "", "transcript": " ".join(x["text"] for x in segs),
-                                "sceneTitles": [sc["title"] for sc in desc["scenes"]], "lines": [ln["text"] for ln in lines]})
+                                "sceneTitles": [sc["title"] for sc in desc["scenes"]],
+                                "lines": [e["text"] for e in events] + [ln["text"] for ln in lines]})  # 줄거리를 앞에(요약이 사건을 담게)
     await inference.log_remote(db, "SUMMARY", str(summ.get("model", "")), t0, job_id=job_id)
 
     raw = to_raw(segs, language, scenes, desc["scenes"], ocr_by_scene, lines, summ)

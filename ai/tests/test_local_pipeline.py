@@ -44,6 +44,12 @@ def test_split_scenes_merges_short_and_splits_long():
                                                 {"startMs": 42_000, "endMs": 72_000}, {"startMs": 72_000, "endMs": 80_000}]
 
 
+def test_silent_scenes_split_finer_and_frames_dense():
+    assert local.split_long([{"startMs": 74_000, "endMs": 93_000}], 12.0) == [{"startMs": 74_000, "endMs": 86_000},
+                                                                              {"startMs": 86_000, "endMs": 93_000}]
+    assert local.frames_for_silent(12_000) == 4 and local.frames_for_silent(21_000) == 7 and local.frames_for_silent(60_000) == 8
+
+
 def test_frames_for_and_overlaps():
     assert local.frames_for(3000) == 4 and local.frames_for(36_000) == 6 and local.frames_for(120_000) == 8
     assert local.overlaps({"startMs": 5000, "endMs": 15_000}, {"startMs": 10_000, "endMs": 20_000})
@@ -160,6 +166,37 @@ def test_local_analysis_end_to_end_with_mock_h200(tmp_path, monkeypatch):
     assert plan.dialogue_language == "en" and plan.dialogues[0]["original"] == "Add two onions."  # DB 저장은 V5 뒤(지금은 full.json에만)
     assert [s["title"] for s in plan.scenes] == ["양파 넣기", "볶기"]
     assert "이름 모르는 인물(앞치마 입은 손)" in plan.scenes[0]["sceneDescription"]
+
+
+def test_video_without_speech_is_described_by_action(tmp_path, monkeypatch):
+    """받아쓴 말이 없으면 장면을 12초로 더 나누고 사진을 3초에 1장으로 뽑아 동작 중심 지침을 준다. 자막이 많으면 자막 지침도."""
+    captions = iter(["하지 마!", "이거 스노우?", "머리가 너무 작다"])
+    got = {}
+
+    class Silent(inference.MockInference):
+        async def ocr(self, images):
+            return {"texts": [[next(captions)] for _ in images]}
+
+        async def describe(self, payload):
+            got["guide"] = payload["guide"]
+            got["scenes"] = [(s["startMs"], s["endMs"]) for s in payload["scenes"]]
+            return await super().describe(payload)
+
+    def frames(playback, work, sc, per_scene=4):
+        got["per_scene"] = per_scene
+        return [[tmp_path / f"{i}.jpg"] for i, _ in enumerate(sc)]
+
+    monkeypatch.setattr(local, "detect_scenes", lambda path, ms: [{"startMs": 0, "endMs": 30_000}])
+    monkeypatch.setattr(local, "frames", frames)
+    monkeypatch.setattr(local, "timeline_frames", lambda playback, work, ms: [])
+
+    async def progress(pct):
+        pass
+
+    asyncio.run(local.analyze("opensource", Silent(), None, False, "라마와 펭귄", {"playback": tmp_path / "p.mp4", "wav": tmp_path / "a.wav"},
+                              tmp_path, 30_000, progress, 7))
+    assert got["scenes"] == [(0, 12_000), (12_000, 24_000), (24_000, 30_000)] and got["per_scene"] is local.frames_for_silent
+    assert "이 영상에는 대사가 없습니다" in got["guide"] and "화면 자막이 대사 역할" in got["guide"]
 
 
 def test_clean_ocr_drops_logos_and_keeps_captions():

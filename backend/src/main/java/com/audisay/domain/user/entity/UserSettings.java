@@ -50,6 +50,10 @@ public class UserSettings {
     @Column(nullable = false, length = 20)
     private SubtitleReading subtitleReading = SubtitleReading.DIFFERENT_ONLY;
 
+    /** 외국어 대사 번역 읽기. 해설(soundMix)을 꺼도 따로 켜 둘 수 있다 */
+    @Column(nullable = false)
+    private boolean translationReading = true;
+
     @Column(nullable = false)
     private Short originalVolume = 100;
 
@@ -101,6 +105,9 @@ public class UserSettings {
         if (patch.subtitleReading() != null) {
             subtitleReading = patch.subtitleReading();
         }
+        if (patch.translationReading() != null) {
+            translationReading = patch.translationReading();
+        }
         if (patch.originalVolume() != null) {
             originalVolume = patch.originalVolume();
         }
@@ -128,6 +135,7 @@ public class UserSettings {
             BigDecimal speechRate,
             SoundMix soundMix,
             SubtitleReading subtitleReading,
+            Boolean translationReading,
             Short originalVolume,
             Short seekStepSec,
             SummaryMode summaryMode,

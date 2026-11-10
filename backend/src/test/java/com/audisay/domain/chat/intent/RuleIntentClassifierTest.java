@@ -119,6 +119,8 @@ class RuleIntentClassifierTest {
             음소거 | SETTING originalVolume=0
             글자 크게 | SETTING fontSizeLevel UP
             고대비 켜 줘 | SETTING highContrast=true
+            외국어 번역 꺼 줘 | SETTING translationReading=false
+            외국어 번역 켜 줘 | SETTING translationReading=true
             골 넣는 장면으로 가 줘 | SEEK_SCENE q=골 넣는
             그 데이트 장면으로 가 | SEEK_SCENE q=데이트
             이 장면 설명해 줘 | SCENE_NOW

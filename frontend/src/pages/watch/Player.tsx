@@ -1011,7 +1011,8 @@ export function Player({ video }: { video: VideoDetail }) {
         {/* 크게 보기에서는 아래 줄을 숨긴다. 상세도 묶음 이름은 낭독기에만 읽힌다 (버튼 글자에 '해설'이 있어 화면에서는 뺐다) */}
         {!enlarged && (
           // 두 묶음: 왼쪽 해설 상세도(한 덩어리 선택) · 오른쪽 보조 버튼(연한 테두리, 조금 낮게). 묶음 사이는 넓게
-          <div className="mt-5 flex flex-wrap items-center justify-between gap-x-10 gap-y-4">
+          // 한 줄에 다 들어가게 묶음 사이를 좁게 둔다 (대화 칸이 36rem 이라 왼쪽 칸은 696px. 상세도 묶음 332 + 16 + 보조 버튼 340 = 688)
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-4">
             <ChoiceGroup
               legend="해설 상세도"
               hideLegend
@@ -1020,7 +1021,7 @@ export function Player({ video }: { video: VideoDetail }) {
               options={DETAIL_OPTIONS}
               value={settings.detailLevel}
               onChange={setDetail}
-              optionClassName="w-[7.5rem] px-2 text-base"
+              optionClassName="w-[6.5rem] px-1 text-base"
             />
             <div className="flex flex-wrap gap-2">
               <Button

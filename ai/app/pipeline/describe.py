@@ -56,10 +56,59 @@ def place(at_ms: int, dialogues: list[dict], duration_ms: int) -> tuple[int, int
             t = first_end if first_end - at_ms <= MAX_SHIFT_MS else at_ms
             break
     t = min(t, duration_ms)
+    return t, gap_end(t, dialogues, duration_ms)
+
+
+def gap_end(t: int, dialogues: list[dict], duration_ms: int) -> int | None:
+    """t에서 시작하는 빈 구간의 끝(다음 대사 시작 또는 영상 끝). 대사 중이거나 틈이 MIN_GAP_MS보다 짧으면 None."""
     if any(d["startMs"] <= t < d["endMs"] for d in dialogues):  # 바로 다음 대사가 이어짐 → 빈틈 없음
-        return t, None
+        return None
     nxt = min((d["startMs"] for d in dialogues if d["startMs"] > t), default=duration_ms)
-    return t, (nxt if nxt - t >= MIN_GAP_MS else None)
+    return nxt if nxt - t >= MIN_GAP_MS else None
+
+
+READ_MS_PER_CHAR, READ_MIN_MS, READ_REST_MS = 180, 800, 500  # 읽는 시간 어림(FE estimateSpeechMs와 같음) + 숨
+FITS_SLACK_MS = 300  # 재생 엔진(FE useNarration)은 음성이 빈 구간 + 0.3초보다 길면 영상을 멈추고 읽는다
+PAUSED_STEP_MS = 1000  # 멈추고 읽는 문장 다음 문장과의 간격(영상 시각). 같은 시각이면 재생 엔진이 한 번에 겹쳐 받는다
+TAIL_MS = 1000  # 밀린 문장도 영상 끝 1초 전에는 시작하게(끝 시각에 두면 영상이 끝나 읽히지 않는다)
+
+
+NEAR_MS = 1500  # 시작이 이 안에 붙은 같은 상세도 문장은 따로 읽지 않고 두 문장짜리 해설 하나로 묶는다
+
+
+def join_near(lines: list[dict]) -> list[dict]:
+    """1초쯤 간격으로 붙은 같은 상세도 문장 둘을 앞 문장 시각의 해설 하나("문장1 문장2")로 묶는다. lines는 시각 순.
+    따로 두면 앞 문장을 읽는 중에 뒤 문장이 와서 영상을 거듭 멈추게 된다(2026-11-10 사용자 결정: 차라리 두 줄로).
+    상세도가 다르면 묶지 않는다(상세도는 누적이라 묶으면 낮은 상세도에서 들리는 내용이 달라진다) → spread가 띄운다.
+    두 문장까지만, 합쳐서 MAX_CHARS를 넘으면 묶지 않는다."""
+    out: list[dict] = []
+    joined: set[int] = set()
+    for x in lines:
+        prev = next((p for p in reversed(out) if p["detailLevel"] == x["detailLevel"]), None)
+        if (prev is not None and id(prev) not in joined and x["startMs"] - prev["startMs"] <= NEAR_MS
+                and len(prev["text"]) + 1 + len(x["text"]) <= MAX_CHARS):
+            prev["text"] += " " + x["text"]
+            prev["flags"] = list(dict.fromkeys(list(prev.get("flags") or []) + list(x.get("flags") or [])))
+            joined.add(id(prev))
+            continue
+        out.append(x)
+    return out
+
+
+def spread(lines: list[dict], dialogues: list[dict], duration_ms: int) -> list[dict]:
+    """앞 문장을 다 읽기 전에 시작하는 문장을 그 뒤로 민다. lines는 시각 순, 제자리에서 고친다(상세도 3까지 다 듣는 경우 기준).
+    2026-11-10 박진영 직캠: 해설이 0·1·2·3초, 2:00에 두 문장처럼 몰려 재생 엔진이 뒤 문장을 버렸다(문장 하나 읽는 데 2.5~3초).
+    영상과 함께 읽을 수 있는 문장(빈 구간에 들어감) 뒤에는 읽는 시간만큼, 멈추고 읽는 문장 뒤에는 PAUSED_STEP_MS만 띄운다
+    (멈춘 동안은 영상 시각이 흐르지 않는다). 밀린 문장의 gapEndMs는 새 시각으로 다시 구한다."""
+    free = 0
+    for x in lines:
+        start = max(x["startMs"], min(free, max(0, duration_ms - TAIL_MS)))
+        if start != x["startMs"]:
+            x["startMs"], x["gapEndMs"] = start, gap_end(start, dialogues, duration_ms)
+        need = max(READ_MIN_MS, len(x["text"]) * READ_MS_PER_CHAR)
+        fits = x["gapEndMs"] is not None and need <= x["gapEndMs"] - start + FITS_SLACK_MS
+        free = start + (need + READ_REST_MS if fits else PAUSED_STEP_MS)
+    return lines
 
 
 def check(text: str, start_ms: int, dialogues: list[dict], level: int | None = None) -> list[str]:

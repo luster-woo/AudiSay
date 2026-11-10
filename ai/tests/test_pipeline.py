@@ -1,4 +1,4 @@
-from app.pipeline.describe import build_chunk, place
+from app.pipeline.describe import build_chunk, join_near, place, spread
 from app.pipeline.prepare import make_chunks, normalize, pick_model
 from tests.fixtures import RAW
 
@@ -72,3 +72,33 @@ def test_build_chunk_nested_fields_and_checks():
     assert first["characters"][0]["nameSource"] == "SCREEN_TEXT"
     assert sum(len(b["dialogues"]) for b in built) == len(f["dialogues"])
     assert sum(len(b["screenTexts"]) for b in built) == 2  # 3개 중 '김철수'만 빠짐
+
+
+def _ln(level, start, text, gap_end=None):
+    return {"detailLevel": level, "startMs": start, "gapEndMs": gap_end, "importance": 4 - level, "text": text, "flags": []}
+
+
+def test_near_lines_join_into_one_two_sentence_line():
+    """1초 간격 같은 상세도 문장은 두 문장짜리 해설 하나로(2026-11-10 박진영 직캠 0·1초). 상세도가 다르면 그대로."""
+    lines = [_ln(1, 0, "'하지하지마'라는 글자가 뜬다.", 5000), _ln(1, 1000, "박진영이 팔짱을 낀 채 서 있다.", 5000),
+             _ln(2, 2000, "댄서들이 박진영을 에워싼다.", 5000), _ln(1, 2200, "세 번째 문장이다.", 5000)]
+    out = join_near(lines)
+    assert [(x["detailLevel"], x["startMs"], x["text"]) for x in out] == [
+        (1, 0, "'하지하지마'라는 글자가 뜬다. 박진영이 팔짱을 낀 채 서 있다."),
+        (2, 2000, "댄서들이 박진영을 에워싼다."),
+        (1, 2200, "세 번째 문장이다.")]  # 두 문장까지만 묶는다
+
+
+def test_spread_moves_lines_past_previous_reading():
+    """앞 문장을 읽는 중에 시작하는 문장은 뒤로. 2:00에 두 문장이 몰린 경우(영상 끝 123초)."""
+    song = [{"startMs": 5000, "endMs": 12_000, "text": "하지 마"}, {"startMs": 118_000, "endMs": 120_000, "text": "널 안아"}]
+    lines = [_ln(1, 0, "박진영이 팔짱을 낀 채 서 있다.", 5000), _ln(2, 1000, "댄서들이 박진영을 에워싼다.", 5000),
+             _ln(3, 3000, "출연진 모두 흰색 옷차림이다.", 5000),
+             _ln(1, 120_000, "댄서들이 박진영 주변으로 모여든다.", 123_000), _ln(2, 120_000, "박진영이 고개를 젖힌 채 멈춘다.", 123_000)]
+    spread(lines, song, 123_000)
+    starts = [x["startMs"] for x in lines]
+    assert starts[0] == 0 and starts[1] == 0 + 18 * 180 + 500  # 첫 문장(18자)을 다 읽고 숨 0.5초 뒤
+    assert lines[1]["gapEndMs"] == 5000
+    assert starts[2] == starts[1] + 1000 and lines[2]["gapEndMs"] is None  # 2번은 빈 구간에 안 들어가 멈추고 읽음 → 1초 뒤(틈 0.26초)
+    assert starts[3:] == [120_000, 121_000]  # 같은 시각 두 문장을 띄운다
+    assert all(a < b for a, b in zip(starts, starts[1:]))

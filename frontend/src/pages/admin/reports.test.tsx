@@ -261,6 +261,40 @@ describe('신고 처리', () => {
     expect((await screen.findAllByText('신고 2건을 처리 완료했어요.')).length).toBeGreaterThan(0)
   })
 
+  test('음성을 다시 만들다 오래 걸리면(만들기 실패 등) 계속 받지 않고 그만둔다고 알린다', async () => {
+    vi.mocked(adminApi.regenerateLineAudio).mockResolvedValue(null as never)
+    // 다시 받아도 음성은 계속 비어 있다
+    vi.mocked(adminApi.reviewDescription).mockResolvedValue({
+      ...review,
+      lines: review.lines.map((l) => ({ ...l, audioUrl: null })),
+    })
+    const user = userEvent.setup()
+    renderRoute('/admin/reports/7')
+    await user.click(await screen.findByRole('button', { name: '음성만 다시' }))
+    expect(
+      (await screen.findAllByText('음성을 다시 만드는 중이에요. 다 되면 알려 드려요.')).length,
+    ).toBeGreaterThan(0)
+    // 1분이 지난 것으로 둔다 → 다음 조회 때 그만둔다
+    const now = Date.now()
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now + 61_000)
+    try {
+      expect(
+        (
+          await screen.findAllByText(
+            '새 음성을 아직 만들지 못했어요. 잠시 뒤에 다시 들어 보거나 음성만 다시 만들어 주세요.',
+            {},
+            { timeout: 5000 },
+          )
+        ).length,
+      ).toBeGreaterThan(0)
+      const calls = vi.mocked(adminApi.reviewDescription).mock.calls.length
+      await new Promise((r) => setTimeout(r, 3500))
+      expect(vi.mocked(adminApi.reviewDescription).mock.calls.length).toBe(calls)
+    } finally {
+      clock.mockRestore()
+    }
+  }, 15_000)
+
   test('신고 탭에서 한 건만 골라 반려할 수 있고, 이미 처리된 신고면 알려 준다', async () => {
     vi.mocked(adminApi.handleReport).mockRejectedValue(
       new ApiError('REPORT_003', 409, '이미 처리된 신고예요.'),

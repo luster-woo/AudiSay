@@ -33,6 +33,8 @@ export interface ReportDetailProps {
  */
 /** 새 음성을 기다리며 검수 해설을 다시 받는 간격 */
 const AUDIO_POLL_MS = 3000
+/** 이만큼 기다려도 새 음성이 없으면(음성 만들기 실패 등) 그만 받고 알린다 */
+const AUDIO_WAIT_MAX_MS = 60_000
 
 export function ReportDetail({
   group,
@@ -55,15 +57,30 @@ export function ReportDetail({
   // 음성을 다시 만드는 중이면, 새 음성이 생길 때까지 몇 초마다 다시 받는다 (저장 직후 한 번 받으면 음성이 비어 있어
   // '다시 들어 보세요'를 눌러도 브라우저 음성만 나왔다)
   const waitingAudioRef = useRef(false)
+  const waitStartedRef = useRef(0)
+  const startWaitingAudio = () => {
+    waitingAudioRef.current = true
+    waitStartedRef.current = Date.now()
+  }
   const review = useQuery({
     queryKey: queryKeys.admin.review(first.videoId, first.descriptionId),
     queryFn: () =>
       adminApi.reviewDescription(first.videoId, { descriptionId: first.descriptionId }),
-    refetchInterval: (q) =>
-      waitingAudioRef.current &&
-      !q.state.data?.lines.find((l) => l.lineId === first.lineId)?.audioUrl
-        ? AUDIO_POLL_MS
-        : false,
+    refetchInterval: (q) => {
+      if (!waitingAudioRef.current) return false
+      if (q.state.data?.lines.find((l) => l.lineId === first.lineId)?.audioUrl) return false
+      if (Date.now() - waitStartedRef.current > AUDIO_WAIT_MAX_MS) {
+        waitingAudioRef.current = false
+        announce(
+          '새 음성을 아직 만들지 못했어요. 잠시 뒤에 다시 들어 보거나 음성만 다시 만들어 주세요.',
+          {
+            politeness: 'assertive',
+          },
+        )
+        return false
+      }
+      return AUDIO_POLL_MS
+    },
   })
   const line = review.data?.lines.find((l) => l.lineId === first.lineId)
   const audioUrl = line?.audioUrl
@@ -90,7 +107,7 @@ export function ReportDetail({
       setImportance(null)
       // 중요도만 바꿨으면 음성은 그대로다 (서버도 다시 만들지 않는다)
       if (res.audioRegenerating) {
-        waitingAudioRef.current = true
+        startWaitingAudio()
         announce('해설 문장을 저장했어요. 음성을 다시 만드는 중이에요.')
       } else announce('중요도를 저장했어요. 음성은 그대로예요.')
       void refresh()
@@ -101,7 +118,7 @@ export function ReportDetail({
   const remakeAudio = useMutation({
     mutationFn: () => adminApi.regenerateLineAudio(first.lineId),
     onSuccess: () => {
-      waitingAudioRef.current = true
+      startWaitingAudio()
       announce('음성을 다시 만드는 중이에요. 다 되면 알려 드려요.')
       void refresh()
     },

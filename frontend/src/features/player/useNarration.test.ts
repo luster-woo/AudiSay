@@ -103,13 +103,15 @@ function setup(settings: Partial<UserSettings> = {}, narrator = fakeNarrator()) 
     durationMs: T(60),
     error: null,
   }
+  let current: UserSettings = { ...DEFAULT_SETTINGS, narrationMode: 'AUTO', ...settings }
+  let lastState = base
   const hook = renderHook(
     ({ state }: { state: PlayerState }) =>
       useNarration({
         description,
         state,
         controls,
-        settings: { ...DEFAULT_SETTINGS, narrationMode: 'AUTO', ...settings },
+        settings: current,
         narrator: narrator as unknown as Narrator,
         refreshAudioUrl,
         announce,
@@ -117,15 +119,22 @@ function setup(settings: Partial<UserSettings> = {}, narrator = fakeNarrator()) 
     { initialProps: { state: base } },
   )
   /** 재생 시각을 조금씩 옮긴다 (timeupdate 처럼) */
-  const tick = (ms: number, patch: Partial<PlayerState> = {}) =>
-    act(() => hook.rerender({ state: { ...base, ...patch, currentMs: ms } }))
+  const tick = (ms: number, patch: Partial<PlayerState> = {}) => {
+    lastState = { ...base, ...patch, currentMs: ms }
+    act(() => hook.rerender({ state: lastState }))
+  }
+  /** 보는 중에 설정을 바꾼다 (재생 설정 창) */
+  const setSettings = (patch: Partial<UserSettings>) => {
+    current = { ...current, ...patch }
+    act(() => hook.rerender({ state: lastState }))
+  }
   /** 1초씩 걸어서 옮긴다 (큰 이동으로 치지 않게) */
   const walk = (fromMs: number, toMs: number) => {
     for (let ms = fromMs; ms < toMs; ms += 1000) tick(ms)
     tick(toMs)
   }
   const said = () => narrator.say.mock.calls.map((c) => (c[0] as { text: string }).text)
-  return { hook, tick, walk, controls, narrator, announce, said }
+  return { hook, tick, walk, controls, narrator, announce, said, setSettings }
 }
 
 const flush = () => act(async () => undefined)
@@ -501,6 +510,48 @@ test("'멈추고' 모드도 외국어 대사 번역은 멈추지 않고 겹쳐 �
     await flush()
     expect(said()).toEqual(['총독 각하의 건배사입니다'])
     expect(controls.pause).not.toHaveBeenCalled()
+  } finally {
+    description.lines.pop()
+    description.dialogues.pop()
+  }
+})
+
+test('대본의 지금 문장은 외국어 대사 번역도 따라가고, 해설 상자는 해설만 보인다', () => {
+  const dub = line(54, T(50), '총독 각하의 건배사입니다', { detailLevel: 1, lineType: 'DIALOGUE' })
+  description.lines.push(dub)
+  try {
+    const { hook, walk } = setup()
+    walk(T(49), T(50.5))
+    expect(hook.result.current.currentScriptLine?.lineId).toBe(54) // 대사를 누르거나 지나면 그 줄이 노랗게
+    expect(hook.result.current.currentLine?.lineId).not.toBe(54)
+  } finally {
+    description.lines.pop()
+  }
+})
+
+test('번역을 읽는 사이에 원래 소리를 바꾸면, 다 읽은 뒤 바꾼 볼륨으로 되돌린다', async () => {
+  const dub = line(55, T(50), '총독 각하의 건배사입니다', {
+    detailLevel: 1,
+    lineType: 'DIALOGUE',
+    gapEndMs: null,
+    audioDurationMs: 1500,
+  })
+  description.lines.push(dub)
+  description.dialogues.push({
+    startMs: T(50),
+    endMs: T(52),
+    text: '총독 각하의 건배사입니다',
+    characterName: null,
+  })
+  try {
+    const narrator = fakeNarrator({ hold: true })
+    const { walk, controls, setSettings } = setup({ originalVolume: 80 }, narrator)
+    walk(T(49), T(50.2))
+    expect(controls.setVolume).toHaveBeenLastCalledWith(24) // 읽는 동안 줄인다
+    setSettings({ originalVolume: 50 })
+    act(() => narrator.finish())
+    await flush()
+    expect(controls.setVolume).toHaveBeenLastCalledWith(50)
   } finally {
     description.lines.pop()
     description.dialogues.pop()

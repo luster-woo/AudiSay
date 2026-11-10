@@ -702,9 +702,11 @@ test('답을 받는 중에는 마지막 답에 답 멈추기 버튼이 있고, �
   })
   renderRoute('/watch/15')
   await screen.findByRole('button', { name: '재생' })
-  // 입력칸 아래 키 안내와 예시 문구
+  // 입력칸 아래 키 안내. 입력칸에는 예시 문구(placeholder)를 두지 않는다
   expect(screen.getByText('말로 묻기')).toBeInTheDocument()
-  expect(screen.getByPlaceholderText('예: 지금 뭐 하고 있어?')).toBeInTheDocument()
+  expect(screen.getByRole('textbox', { name: '챗봇과 대화하기' })).not.toHaveAttribute(
+    'placeholder',
+  )
 
   const input = screen.getByRole('textbox', { name: '챗봇과 대화하기' })
   await user.type(input, '지금 뭐 해?{Enter}')

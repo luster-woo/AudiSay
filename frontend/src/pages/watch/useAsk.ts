@@ -77,7 +77,7 @@ export function settingSpoken(key: keyof UserSettings, raw: string) {
             ? `${raw}초`
             : key === 'fontSizeLevel'
               ? `${raw}단계`
-              : key === 'highContrast'
+              : key === 'highContrast' || key === 'translationReading'
                 ? raw === 'true' || raw === '1'
                   ? '켜기'
                   : '끄기'
@@ -173,6 +173,8 @@ export function coerceSetting(key: keyof UserSettings, raw: string): Partial<Use
       return Number.isFinite(num) ? { originalVolume: Math.min(100, Math.max(0, num)) } : null
     case 'highContrast':
       return { highContrast: raw === 'true' || raw === '1' }
+    case 'translationReading':
+      return { translationReading: raw === 'true' || raw === '1' }
     case 'narrationMode':
     case 'soundMix':
     case 'subtitleReading':

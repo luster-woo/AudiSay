@@ -70,6 +70,6 @@ class SettingStepResolverTest {
         int volume = key.equals("originalVolume") ? value.intValue() : 100;
         int font = key.equals("fontSizeLevel") ? value.intValue() : 3;
         return new SettingsResponse(detail, NarrationMode.AUTO, rate, SoundMix.DIALOGUE_AND_NARRATION,
-                SubtitleReading.DIFFERENT_ONLY, volume, 10, SummaryMode.ASK, false, font, true);
+                SubtitleReading.DIFFERENT_ONLY, true, volume, 10, SummaryMode.ASK, false, font, true);
     }
 }

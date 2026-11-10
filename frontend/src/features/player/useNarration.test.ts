@@ -308,7 +308,7 @@ test('readLine: 대본에서 고른 문장은 해설 방식대로 읽고, 이어
   expect(said()).toEqual(['긴 문장', '첫 문장'])
 })
 
-test('readLine: 대사만 설정이면 읽지 않고 false 를 준다', () => {
+test('readLine: 해설 끄기 설정이면 읽지 않고 false 를 준다', () => {
   const { hook, said } = setup({ soundMix: 'DIALOGUE_ONLY' })
   act(() => {
     expect(hook.result.current.readLine(description.lines[0])).toBe(false)
@@ -316,7 +316,7 @@ test('readLine: 대사만 설정이면 읽지 않고 false 를 준다', () => {
   expect(said()).toEqual([])
 })
 
-test('대사만: 아무것도 읽지 않지만 지금 문장은 보인다', () => {
+test('해설 끄기: 아무것도 읽지 않지만 지금 문장은 보인다', () => {
   const { hook, tick, said } = setup({ soundMix: 'DIALOGUE_ONLY' })
   tick(T(9.5))
   tick(T(10.2))
@@ -417,4 +417,92 @@ test('sceneAtMs: 시각이 든 장면을 찾는다 (끝 시각은 다음 장면)
   expect(sceneAtMs(description.scenes, T(15))?.title).toBe('본론')
   expect(sceneAtMs(description.scenes, T(60))).toBeNull()
   expect(sceneAtMs(undefined, 0)).toBeNull()
+})
+
+test('외국어 대사 번역은 해설 설정이 아니라 외국어 번역 읽기 설정을 따른다', () => {
+  const dub = line(50, T(50), '태웅: 총독 각하의 건배사입니다', { detailLevel: 1 })
+  description.lines.push(dub)
+  description.dialogues.push({
+    startMs: T(50),
+    endMs: T(53),
+    text: '총독 각하의 건배사입니다',
+    characterName: null,
+  })
+  try {
+    const off = setup({ soundMix: 'DIALOGUE_ONLY' }).hook.result.current
+    expect(off.willRead(dub)).toBe(true) // 해설을 꺼도 번역은 읽는다
+    expect(off.willRead(description.lines[0])).toBe(false)
+    const noTr = setup({ translationReading: false }).hook.result.current
+    expect(noTr.willRead(dub)).toBe(false)
+    expect(noTr.willRead(description.lines[0])).toBe(true)
+  } finally {
+    description.lines.pop()
+    description.dialogues.pop()
+  }
+})
+
+test('외국어 대사 번역(DIALOGUE): 멈추지 않고 영상 소리를 줄여 겹쳐 읽고, 해설 상자에는 띄우지 않는다', async () => {
+  const fits = line(51, T(50), '총독 각하의 건배사입니다', {
+    detailLevel: 1,
+    lineType: 'DIALOGUE',
+    gapEndMs: null,
+    audioDurationMs: 2500,
+  })
+  const tooLong = line(52, T(56), '이는 조선 근대화의 새로운 이정표입니다', {
+    detailLevel: 1,
+    lineType: 'DIALOGUE',
+    gapEndMs: null,
+    audioDurationMs: 6000,
+  })
+  description.lines.push(fits, tooLong)
+  description.dialogues.push(
+    { startMs: T(50), endMs: T(52), text: '총독 각하의 건배사입니다', characterName: null },
+    {
+      startMs: T(56),
+      endMs: T(57),
+      text: '이는 조선 근대화의 새로운 이정표입니다',
+      characterName: null,
+    },
+  )
+  try {
+    const { hook, walk, controls, said } = setup({ originalVolume: 80 })
+    walk(T(49), T(50.2))
+    expect(said()).toEqual(['총독 각하의 건배사입니다'])
+    expect(controls.pause).not.toHaveBeenCalled() // 2.5초 번역 ≤ 대사 2초 + 여유 1.5초
+    expect(controls.setVolume).toHaveBeenCalledWith(24) // 80 × 0.3
+    await flush()
+    expect(controls.setVolume).toHaveBeenLastCalledWith(80) // 다 읽으면 되돌린다
+    expect(hook.result.current.currentLine?.lineId).not.toBe(51) // 해설 상자에는 해설만
+    walk(T(51), T(56.2))
+    expect(controls.pause).toHaveBeenCalled() // 6초 번역은 대사(1초)를 크게 넘어 멈추고 읽는다
+  } finally {
+    description.lines.splice(-2)
+    description.dialogues.splice(-2)
+  }
+})
+
+test("'멈추고' 모드도 외국어 대사 번역은 멈추지 않고 겹쳐 읽는다 (해설만 문장마다 멈춤)", async () => {
+  const dub = line(53, T(50), '총독 각하의 건배사입니다', {
+    detailLevel: 1,
+    lineType: 'DIALOGUE',
+    gapEndMs: null,
+    audioDurationMs: 2500,
+  })
+  description.lines.push(dub)
+  description.dialogues.push({
+    startMs: T(50),
+    endMs: T(52),
+    text: '총독 각하의 건배사입니다',
+    characterName: null,
+  })
+  try {
+    const { walk, controls, said } = setup({ narrationMode: 'PAUSE_AFTER' })
+    walk(T(45), T(50.2))
+    await flush()
+    expect(said()).toEqual(['총독 각하의 건배사입니다'])
+    expect(controls.pause).not.toHaveBeenCalled()
+  } finally {
+    description.lines.pop()
+    description.dialogues.pop()
+  }
 })

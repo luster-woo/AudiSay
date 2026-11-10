@@ -20,6 +20,7 @@ public enum SettingKey {
     NARRATION_MODE("narrationMode", Set.of("AUTO", "WITH_VIDEO", "PAUSE_AFTER")),
     SOUND_MIX("soundMix", Set.of("DIALOGUE_ONLY", "DIALOGUE_AND_NARRATION")),
     SUBTITLE_READING("subtitleReading", Set.of("ALL", "DIFFERENT_ONLY", "OFF")),
+    TRANSLATION_READING("translationReading", Set.of("true", "false")),
     SEEK_STEP_SEC("seekStepSec", Set.of("5", "10", "30")),
     SUMMARY_MODE("summaryMode", Set.of("ASK", "ALWAYS", "NEVER")),
     HIGH_CONTRAST("highContrast", Set.of("true", "false"));
@@ -82,7 +83,8 @@ public enum SettingKey {
         }
         String v = value.strip();
         if (!numeric()) {
-            String upper = this == HIGH_CONTRAST ? v.toLowerCase(Locale.ROOT) : v.toUpperCase(Locale.ROOT);
+            String upper = this == HIGH_CONTRAST || this == TRANSLATION_READING
+                    ? v.toLowerCase(Locale.ROOT) : v.toUpperCase(Locale.ROOT);
             return values.contains(upper) ? upper : null;
         }
         try {

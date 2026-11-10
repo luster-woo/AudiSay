@@ -22,7 +22,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 
-from app.db import Db
+from app.db import Db, has_column
 from app.errors import WorkerError
 from app.mq.envelope import Envelope
 from app.mq.worker import Events
@@ -83,6 +83,11 @@ def _speaker(speaker: str | None, renames: dict[str, str]) -> str | None:
     if s in renames:
         s = renames[s] if len(renames[s]) < len(s) and renames[s] in s else ""  # 성만 뗀 이름이면 그것으로
     return None if s.lower() in ("", "null", "none") else s
+
+
+def line_type(x: dict) -> str:
+    """description_lines.line_type: 외국어 대사를 읽어 주는 문장(describe.dub_lines)은 DIALOGUE, 나머지는 NARRATION."""
+    return "DIALOGUE" if DUB_FLAG in (x.get("flags") or []) else "NARRATION"
 
 
 def trusted_name(name: str | None, basis: str | None) -> str | None:
@@ -200,13 +205,9 @@ def assemble(full: dict, chunks: list[dict], covered_until_ms: int | None = None
                 for wrong, right in renames.items():
                     text = rename(text, wrong, right)
             if text and int(x["startMs"]) <= duration:
-                # 근거 없는 이름은 표시만 하지 않고 문장에서도 겉모습 호칭으로 바꾼다 (틀린 이름을 시각장애인은 확인할 수 없다)
-                had_name = any(n in text for n in plan.dropped_names)
-                if had_name:
-                    text = replace_names(text, unsupported)
                 lines.append({"detailLevel": int(x["detailLevel"]), "startMs": int(x["startMs"]), "gapEndMs": x.get("gapEndMs"),
                               "importance": int(x.get("importance") or 4 - int(x["detailLevel"])), "text": text,
-                              "flags": list(x.get("flags") or []) + (["UNSUPPORTED_NAME"] if had_name else [])})
+                              "flags": list(x.get("flags") or []) + (["UNSUPPORTED_NAME"] if any(n in text for n in plan.dropped_names) else [])})
     lines.sort(key=lambda x: (x["startMs"], x["detailLevel"]))
     # 1초쯤 간격으로 붙은 문장은 두 문장짜리 해설 하나로 묶고, 그래도 겹치는 문장은 뒤로 띄운다(조각 경계를 넘는 것까지 보려고 여기서)
     lines = spread(join_near(lines), full["dialogues"], duration)
@@ -267,30 +268,6 @@ def assemble(full: dict, chunks: list[dict], covered_until_ms: int | None = None
                                       "fullText": t["fullText"], "sameAsDialogue": bool(t.get("sameAsDialogue"))})
     plan.screen_texts.sort(key=lambda t: t["startMs"])
     return plan
-
-
-# 받침이 있는 말 뒤에 붙는 조사로 바꾼다 (호칭이 '인물'로 끝나 받침이 있다)
-_AFTER_CONSONANT = {"가": "이", "는": "은", "를": "을", "와": "과", "랑": "이랑", "로": "으로", "야": "아", "여": "이여"}
-
-
-def appearance_label(appearance: str | None) -> str:
-    """이름 대신 쓸 겉모습 호칭: '빨간 코트 차림의 인물'. 겉모습을 모르면 '한 인물'."""
-    look = (appearance or "").strip().rstrip(".")
-    return f"{look} 차림의 인물" if look else "한 인물"
-
-
-def replace_names(text: str, unsupported: dict[str, str | None]) -> str:
-    """문장 속 근거 없는 이름을 겉모습 호칭으로 바꾸고, 바로 뒤 조사를 받침에 맞춘다(최유리가 → 원피스 차림의 인물이)."""
-    for name in sorted(unsupported, key=len, reverse=True):  # 긴 이름 먼저('김유리'보다 '김유리아')
-        label = appearance_label(unsupported[name])
-        pattern = re.compile(re.escape(name) + r"(씨|님)?(가|는|를|와|랑|로|야|여)?(?![가-힣])|" + re.escape(name) + r"(씨|님)?")
-
-        def sub(m: re.Match) -> str:
-            josa = m.group(2)
-            return label + (_AFTER_CONSONANT.get(josa, josa) if josa else "")
-
-        text = pattern.sub(sub, text)
-    return text
 
 
 class Merge:
@@ -376,11 +353,19 @@ class Merge:
                 "INSERT INTO transcript_segments (description_id, start_ms, end_ms, text, character_id) VALUES ($1, $2, $3, $4, $5)",
                 [(desc_id, d["startMs"], d["endMs"], d["text"], char_ids.get(d["speaker"] or "")) for d in plan.dialogues])
             # 외국어 대사 원문(d["original"])은 jobs/{jobId}/full.json에만 있다. V5(original_text) 생기면 여기서 같이 넣는다
-            await con.executemany(
-                "INSERT INTO description_lines (description_id, line_index, detail_level, start_ms, gap_end_ms, importance, text)"
-                " VALUES ($1, $2, $3, $4, $5, $6, $7)",
-                [(desc_id, x["lineIndex"], x["detailLevel"], x["startMs"], x["gapEndMs"], x["importance"], x["text"])
-                 for x in plan.lines])
+            if await has_column(con, "description_lines", "line_type"):
+                # 외국어 대사를 읽어 주는 문장은 DIALOGUE: 플레이어가 '외국어 번역 읽기' 설정으로 겹쳐 읽고, 챗봇은 해설 근거에서 뺀다
+                await con.executemany(
+                    "INSERT INTO description_lines (description_id, line_index, detail_level, start_ms, gap_end_ms, importance, text,"
+                    " line_type) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+                    [(desc_id, x["lineIndex"], x["detailLevel"], x["startMs"], x["gapEndMs"], x["importance"], x["text"],
+                      line_type(x)) for x in plan.lines])
+            else:
+                await con.executemany(
+                    "INSERT INTO description_lines (description_id, line_index, detail_level, start_ms, gap_end_ms, importance, text)"
+                    " VALUES ($1, $2, $3, $4, $5, $6, $7)",
+                    [(desc_id, x["lineIndex"], x["detailLevel"], x["startMs"], x["gapEndMs"], x["importance"], x["text"])
+                     for x in plan.lines])
             await con.executemany(
                 "INSERT INTO scenes (description_id, scene_index, start_ms, end_ms, title, scene_description)"
                 " VALUES ($1, $2, $3, $4, $5, $6)",

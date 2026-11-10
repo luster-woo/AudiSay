@@ -59,6 +59,7 @@ public record AdminDescriptionResponse(
             Integer gapEndMs,
             Integer importance,
             String text,
+            String lineType,
             String audioUrl,
             Integer audioDurationMs,
             long reportCount,
@@ -67,7 +68,7 @@ public record AdminDescriptionResponse(
     ) {
         public static AdminLine of(DescriptionLine line, String audioUrl, long reportCount, long pendingReportCount) {
             return new AdminLine(line.getId(), line.getLineIndex(), line.getDetailLevel().intValue(), line.getStartMs(),
-                    line.getGapEndMs(), line.getImportance().intValue(), line.getText(), audioUrl,
+                    line.getGapEndMs(), line.getImportance().intValue(), line.getText(), line.getLineType().name(), audioUrl,
                     line.getAudioDurationMs(), reportCount, pendingReportCount, line.getUpdatedAt());
         }
     }

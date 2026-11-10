@@ -110,3 +110,47 @@ async def test_invalid_envelope_goes_to_dlq():
     w, sent = make_worker(never)
     assert await w.process("job.prepare", b"not json") == "invalid"
     assert sent[0][0] == "audisay.dlx"
+
+
+def test_timeout_follows_video_length_for_upload_analysis():
+    """업로드 영상 분석은 영상 길이의 약 1.4배가 걸려 10분 고정이면 7분 넘는 영상이 매번 끊겼다 (2026-11-10 점검)."""
+    from app.mq.envelope import Envelope
+
+    w = Worker(Settings(_env_file=None), FakeRedis(), {})
+    local = Envelope(messageId="a", type="JOB_PREPARE", jobId=1, payload={"pipeline": "LOCAL", "durationSec": 3600})
+    yt = Envelope(messageId="b", type="JOB_PREPARE", jobId=1, payload={"pipeline": "GEMINI_URL", "durationSec": 3600})
+    tts = Envelope(messageId="c", type="JOB_TTS", jobId=1, payload={})
+    describe = Envelope(messageId="d", type="JOB_DESCRIBE", jobId=1, payload={})
+    assert w.timeout_for("job.prepare", local) == 600 + 7200
+    assert w.timeout_for("job.prepare", yt) == 600 + 1080
+    assert w.timeout_for("job.tts", tts) == 1800
+    assert w.timeout_for("job.describe", describe) == 600
+
+
+async def test_unexpected_error_still_answers_the_message():
+    """process 밖으로 예외가 새도(Redis 끊김) 메시지를 돌려줘 큐가 멈추지 않는다 (2026-11-10 점검)."""
+
+    class BrokenRedis(FakeRedis):
+        async def exists(self, k):
+            raise ConnectionError("redis down")
+
+    class Msg:
+        body = body()
+
+        def __init__(self):
+            self.acked = self.nacked = False
+
+        async def ack(self):
+            self.acked = True
+
+        async def nack(self, requeue=True):
+            self.nacked = requeue
+
+    async def ok(env, events):
+        pass
+
+    w = Worker(Settings(_env_file=None), BrokenRedis(), {"job.prepare": ok})
+    w.ex = FakeExchanges([])
+    m = Msg()
+    await w.on_message("job.prepare", m)
+    assert m.nacked and not m.acked

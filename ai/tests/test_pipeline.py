@@ -133,3 +133,13 @@ def test_foreign_dialogue_is_read_in_korean_at_its_time():
     # 붙어 있어도 해설 문장과 한 문장으로 묶지 않는다
     near = join_near([_ln(1, 19_500, "총독이 단상에 선다."), dict(lines[0])])
     assert len(near) == 2
+
+
+def test_spread_does_not_push_a_line_into_the_middle_of_dialogue():
+    """밀린 시각이 대사 한가운데면 대사 끝으로 다시 옮긴다(2026-11-10 점검: 2~8초 대사, 1.8초 문장이 2.5초로 밀려
+    대사가 시작되고 0.5초 만에 영상이 멈췄다)."""
+    talk = [{"startMs": 2000, "endMs": 8000, "text": "오늘은 그래프를 읽어 볼게요"}]
+    lines = [_ln(1, 0, "칠판 그래프가 보인다.", 2000), _ln(1, 1800, "선생님이 들어온다.", 2000)]  # 12자 → 2.66초까지 읽음
+    spread(lines, talk, 60_000)
+    assert lines[1]["startMs"] == 8000
+    assert lines[1]["gapEndMs"] == 60_000

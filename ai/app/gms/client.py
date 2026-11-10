@@ -21,8 +21,20 @@ log = logging.getLogger(__name__)
 
 TRANSIENT = ("503", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED", "500", "INTERNAL")
 # 영상에 접근할 수 없을 때 Gemini가 주는 오류 문구. 다시 해도 같으므로 재시도하지 않는다
-UNAVAILABLE_HINTS = ("private", "not available", "unavailable video", "video is unavailable", "PERMISSION_DENIED",
-                     "Cannot fetch", "cannot be accessed")
+UNAVAILABLE_HINTS = ("private video", "video is private", "unavailable video", "video is unavailable",
+                     "cannot fetch", "cannot be accessed")
+# 이 말들은 GMS 키 만료(403 PERMISSION_DENIED)·'model not available' 같은 서버 쪽 문제에도 나온다.
+# 영상('video'·'youtube')과 함께 나올 때만 영상 문제로 본다 (2026-11-10 점검: 키 오류가 '영상이 비공개로 바뀌어…'로 안내됨)
+AMBIGUOUS_HINTS = ("permission_denied", "not available", "private")
+VIDEO_WORDS = ("video", "youtube", "file_uri", "fileuri")
+
+
+def video_unavailable(msg: str) -> bool:
+    """Gemini 오류 문구가 '영상에 접근할 수 없음'(다시 해도 같음)인지. 키·권한·모델 문제는 False(다시 시도)."""
+    low = msg.lower()
+    if any(h in low for h in UNAVAILABLE_HINTS):
+        return True
+    return any(h in low for h in AMBIGUOUS_HINTS) and any(w in low for w in VIDEO_WORDS)
 
 
 @dataclass
@@ -54,7 +66,7 @@ class GmsClient:
                 if ("thinking" in msg.lower() or "INVALID_ARGUMENT" in msg) and config.thinking_config is not None:
                     config.thinking_config = None  # thinking 끄기를 지원하지 않는 모델
                     continue
-                if any(h.lower() in msg.lower() for h in UNAVAILABLE_HINTS):
+                if video_unavailable(msg):
                     raise WorkerError("VIDEO_UNAVAILABLE", msg[:500]) from e
                 if any(k in msg for k in TRANSIENT) and attempt < retries:
                     wait = 5 * 2 ** attempt

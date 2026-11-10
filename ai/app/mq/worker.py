@@ -96,11 +96,36 @@ class Worker:
         await self.publish(self.ex.job, env, topology.EVENTS_QUEUE)
 
     async def on_message(self, queue: str, msg: AbstractIncomingMessage) -> None:
+        """메시지 하나. process 안에서 예외가 새어 나와도(Redis·RabbitMQ 발행이 잠깐 끊김) 꼭 응답한다:
+        ack를 빠뜨리면 unack로 남아 prefetch(2)만큼 쌓인 큐가 consumer_timeout(2시간)까지 멈춘다 (2026-11-10 점검)."""
         t0 = time.monotonic()
-        result = await self.process(queue, msg.body)
+        try:
+            result = await self.process(queue, msg.body)
+        except Exception as e:  # noqa: BLE001 - 어떤 예외든 메시지는 돌려준다
+            log.exception("메시지 처리 중 예외 (%s) → 다시 넣음: %s", queue, e)
+            MESSAGES.labels(queue, "requeue").inc()
+            # 같은 메시지를 다시 받게 한다(멱등: 완료 표시가 있으면 skipped). 다시 넣지도 못하면 연결이 끊긴 것이라
+            # 브로커가 unack 메시지를 돌려준다
+            try:
+                await msg.nack(requeue=True)
+            except Exception:  # noqa: BLE001
+                log.exception("nack 실패 (%s)", queue)
+            return
         MESSAGES.labels(queue, result).inc()
         DURATION.labels(queue).observe(time.monotonic() - t0)
         await msg.ack()
+
+    def timeout_for(self, queue: str, env: Envelope) -> int:
+        """처리 시간 제한(초). 업로드 영상 분석·유튜브 분석은 영상 길이에 맞춰 늘리고, job.tts는 따로 둔다."""
+        base = self.cfg.message_timeout_sec
+        if queue == "job.prepare":
+            duration = int(env.payload.get("durationSec") or 0)
+            factor = (self.cfg.prepare_local_timeout_factor if env.payload.get("pipeline") == "LOCAL"
+                      else self.cfg.prepare_youtube_timeout_factor)
+            return base + int(duration * factor)
+        if queue == "job.tts":
+            return max(base, self.cfg.tts_timeout_sec)
+        return base
 
     async def process(self, queue: str, body: bytes) -> str:
         """메시지 하나를 처리하고 결과 이름(ok / skipped / failed / retry / dlq / invalid)을 돌려준다. 항상 ack한다."""
@@ -117,11 +142,12 @@ class Worker:
             return "skipped"
 
         events = Events(self, env, STAGE_OF.get(queue, "TTS"))
+        timeout = self.timeout_for(queue, env)
         try:
-            await asyncio.wait_for(self.handlers[queue](env, events), timeout=self.cfg.message_timeout_sec)
+            await asyncio.wait_for(self.handlers[queue](env, events), timeout=timeout)
         except Exception as e:  # noqa: BLE001
             err = classify(e) if not isinstance(e, asyncio.TimeoutError) else WorkerError(
-                "AI_TIMEOUT", f"처리 시간 {self.cfg.message_timeout_sec}초 초과")
+                "AI_TIMEOUT", f"처리 시간 {timeout}초 초과")
             log.warning("처리 실패 %s job=%s attempt=%s: %s", queue, env.jobId, env.attempt, err)
             return await self.on_failure(queue, env, events, err)
 

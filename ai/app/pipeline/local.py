@@ -9,7 +9,8 @@ inference.RemoteInference), 결과는 SQLite 대신 full.json/prepare.json(그 �
 2. 재생용 MP4(H.264면 재포장, 아니면 변환) → S3 playback/{videoId}.mp4, 받아쓰기용 16kHz wav, 썸네일 → uploads/{videoId}/thumb.jpg
 3. 동시에: 장면 나누기(PySceneDetect, 이 서버 CPU) + 장면별 대표 사진 / H200 받아쓰기(faster-whisper, 언어 자동) → 외국어면 번역
    / 영상 전체를 3초 간격으로 훑은 사진 + H200 효과음 → H200 줄거리(32B: 핵심 사건과 인물표)
-4. H200 화면 글자(PaddleOCR) → H200 장면 해설(Qwen3-VL, 사진+대사+글자+줄거리·인물표) → 개조식 끝 고치기·문장 수 줄이기 → H200 요약
+4. H200 화면 글자(PaddleOCR, 늘 떠 있는 로고는 뺌) → H200 장면 해설(Qwen3-VL, 사진+대사+글자+줄거리·인물표)
+   → 개조식 끝 고치기·문장 수 줄이기·겹친 시각 띄우기·되풀이 빼기 → H200 요약 → 대사 옮기기·같은 동작·옷차림만 있는 문장 거르기
 5. Gemini 응답과 같은 모양(raw)으로 모아 prepare.normalize → full.json
 H200이 실패하면 Gemini 엔진(영상 파일을 Gemini에 넣음, 크레딧)으로, UPLOAD_ENGINE=gemini면 그 반대 순서.
 """
@@ -20,7 +21,9 @@ import os
 import re
 import subprocess
 import time
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
+from difflib import SequenceMatcher
 from pathlib import Path
 
 from google.genai import types
@@ -30,7 +33,7 @@ from app.errors import WorkerError
 from app.gms.client import CallContext, GmsClient
 from app.pipeline import prompts
 from app.pipeline import translate_fix as tf
-from app.pipeline.narration_schema import PROMPT, Narration
+from app.pipeline.narration_schema import PROMPT, Narration, to_ms
 
 log = logging.getLogger(__name__)
 
@@ -155,6 +158,11 @@ SCENE_FIX_GUIDE = (" 인물은 '정해 둔 인물·물건 이름'의 호칭과 �
                    " 대사로는 알 수 없는 것, 곧 누가 무엇을 하는지(동작), 표정·몸짓·리액션, 화면 자막의 핵심 문구, 장소와 상황의 변화를 씁니다.")
 # all: 제목·화면 글자·대사에 나온 이름을 쓴다. screen: 대사에서만 들린 이름은 쓰지 않는다(들려도 화면의 누가 그 사람인지는 모른다)
 NAME_SOURCE = os.getenv("NAME_SOURCE", "all")
+# on이면 말로 한 내용을 요약한 문장("AI가 볼링을 추천합니다")을 쓰지 않게 하고(SPEECH_GUIDE) 남은 것도 뺀다(drop_speech_acts)
+SPEECH_FILTER = os.getenv("SPEECH_FILTER", "off") == "on"
+SPEECH_GUIDE = (" 인물이 말로 설명·제안·질문·주장하는 내용은 대사로 들리므로 해설에 쓰지 않습니다."
+                " level 1도 말한 내용의 요약이 아니라 화면에서 보이는 행동과 그 결과(일어선다, 계산대로 간다, 휴대폰을 내민다)를 씁니다.")
+MIN_LINE_GAP_MS = 2000  # 한 장면 안 문장 사이 최소 간격. 같은 시각에 두 문장이 겹쳤다(2026-11-02 데모 Caminandes 92초)
 
 FOREIGN_GUIDE = (" 이 영상의 대사는 외국어라 이용자가 알아듣지 못합니다. 주어진 대사는 한국어로 옮긴 것입니다. "
                  "대사와 화면 글자에 나오는 핵심 정보(재료 이름과 분량, 조리 순서, 불 세기·시간, 사람이 설명하는 요점)는 "
@@ -210,6 +218,84 @@ def cap_lines(lines: list[dict], scene_ms: int) -> list[dict]:
     keep = (l1 + rest)[:max(limit, len(l1))]
     order = {id(x): i for i, x in enumerate(lines)}
     return sorted(keep, key=lambda x: order[id(x)])
+
+
+def _norm(text: str) -> str:
+    return re.sub(r"[\W_]+", "", text).lower()
+
+
+def clean_ocr(ocr_by_scene: list[list[str]]) -> list[list[str]]:
+    """늘 떠 있는 로고·워터마크(장면 절반 이상, 3장면 이상에 나오는 글자)와 한 글자짜리를 뺀다. OCR이 조금씩 다르게 읽은
+    같은 로고('코보티비'·'코보E비'·'코보O티비')는 비슷하면(75%) 같은 글자로 본다. 로고가 장면마다 반복됐다(2026-11-02 데모)."""
+    reps: list[str] = []
+
+    def group(k: str) -> int:
+        for i, r in enumerate(reps):
+            if SequenceMatcher(None, k, r).ratio() >= 0.75:
+                return i
+        reps.append(k)
+        return len(reps) - 1
+
+    ids = [[group(_norm(w)) for w in words] for words in ocr_by_scene]
+    n = len(ocr_by_scene)
+    seen = Counter(g for row in ids for g in set(row))
+    persistent = {g for g, c in seen.items() if n >= 3 and c >= max(3, n * 0.5)}
+    return [[w for w, g in zip(words, row) if g not in persistent and len(_norm(w)) >= 2]
+            for words, row in zip(ocr_by_scene, ids)]
+
+
+def looks_like_json(text: str) -> bool:
+    """추론 서버 답이 끊겨 JSON 조각이 문장으로 들어온 것('{"title": ...'). 음성으로 읽히면 안 된다."""
+    return bool(re.search(r'[{}\[\]]|"\w+"\s*:', text))
+
+
+def spread_lines(lines: list[dict], scene: dict) -> list[dict]:
+    """한 장면 안 문장이 MIN_LINE_GAP_MS보다 붙어 있으면 뒤로 민다. 장면 끝을 넘는 level 2·3 문장은 뺀다."""
+    out: list[dict] = []
+    last = None
+    for ln in sorted(lines, key=lambda x: x["atMs"]):
+        at = ln["atMs"] if last is None else max(ln["atMs"], last + MIN_LINE_GAP_MS)
+        if at > scene["endMs"] - 300 and out and ln["level"] > 1:
+            continue
+        out.append({**ln, "atMs": min(at, max(scene["startMs"], scene["endMs"] - 300))})
+        last = out[-1]["atMs"]
+    return out
+
+
+def drop_repeats(desc_scenes: list[dict], ratio: float = 0.85) -> None:
+    """앞 장면에서 이미 한 말과 거의 같은 문장은 뺀다. 장면을 따로 써서 한 사람이 말하는 영상에서 "안경 쓴 남자가
+    나무 테이블에 앉아 있습니다"가 30초마다 되풀이됐다(2026-11-02 데모). 다 겹치면 그 장면은 해설 없이 둔다
+    (첫 문장을 남기던 때 같은 문장이 9장면에 남았다)."""
+    said: list[str] = []
+    for sc in desc_scenes:
+        kept = []
+        for ln in sc["lines"]:
+            k = _norm(ln["text"])
+            if any(SequenceMatcher(None, k, s).ratio() >= ratio for s in said):
+                continue
+            kept.append(ln)
+            said.append(k)
+        sc["lines"] = kept
+
+
+IDLE_LINE = re.compile(r"(입고 있|착용하고 있|말하고 있|말합니다|말한다|말하는 자세를 취하고 있)(습니다|다)?\.?$")
+OTHER_ACTION = re.compile(r"(?<!입)(?<!착용하)(고|며|면서)\s(?!있)")  # "들여다보며 말합니다"처럼 다른 동작이 함께 있는지
+SPEECH_ACT = re.compile(r"(설명|제안|질문|요청|논의|언급|주장|우려|의심|추천|대답|대화|이야기|약속|부탁|소개|강조|말|묻)"
+                        r"(합니다|한다|하고 있습니다|하고 있다|습니다|는다|하며 [^.]*|을 나눕니다|를 나눕니다)\.?$")
+VISUAL_CUE = re.compile(r"표정|손|고개|눈을|웃|일어|다가|가리키|들고|내밀|바라보|몸을|자리|걸어|뛰|서서|박수|껴안|안아|화면|자막")
+
+
+def drop_idle(lines: list[dict]) -> list[dict]:
+    """옷차림만, '말하고 있다'만 전하는 문장을 뺀다(2026-11-09 데모 예능: "주우재는 줄무늬 티셔츠를 입고 있습니다",
+    "검은 후드티 청년 남성이 말한다"). 대사로 말하는 건 이미 들리고 옷은 인물표로 한 번 정했다.
+    다른 동작을 함께 쓴 문장("휴대폰을 들여다보며 말합니다")은 남긴다."""
+    return [x for x in lines if not (IDLE_LINE.search(x["text"]) and not OTHER_ACTION.search(x["text"]))]
+
+
+def drop_speech_acts(lines: list[dict]) -> list[dict]:
+    """말로 한 내용을 요약한 문장을 뺀다(2026-11-09 데모 예능·시트콤: "AI가 볼링을 추천합니다", "남성이 …을 우려합니다").
+    대사로 이미 들린다. 표정·몸짓이 함께 있는 문장은 남긴다."""
+    return [x for x in lines if not (SPEECH_ACT.search(x["text"]) and not VISUAL_CUE.search(x["text"]))]
 
 
 GROUP_MAX_MS = 12_000  # 문장 끝이 안 나와도 이 길이에서 끊는다(받아쓰기가 구두점을 안 찍는 구간)
@@ -321,7 +407,7 @@ def split_scenes(cuts: list[tuple[int, int]], duration_ms: int) -> list[dict]:
 async def analyze_opensource(inf, title: str | None, files: dict, work: Path, duration_ms: int, progress,
                              gms: GmsClient | None, job_id: int | None, db=None) -> tuple[dict, str]:
     """오픈소스 경로: 받아쓰기·장면·화면 글자·줄거리·해설·요약을 나눠 분석해 Gemini 형식(raw)으로 모은다."""
-    from app.pipeline.video import sound_lines  # video가 local을 불러와서 여기서 부른다
+    from app.pipeline.video import drop_repeated_actions, drop_said, sound_lines  # video가 local을 불러와서 여기서 부른다
 
     playback, wav = files["playback"], files["wav"]
 
@@ -377,12 +463,14 @@ async def analyze_opensource(inf, title: str | None, files: dict, work: Path, du
             words += [w for w in t if w not in words]
         ocr_by_scene.append(words)
         k += len(group)
+    ocr_by_scene = clean_ocr(ocr_by_scene)
 
     await progress(13)
     events = story.get("events", [])
     cast = ground_names(story.get("names", []), title, ocr_by_scene, segs)
     foreign = bool(segs) and language not in (None, "ko")
-    payload = {"title": title or "", "guide": build_guide(title) + (FOREIGN_GUIDE if foreign else "") + SCENE_FIX_GUIDE,
+    payload = {"title": title or "", "guide": (build_guide(title) + (FOREIGN_GUIDE if foreign else "") + SCENE_FIX_GUIDE
+                                               + (SPEECH_GUIDE if SPEECH_FILTER else "")),
                "storyline": "\n".join(f"{e['atMs'] // 1000}초 {e['text']}" for e in events),
                "names": ", ".join(f"{n['name']}({n['what']})" if n.get("what") else n["name"] for n in cast),
                "scenes": [{"startMs": s["startMs"], "endMs": s["endMs"],
@@ -394,8 +482,10 @@ async def analyze_opensource(inf, title: str | None, files: dict, work: Path, du
     desc = await inf.describe(payload)
     await inference.log_remote(db, "DESCRIBE", str(desc.get("model", "")), t0, job_id=job_id)
     for sc, sd in zip(desc["scenes"], scenes):
-        sc["lines"] = cap_lines([{**ln, "text": finish_sentence(ln["text"])} for ln in sc["lines"] if finish_sentence(ln["text"])],
-                                sd["endMs"] - sd["startMs"])
+        kept = [{**ln, "text": finish_sentence(ln["text"])} for ln in sc["lines"]
+                if finish_sentence(ln["text"]) and not looks_like_json(ln["text"])]
+        sc["lines"] = spread_lines(cap_lines(kept, sd["endMs"] - sd["startMs"]), sd)
+    drop_repeats(desc["scenes"])
     lines = [ln for sc in desc["scenes"] for ln in sc["lines"]]
     await progress(17)
     t0 = time.monotonic()
@@ -405,6 +495,11 @@ async def analyze_opensource(inf, title: str | None, files: dict, work: Path, du
     await inference.log_remote(db, "SUMMARY", str(summ.get("model", "")), t0, job_id=job_id)
 
     raw = to_raw(segs, language, scenes, desc["scenes"], ocr_by_scene, lines, summ)
+    # 영상 보기 경로와 같은 거르기(대사 옮기기·같은 동작 되풀이) + 옷·"말한다"만 있는 문장
+    ordered = sorted(raw["lines"], key=lambda x: (to_ms(x["at"]), x["level"]))
+    raw["lines"] = drop_idle(drop_repeated_actions(drop_said(ordered, segs)))
+    if SPEECH_FILTER:
+        raw["lines"] = drop_speech_acts(raw["lines"])
     return raw, f"local:{desc.get('model', inf.name)}"
 
 

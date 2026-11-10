@@ -115,8 +115,11 @@ def test_local_analysis_end_to_end_with_mock_h200(tmp_path, monkeypatch):
             assert [s["sounds"] for s in payload["scenes"]] == ["", "22~26초 지글거리는 소리"]
             return {"model": "Qwen3-VL-8B", "scenes": [
                 {"title": "양파 넣기", "people": [{"name": None, "basis": None, "appearance": "앞치마 입은 손"}],
-                 "lines": [{"atMs": 500, "level": 1, "text": "양파가 냄비에 들어가 있음"}, {"atMs": 2000, "level": 3, "text": "냄비가 빨갛습니다"}]},
-                {"title": "볶기", "people": [], "lines": [{"atMs": 25_000, "level": 1, "text": "주걱으로 볶습니다"}]}]}
+                 "lines": [{"atMs": 500, "level": 1, "text": "양파가 냄비에 들어가 있음"}, {"atMs": 2000, "level": 3, "text": "냄비가 빨갛습니다"},
+                           {"atMs": 9000, "level": 2, "text": "남자는 흰 앞치마를 입고 있습니다"},
+                           {"atMs": 12_000, "level": 2, "text": '{"title": "양파 넣기", "people": ['}]},
+                {"title": "볶기", "people": [], "lines": [{"atMs": 25_000, "level": 1, "text": "주걱으로 볶습니다"},
+                                                       {"atMs": 30_000, "level": 2, "text": "양파가 냄비에 들어가 있습니다"}]}]}
 
         async def summarize(self, payload):
             assert payload["lines"][0] == "양파를 냄비에 넣는다"  # 줄거리 사건이 요약 입력 앞에
@@ -139,6 +142,9 @@ def test_local_analysis_end_to_end_with_mock_h200(tmp_path, monkeypatch):
     assert raw["dialogue_language"] == "en"
     assert raw["dialogue"][0]["text"] == "양파 두 개를 넣어요." and raw["dialogue"][0]["original"] == "Add two onions."
     assert raw["lines"][0]["text"] == "양파가 냄비에 들어가 있습니다."  # 개조식 끝 고침
+    # 끊긴 JSON 조각, 앞 장면에서 한 말, 옷차림만 있는 문장은 빠지고 겹친 시각은 2초 띄운다(0.5초·2초 → 2.5초)
+    assert [(x["at"], x["text"]) for x in raw["lines"]] == [("00:00", "양파가 냄비에 들어가 있습니다."), ("00:02", "냄비가 빨갛습니다."),
+                                                           ("00:25", "주걱으로 볶습니다.")]
     assert raw["scenes"][0]["screen_text"] == [{"text": "STEP 1", "text_type": "OTHER", "importance": "중", "same_as_dialogue": False}]
 
     full = normalize(raw, 3, model, 40_000)
@@ -154,6 +160,44 @@ def test_local_analysis_end_to_end_with_mock_h200(tmp_path, monkeypatch):
     assert plan.dialogue_language == "en" and plan.dialogues[0]["original"] == "Add two onions."  # DB 저장은 V5 뒤(지금은 full.json에만)
     assert [s["title"] for s in plan.scenes] == ["양파 넣기", "볶기"]
     assert "이름 모르는 인물(앞치마 입은 손)" in plan.scenes[0]["sceneDescription"]
+
+
+def test_clean_ocr_drops_logos_and_keeps_captions():
+    """늘 떠 있는 로고는 OCR 오타가 달라도 빼고, 장면마다 다른 자막은 남긴다(2026-11-02 데모)."""
+    scenes = [["코보티비", "보령·한국도로공사컵", "됐따!", "5"], ["코보E비", "보령·안국도로공사컵", "이거~스노우?"],
+              ["코보O티비", "보령·한국도로공사컵", "하지마!"], ["코보티비", "머리가 너무 작다"]]
+    assert local.clean_ocr(scenes) == [["됐따!"], ["이거~스노우?"], ["하지마!"], ["머리가 너무 작다"]]
+    assert local.clean_ocr([["로고", "자막"], ["로고"]]) == [["로고", "자막"], ["로고"]]  # 장면이 적으면 로고로 보지 않는다
+
+
+def test_json_fragment_and_crowded_lines_are_fixed():
+    """끊긴 JSON 조각은 문장으로 쓰지 않고, 같은 시각에 겹친 문장은 2초씩 띄운다."""
+    assert local.looks_like_json('{"title": "라마와 펭귄이 눈밭에서 쉬고 있습니다", "people": [{"name": "라마",.')
+    assert not local.looks_like_json("라마가 \"안녕\"이라고 쓴 팻말을 듭니다.")
+    scene = {"startMs": 74000, "endMs": 93000}
+    out = local.spread_lines([{"atMs": 92000, "level": 2, "text": "a"}, {"atMs": 92000, "level": 2, "text": "b"},
+                              {"atMs": 74300, "level": 1, "text": "c"}], scene)
+    assert [x["text"] for x in out] == ["c", "a"]  # b는 장면 끝을 넘어 뺀다
+    assert out[0]["atMs"] == 74300
+
+
+def test_repeated_lines_across_scenes_are_dropped():
+    scenes = [{"lines": [{"text": "안경 쓴 남자가 테이블 앞에 앉아 있습니다."}, {"text": "남자는 체크무늬 셔츠를 입고 있습니다."}]},
+              {"lines": [{"text": "안경 쓴 남자가 나무 테이블에 앉아 있습니다."}, {"text": "남자 뒤 벽에 로고가 붙어 있습니다."}]},
+              {"lines": [{"text": "남자는 체크무늬 셔츠를 입고 있습니다."}]}]
+    local.drop_repeats(scenes)
+    assert [len(s["lines"]) for s in scenes] == [2, 1, 0]  # 다 겹친 장면은 해설 없이(같은 문장을 남기지 않는다)
+    assert scenes[1]["lines"][0]["text"].startswith("남자 뒤 벽")
+
+
+def test_idle_and_speech_act_lines_are_dropped():
+    """옷차림만·'말한다'만 있는 문장, 말한 내용을 요약한 문장은 빼고 동작·표정이 함께 있으면 남긴다."""
+    lines = [{"text": t} for t in ["주우재는 줄무늬 티셔츠를 입고 있습니다.", "검은 후드티 청년 남성이 말한다.",
+                                   "휴대폰을 들여다보며 말합니다.", "남자가 자리에서 일어납니다."]]
+    assert [x["text"] for x in local.drop_idle(lines)] == ["휴대폰을 들여다보며 말합니다.", "남자가 자리에서 일어납니다."]
+    lines = [{"text": t} for t in ["AI가 볼링을 추천합니다.", "남성이 비용을 우려합니다.", "남성이 웃으며 대답합니다.",
+                                   "여성이 계산대로 걸어갑니다."]]
+    assert [x["text"] for x in local.drop_speech_acts(lines)] == ["남성이 웃으며 대답합니다.", "여성이 계산대로 걸어갑니다."]
 
 
 def test_ground_names_keeps_only_names_with_evidence(monkeypatch):

@@ -356,7 +356,9 @@ def to_raw(segs: list[dict], language: str | None, scenes: list[dict], desc_scen
 
 LONG_VIDEO_SEC = 180
 MODEL_LONG, MODEL_SHORT = "gemini-3.5-flash", "gemini-3.8-flash"
-INLINE_MAX_BYTES = 19 * 1024 * 1024  # inline_data 요청 한도 20MB(가정)
+# inline_data는 base64로 들어가 1.33배가 되고 요청 전체 한도가 20MB라 원본은 약 14MB까지만 된다. 19MB로 두었을 때
+# 16.3MB 영상(base64 약 21.7MB)이 GMS에서 곧바로 "429 잠시 후 다시 시도"로 거절됐다(2026-11-09 데모 실측, 작은 사본은 통과)
+INLINE_MAX_BYTES = 14 * 1024 * 1024
 GEMINI_AUDIO_KBPS = 32  # Gemini 사본의 소리(모노 16kHz). 말소리만 알아들으면 된다. 긴 영상은 더 줄인다
 
 

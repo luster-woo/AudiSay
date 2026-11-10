@@ -94,6 +94,14 @@ audisay:
       stream-timeout: 90s             # SSE 최대 연결 시간(LLM 전체 60초 + 음성)
       speech-wait: 15s                # LLM이 끝난 뒤 남은 문장 음성을 기다리는 최대 시간
       future-check-timeout: 60s       # 뒤 내용 확인 LLM 최대 시간(gms.timeouts.answer와 같게). SSE에 이만큼+speech-wait가 안 남으면 건너뜀
+    screen:                           # 화면 다시 보기: 저장 자료·뒤 내용에 답이 없는 유튜브 질문은 질문 시각 앞 구간을 Gemini에 다시 보여 줌
+      enabled: ${AUDISAY_CHAT_SCREEN_ENABLED:true}  # 2026-11-10 스파이크 40문항(backend/build/eval/requery_spike.py): 틀린 숫자 0건
+      window-sec: 15                  # 질문 시각 앞 몇 초(1초에 약 100토큰). '지금' 값은 짧을수록 정확
+      cheap-model: gemini-3.1-flash-lite  # 숫자가 필요 없는 질문은 이 모델 하나(약 3크레딧)
+      main-model: gemini-3.5-flash    # 숫자 질문은 cheap과 동시에, 숫자가 같으면 이 모델 답
+      tie-model: gemini-3.8-flash     # 둘이 다르거나 개수 질문이면 함께 다수결
+      timeout: 8s                     # 모델 한 번(p50 2~3초, 드물게 10초)
+      max-output-tokens: 200
   job:
     partial-on-chunk-failure: true    # 조각 하나 실패 시 작업 전체 FAILED 대신 나머지로 PARTIAL
     stale:                            # 멈춘 작업 정리(5분마다). 마지막 활동 뒤 이 시간이 지나면 FAILED(AI_TIMEOUT)

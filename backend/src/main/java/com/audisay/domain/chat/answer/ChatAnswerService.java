@@ -7,6 +7,8 @@ import com.audisay.domain.chat.entity.ChatIntent;
 import com.audisay.domain.chat.entity.ChatLog;
 import com.audisay.domain.chat.ratelimit.ChatRateLimiter;
 import com.audisay.domain.chat.repository.ChatLogRepository;
+import com.audisay.domain.chat.screen.ScreenAnswerJudge;
+import com.audisay.domain.chat.screen.ScreenChecker;
 import com.audisay.domain.chat.search.AnswerRetriever;
 import com.audisay.domain.chat.search.SceneSearchProperties.Mode;
 import com.audisay.domain.chat.search.ChapterTitle;
@@ -33,11 +35,13 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -53,7 +57,11 @@ import java.util.regex.Pattern;
  * SCENE_NOW는 장면 제목을 먼저 읽고 LLM이 지금 화면을 잇는다(LLM을 못 쓰면 장면 설명으로).
  * 연결이 끊기면 LLM 스트림·남은 음성을 멈추고, 어느 경우든 받은 데까지 chat_logs에 남긴다.
  * 바로 하는 답은 질문한 시각까지 자료만(answer-past-only). 지금 자료로 답하지 못하면 질문과 비슷한 앞 줄을 더해 다시 답한다(질문 답변 RAG, FALLBACK). 답하지 못하면 뒤쪽 자료에 답이 있는지 LLM이 확인해(answer-future-check)
- * "지금 이후에 나와요, 들으시겠어요?"를 읽고 done.futureAvailable=true → includeFuture=true 재구독이면 뒤 자료까지 넣어 답한다(FUTURE)
+ * "지금 이후에 나와요, 들으시겠어요?"를 읽고 done.futureAvailable=true → includeFuture=true 재구독이면 뒤 자료까지 넣어 답한다(FUTURE).
+ * 지금 자료로 답하지 못한 유튜브 질문은 뒤 확인 다음에 질문한 시각 앞 구간을 Gemini에 다시 보여 주고 답한다(화면 다시 보기, GEMINI_REQUERY).
+ * 뒤에 답이 없으면 늘, 뒤에 답이 있으면 겉모습·글자 질문만(지금 보이는 유니폼 색을 "이후에 나와요"로 미루지 않게, 사건 질문은 그대로) 화면을 본다.
+ * 화면이 답하면 그 답으로 끝내고, 화면도 모르면 뒤에 답이 있을 때만 들을지 묻는다.
+ * 글자 내용을 물었는데 저장 자료 답이 "목록이 적혀 있어요"처럼 내용 없이 끝나도 화면을 다시 본다
  */
 @Slf4j
 @Service
@@ -85,6 +93,14 @@ public class ChatAnswerService {
     private final RecapReader recapReader;
     private final VideoAccessValidator videoAccessValidator;
     private final AnswerRetriever answerRetriever;
+    /** 화면 다시 보기. 없으면(테스트가 직접 만든 서비스) 쓰지 않는다 */
+    private ScreenChecker screenChecker;
+
+    /** 생성자를 늘리지 않으려고(테스트가 서비스를 직접 만든다) setter로 받는다 */
+    @Autowired(required = false)
+    void setScreenChecker(ScreenChecker screenChecker) {
+        this.screenChecker = screenChecker;
+    }
 
     /**
      * 권한·상태를 먼저 확인하고(실패는 JSON 에러), 답변은 답변 스레드에서 만든다. 이미 끝난 답변이면 done만 보내고 닫는다
@@ -249,11 +265,31 @@ public class ChatAnswerService {
                     futureAvailable = rag.futureCheck != null ? rag.futureAvailable()
                             : hasTimeForFutureCheck(session, chatLog.getId())
                             && futureHasAnswer(session, chatLog, nowMs, rag.vector());
-                    if (futureAvailable || session.text().isEmpty()) {
-                        session.speak(List.of(futureAvailable ? AnswerPrompt.FUTURE_PROMPT : AnswerPrompt.UNANSWERABLE));
+                    // 유튜브 화면을 다시 본다(쓸 수 없으면 null). 화면이 답하면 그 답으로 끝(뒤 내용은 묻지 않음).
+                    // 뒤에 답이 있으면 겉모습·글자 질문만 화면을 보고(사건 질문은 지금 화면으로 답하면 틀림),
+                    // 화면이 모른다는 말은 읽지 않고 "이후에 나와요, 들으시겠어요?"
+                    boolean lookAtScreen = session.text().isEmpty()
+                            && (!futureAvailable || ScreenAnswerJudge.appearance(chatLog.getUtterance()));
+                    AnswerSource screen = lookAtScreen ? screenAnswer(session, chatLog, nowMs, !futureAvailable) : null;
+                    if (screen == AnswerSource.GEMINI_REQUERY) {
+                        source = screen;
+                        futureAvailable = false;
+                    } else {
+                        if (screen != null) {
+                            source = screen;
+                        }
+                        if (futureAvailable || (screen == null && session.text().isEmpty())) {
+                            session.speak(List.of(futureAvailable ? AnswerPrompt.FUTURE_PROMPT : AnswerPrompt.UNANSWERABLE));
+                        }
                     }
                     if (futureAvailable) {
                         futureOffer.offer(chatLog.getId());
+                    }
+                } else if (source == AnswerSource.STORED && !session.cancelled()
+                        && ScreenAnswerJudge.textNotRead(chatLog.getUtterance(), session.text())) {
+                    // 글자 내용을 물었는데 "목록이 적혀 있어요"로 끝났다 → 화면에서 글자를 읽는다(모르면 그 말을 덧붙임)
+                    if (screenAnswer(session, chatLog, nowMs, true) == AnswerSource.GEMINI_REQUERY) {
+                        source = AnswerSource.GEMINI_REQUERY;
                     }
                 }
             }
@@ -503,6 +539,61 @@ public class ChatAnswerService {
         } finally {
             meterRegistry.counter("audisay.chat.answer.future", "result", result).increment();
         }
+    }
+
+    /**
+     * 화면 다시 보기: 저장 자료·뒤 내용 모두 답이 없을 때 질문한 시각 앞 구간을 Gemini에 유튜브 주소로 보여 주고 답한다.
+     * "화면을 확인해 볼게요"를 먼저 읽는다(2~5초 걸림). LLM 한도에 한 번 센다.
+     * 쓸 수 없으면(꺼짐·직접 올린 영상·한도·SSE 남은 시간 부족) 아무것도 읽지 않고 null → 호출한 쪽이 "자료에 없어요"를 읽는다.
+     * 답했으면 GEMINI_REQUERY, 모른다고 했거나 모두 실패했으면 UNANSWERABLE
+     *
+     * @param speakUnanswered false면 화면도 모를 때 그 말("확인할 수 없어요"·"확인하지 못했어요")을 읽지 않는다(호출한 쪽이 "이후에 나와요"를 읽음)
+     */
+    private AnswerSource screenAnswer(AnswerSession session, ChatLog chatLog, int nowMs, boolean speakUnanswered) {
+        if (screenChecker == null || session.cancelled()) {
+            return null;
+        }
+        Optional<String> url = screenChecker.youtubeUrl(chatLog.getVideoId());
+        if (url.isEmpty()) {
+            return null;
+        }
+        if (remainingMs(session) < screenChecker.maxDuration().toMillis()) {
+            log.info("[CHAT] 남은 시간이 모자라 화면 다시 보기를 건너뜁니다 chatLogId={}", chatLog.getId());
+            return null;
+        }
+        try {
+            rateLimiter.acquireLlm(chatLog.getUserId());
+        } catch (BusinessException e) {
+            return null;
+        }
+        session.speak(List.of(ScreenChecker.CHECKING));
+        Optional<ScreenAnswerJudge.Verdict> verdict = screenChecker.check(url.get(), nowMs, chatLog.getUtterance(),
+                chatLog.getId());
+        if (session.cancelled()) {
+            return AnswerSource.UNANSWERABLE;
+        }
+        if (verdict.isEmpty()) {
+            if (speakUnanswered) {
+                session.speak(List.of(ScreenChecker.FAILED));
+            }
+            return AnswerSource.UNANSWERABLE;
+        }
+        if (!verdict.get().answered()) {
+            if (speakUnanswered) {
+                session.speak(sentences(verdict.get().text()));
+            }
+            return AnswerSource.UNANSWERABLE;
+        }
+        session.speak(sentences(verdict.get().text()));
+        return AnswerSource.GEMINI_REQUERY;
+    }
+
+    /** 한 덩어리 답을 문장으로(문장마다 음성을 만든다) */
+    static List<String> sentences(String text) {
+        SentenceSplitter splitter = new SentenceSplitter();
+        List<String> out = new ArrayList<>(splitter.add(text + " "));
+        splitter.flush().ifPresent(out::add);
+        return out;
     }
 
     /** 지금까지 줄거리: 질문한 시각 전 목차(끝난 장면 요약 + 지금 장면 해설 문장)만으로 장면 수에 따라 2~5문장 */

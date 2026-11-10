@@ -275,6 +275,28 @@ def test_screen_lines_picked_from_ocr(tmp_path):
     assert asyncio.run(local.pick_screen_lines(Inf(), "라이어", cands, 5_000)) == []  # 5초에 글자 셋 = 자막이 많은 영상
 
 
+def test_describe_split_keeps_scene_order(monkeypatch):
+    """장면을 8개씩 나눠 동시에 보내도 장면 순서·수는 그대로고 못 받은 제목 번호는 전체 번호다."""
+    calls = []
+
+    class Inf:
+        async def describe(self, payload):
+            calls.append(len(payload["scenes"]))
+            return {"model": "m", "scenes": [{"title": f"{i + 1}번째 장면", "people": [],
+                                              "lines": [{"atMs": s["startMs"], "level": 1, "text": str(s["startMs"])}]}
+                                             for i, s in enumerate(payload["scenes"])]}
+
+    payload = {"title": "t", "scenes": [{"startMs": k * 1000, "endMs": (k + 1) * 1000} for k in range(20)]}
+    out = asyncio.run(local.describe_scenes(Inf(), payload))
+    assert sorted(calls) == [4, 8, 8] and out["model"] == "m"
+    assert [sc["lines"][0]["text"] for sc in out["scenes"]] == [str(k * 1000) for k in range(20)]
+    assert [sc["title"] for sc in out["scenes"]] == [f"{k + 1}번째 장면" for k in range(20)]
+    calls.clear()
+    monkeypatch.setattr(local, "DESCRIBE_SPLIT", 1)
+    one = asyncio.run(local.describe_scenes(Inf(), payload))
+    assert calls == [20] and len(one["scenes"]) == 20
+
+
 def test_ground_names_keeps_only_names_with_evidence(monkeypatch):
     names = [{"name": "철수", "what": "빨간 모자 남성"}, {"name": "영희", "what": "안경 쓴 여성"}, {"name": "민수", "what": ""}]
     segs = [{"text": "영희야 이리 와"}]

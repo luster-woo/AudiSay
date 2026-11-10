@@ -491,6 +491,32 @@ async def pick_screen_lines(inf, title: str | None, cands: list[dict], duration_
     return notes[:max(3, duration_ms // (SCREEN_LINE_SEC * 1000))]
 
 
+DESCRIBE_CHUNK = 8  # 추론 서버가 /describe 한 번에서 동시에 쓰는 장면 수와 같게
+DESCRIBE_SPLIT = int(os.getenv("DESCRIBE_SPLIT", "3"))  # 장면 해설을 이만큼 동시에 보낸다. 1이면 한 번에
+
+
+async def describe_scenes(inf, payload: dict) -> dict:
+    """장면 해설. 장면을 8개씩 묶어 /describe를 DESCRIBE_SPLIT개까지 동시에 부른다. 장면 프롬프트는 앞뒤 장면을 보지 않아
+    나눠도 같고 '장면 3/8' 번호만 묶음 안 번호가 된다. 데모 5편에서 걸린 시간은 그대로(평균 91초)였고 종합 점수는
+    한 번에 보낼 때 0.42·0.48, 나눠 보낼 때 0.50·0.49였다(2026-11-10)."""
+    scenes = payload["scenes"]
+    if DESCRIBE_SPLIT < 2 or len(scenes) <= DESCRIBE_CHUNK:
+        return await inf.describe(payload)
+    gate = asyncio.Semaphore(DESCRIBE_SPLIT)
+
+    async def one(chunk: list[dict]) -> dict:
+        async with gate:
+            return await inf.describe({**payload, "scenes": chunk})
+
+    outs = await asyncio.gather(*(one(scenes[k:k + DESCRIBE_CHUNK]) for k in range(0, len(scenes), DESCRIBE_CHUNK)))
+    merged = [sc for o in outs for sc in o["scenes"]]
+    for i, sc in enumerate(merged):  # 제목을 못 받은 장면에 서버가 붙이는 "n번째 장면"은 묶음 안 번호라 전체 번호로 고친다
+        if re.fullmatch(r"\d+번째 장면", sc.get("title") or ""):
+            sc["title"] = f"{i + 1}번째 장면"
+    models = list(dict.fromkeys(o["model"] for o in outs if o.get("model")))
+    return {**outs[0], "scenes": merged, **({"model": "+".join(models)} if models else {})}
+
+
 GROUP_MAX_MS = 12_000  # 문장 끝이 안 나와도 이 길이에서 끊는다(받아쓰기가 구두점을 안 찍는 구간)
 
 
@@ -692,7 +718,7 @@ async def analyze_opensource(inf, title: str | None, files: dict, work: Path, du
     cands = screen_candidates(scenes, shots, texts, ocr_by_scene, segs) if SCREEN_LINES else []
     notes_job = asyncio.create_task(pick_screen_lines(inf, title, cands, duration_ms)) if cands else None
     try:
-        desc = await inf.describe(payload)
+        desc = await describe_scenes(inf, payload)
     except BaseException:
         if notes_job:
             notes_job.cancel()

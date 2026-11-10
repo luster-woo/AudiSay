@@ -140,7 +140,7 @@ public class ChatMessageService {
             return ChatResult.message(IN_VIDEO_SEARCH_MESSAGE);
         }
         if (descriptionId == null && NEEDS_DESCRIPTION.contains(intent)) {
-            throw new BusinessException(ErrorCode.DESCRIPTION_NOT_FOUND, "아직 해설이 없습니다.");
+            throw new BusinessException(ErrorCode.DESCRIPTION_NOT_FOUND, "아직 해설이 없어요.");
         }
         return switch (intent) {
             case QUESTION, SCENE_NOW, RECAP -> ChatResult.answerStream(chatLogId);

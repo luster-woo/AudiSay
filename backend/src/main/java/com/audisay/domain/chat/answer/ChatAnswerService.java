@@ -98,7 +98,7 @@ public class ChatAnswerService {
         ChatLog chatLog = chatLogRepository.findById(chatLogId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CHAT_LOG_NOT_FOUND));
         if (!chatLog.getUserId().equals(authUser.userId())) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "본인의 질문만 볼 수 있습니다.");
+            throw new BusinessException(ErrorCode.FORBIDDEN, "본인의 질문만 볼 수 있어요.");
         }
         if (!chatLog.isAnswerable()) {
             throw new BusinessException(ErrorCode.NOT_ANSWERABLE_INPUT);

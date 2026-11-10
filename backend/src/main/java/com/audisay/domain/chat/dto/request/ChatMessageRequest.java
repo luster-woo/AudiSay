@@ -17,8 +17,8 @@ public record ChatMessageRequest(
         Long descriptionId,
         @Min(value = 0, message = "영상 시각은 0 이상이어야 합니다.")
         Integer videoTimeMs,
-        @NotBlank(message = "입력 문장은 1~500자여야 합니다.")
-        @Size(max = 500, message = "입력 문장은 1~500자여야 합니다.")
+        @NotBlank(message = "입력 문장은 1~500자여야 해요.")
+        @Size(max = 500, message = "입력 문장은 1~500자여야 해요.")
         String utterance,
         @NotNull(message = "입력 방식(TEXT/VOICE)을 입력해 주세요.")
         InputMode inputMode

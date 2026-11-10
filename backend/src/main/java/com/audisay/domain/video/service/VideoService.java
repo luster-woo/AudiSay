@@ -106,10 +106,10 @@ public class VideoService {
         Video video = videoRepository.findById(videoId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.VIDEO_NOT_FOUND));
         if (video.getSourceType() == SourceType.YOUTUBE) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "유튜브 영상은 공개 범위를 바꿀 수 없습니다.");
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "유튜브 영상은 공개 범위를 바꿀 수 없어요.");
         }
         if (!video.isUploadedBy(userId)) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "영상을 올린 회원만 바꿀 수 있습니다.");
+            throw new BusinessException(ErrorCode.FORBIDDEN, "영상을 올린 회원만 바꿀 수 있어요.");
         }
         video.changeVisibility(request.visibility());
         return VisibilityResponse.from(video);

@@ -18,7 +18,7 @@ public record UploadCompleteRequest(
 ) {
     public record Part(
             @NotNull(message = "조각 번호를 입력해 주세요.")
-            @Positive(message = "조각 번호는 1부터입니다.")
+            @Positive(message = "조각 번호는 1부터예요.")
             Integer partNumber,
 
             @JsonProperty("eTag")

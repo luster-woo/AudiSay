@@ -111,7 +111,7 @@ public class YoutubeRequestService {
     private YoutubeRequestResponse newJob(User user, Video registered, YoutubeVideo youtubeVideo, LocalDate today) {
         Integer remaining = remaining(user, today);
         if (remaining != null && remaining == 0) {
-            throw new BusinessException(ErrorCode.DAILY_LIMIT_EXCEEDED, "오늘 유튜브 해설 요청 횟수를 모두 사용했습니다.");
+            throw new BusinessException(ErrorCode.DAILY_LIMIT_EXCEEDED, "오늘 유튜브 해설 횟수를 다 썼어요.");
         }
         Video video = registered != null ? registered : register(youtubeVideo);
         Job job = jobLauncher.launch(video, user, JobType.GENERATE, PreparePayloadFactory.youtube(video));

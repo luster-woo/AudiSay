@@ -47,7 +47,7 @@ public class SttService {
         }
         String contentType = audio.getContentType();
         if (contentType == null || !AUDIO_TYPES.contains(baseType(contentType))) {
-            throw new BusinessException(ErrorCode.INVALID_AUDIO_FILE, "webm, ogg, mp4, wav 녹음만 받을 수 있습니다.");
+            throw new BusinessException(ErrorCode.INVALID_AUDIO_FILE, "webm, ogg, mp4, wav 녹음만 받을 수 있어요.");
         }
         rateLimiter.acquireStt(authUser.userId());
 

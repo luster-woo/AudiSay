@@ -119,7 +119,7 @@ public class UploadService {
         long partCount = partCount(upload.getSizeBytes(), partSize());
         List<Integer> partNumbers = request.partNumbers().stream().distinct().sorted().toList();
         if (partNumbers.getLast() > partCount) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "조각 번호는 1부터 %d까지입니다.".formatted(partCount));
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "조각 번호는 1부터 %d까지예요.".formatted(partCount));
         }
 
         upload.startUploading();
@@ -179,7 +179,7 @@ public class UploadService {
     public void abort(Long userId, Long videoId) {
         VideoUpload upload = getOwnUpload(userId, videoId, true);
         if (upload.getUploadStatus() == UploadStatus.COMPLETED) {
-            throw new BusinessException(ErrorCode.UPLOAD_ALREADY_CLOSED, "이미 완료된 업로드는 취소할 수 없습니다.");
+            throw new BusinessException(ErrorCode.UPLOAD_ALREADY_CLOSED, "이미 완료된 업로드는 취소할 수 없어요.");
         }
         s3StorageClient.abortMultipartUpload(upload.getOriginalKey(), upload.getS3UploadId());
         Video video = upload.getVideo();
@@ -214,13 +214,13 @@ public class UploadService {
         }
         long used = generationRequestService.countUsage(userId, GenerationRequestService.todayKst()).get(SourceType.UPLOAD);
         if (used >= limit.dailyCount()) {
-            throw new BusinessException(ErrorCode.DAILY_LIMIT_EXCEEDED, "오늘 업로드 횟수를 모두 사용했습니다.");
+            throw new BusinessException(ErrorCode.DAILY_LIMIT_EXCEEDED, "오늘 내 영상 해설 횟수를 다 썼어요.");
         }
         // 올리는 중인 업로드도 완료되면 차감되므로 남은 횟수를 미리 잡아 둔다
         long inProgress = videoUploadRepository.countInProgress(userId, IN_PROGRESS, Instant.now().minus(IN_PROGRESS_WINDOW));
         if (used + inProgress >= limit.dailyCount()) {
             throw new BusinessException(ErrorCode.DAILY_LIMIT_EXCEEDED,
-                    "올리는 중인 영상이 있어 오늘 더 올릴 수 없습니다. 올리던 영상을 끝내거나 취소해 주세요.");
+                    "올리는 중인 영상이 있어 오늘 더 올릴 수 없어요. 올리던 영상을 끝내거나 취소해 주세요.");
         }
     }
 
@@ -230,7 +230,7 @@ public class UploadService {
                 : videoUploadRepository.findById(videoId);
         VideoUpload upload = found.orElseThrow(() -> new BusinessException(ErrorCode.VIDEO_NOT_FOUND));
         if (!upload.getVideo().isUploadedBy(userId)) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "영상을 올린 회원만 할 수 있습니다.");
+            throw new BusinessException(ErrorCode.FORBIDDEN, "영상을 올린 회원만 할 수 있어요.");
         }
         return upload;
     }

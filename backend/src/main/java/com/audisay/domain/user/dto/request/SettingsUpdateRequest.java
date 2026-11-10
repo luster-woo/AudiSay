@@ -19,23 +19,23 @@ import java.util.Set;
  * 바꿀 필드만 보낸다. 보내지 않은 필드(null)는 그대로 둔다. 범위는 DB CHECK와 같다.
  */
 public record SettingsUpdateRequest(
-        @Min(value = 1, message = "상세도는 1~3 사이여야 합니다.")
-        @Max(value = 3, message = "상세도는 1~3 사이여야 합니다.")
+        @Min(value = 1, message = "상세도는 1~3 사이여야 해요.")
+        @Max(value = 3, message = "상세도는 1~3 사이여야 해요.")
         Integer detailLevel,
 
         NarrationMode narrationMode,
 
-        @DecimalMin(value = "0.5", message = "말하기 속도는 0.5~2.5 사이여야 합니다.")
-        @DecimalMax(value = "2.5", message = "말하기 속도는 0.5~2.5 사이여야 합니다.")
-        @Digits(integer = 1, fraction = 1, message = "말하기 속도는 소수 첫째 자리까지만 쓸 수 있습니다.")
+        @DecimalMin(value = "0.5", message = "말하기 속도는 0.5~2.5 사이여야 해요.")
+        @DecimalMax(value = "2.5", message = "말하기 속도는 0.5~2.5 사이여야 해요.")
+        @Digits(integer = 1, fraction = 1, message = "말하기 속도는 소수 첫째 자리까지만 쓸 수 있어요.")
         BigDecimal speechRate,
 
         SoundMix soundMix,
 
         SubtitleReading subtitleReading,
 
-        @Min(value = 0, message = "원래 소리 크기는 0~100 사이여야 합니다.")
-        @Max(value = 100, message = "원래 소리 크기는 0~100 사이여야 합니다.")
+        @Min(value = 0, message = "원래 소리 크기는 0~100 사이여야 해요.")
+        @Max(value = 100, message = "원래 소리 크기는 0~100 사이여야 해요.")
         Integer originalVolume,
 
         Integer seekStepSec,
@@ -44,15 +44,15 @@ public record SettingsUpdateRequest(
 
         Boolean highContrast,
 
-        @Min(value = 1, message = "글자 크기는 1~5 사이여야 합니다.")
-        @Max(value = 5, message = "글자 크기는 1~5 사이여야 합니다.")
+        @Min(value = 1, message = "글자 크기는 1~5 사이여야 해요.")
+        @Max(value = 5, message = "글자 크기는 1~5 사이여야 해요.")
         Integer fontSizeLevel,
 
         Boolean tutorialCompleted
 ) {
     private static final Set<Integer> SEEK_STEPS = Set.of(5, 10, 30);
 
-    @AssertTrue(message = "이동 간격은 5, 10, 30초 중 하나여야 합니다.")
+    @AssertTrue(message = "이동 간격은 5, 10, 30초 중 하나여야 해요.")
     public boolean isSeekStepSecValid() {
         return seekStepSec == null || SEEK_STEPS.contains(seekStepSec);
     }

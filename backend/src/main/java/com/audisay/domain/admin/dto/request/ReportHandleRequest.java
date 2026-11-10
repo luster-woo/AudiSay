@@ -13,7 +13,7 @@ public record ReportHandleRequest(
 
         Boolean applyToSameLine
 ) {
-    @AssertTrue(message = "신고는 RESOLVED 또는 REJECTED로만 바꿀 수 있습니다.")
+    @AssertTrue(message = "신고는 RESOLVED 또는 REJECTED로만 바꿀 수 있어요.")
     public boolean isStatusHandled() {
         return status != ReportStatus.PENDING;
     }

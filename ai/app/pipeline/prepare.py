@@ -60,6 +60,11 @@ def normalize(raw: dict, video_id: int | None, model: str, duration_ms: int | No
     """Gemini 응답(MM:SS 문자열)을 밀리초로 바꾸고 정렬한 full.json 형식으로 만든다."""
     dialogues = [{"startMs": to_ms(d["start"]), "endMs": to_ms(d["end"]), "speaker": d.get("speaker"),
                   "text": d["text"], **({"original": d["original"]} if d.get("original") else {})} for d in raw["dialogue"]]
+    for d, r in zip(dialogues, raw["dialogue"]):
+        # Gemini(프롬프트 v5)가 번역을 따로 준 외국어 대사: 한국어 번역을 대사 글로 쓰고(업로드 영상과 같은 모양) 읽어 줄 대사로 표시한다
+        ko = (r.get("translation") or "").strip()
+        if ko and (r.get("language") or "ko").lower()[:2] != "ko" and ko != d["text"].strip():
+            d.update(text=ko, original=d["text"], dub=True)
     scenes = [{
         "startMs": to_ms(s["start"]), "endMs": to_ms(s["end"]), "title": s["title"],
         "people": [{"name": p.get("name"), "basis": p.get("basis"), "appearance": p["appearance"]}

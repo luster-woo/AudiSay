@@ -199,15 +199,19 @@ export function useNarration({
       const fits = isDub
         ? dubEnd != null && needMs <= dubEnd - line.startMs + DUB_SLACK_MS
         : needMs <= gapMs + 300
-      const mustPause = mode === 'PAUSE_AFTER' || (mode === 'AUTO' && !fits)
+      // '멈추고'도 번역은 대사 흐름에 맞춰 겹쳐 읽는다(너무 길 때만 멈춤). 해설만 문장마다 멈춘다
+      const mustPause = isDub
+        ? mode !== 'WITH_VIDEO' && !fits
+        : mode === 'PAUSE_AFTER' || (mode === 'AUTO' && !fits)
       const item = {
         text: line.text,
         audioUrl: line.audioUrl,
         rate,
         refreshUrl: () => refreshAudioUrl(line.lineId),
       }
-      // 자동: 앞 문장을 아직 읽는 중이면(1초 간격·같은 시각 문장) 버리지 않고, 영상을 멈춘 채 이어서 읽는다
-      if (mustPause || (mode === 'AUTO' && narrator.busy)) {
+      // 자동(번역은 '멈추고'도): 앞 문장을 아직 읽는 중이면(1초 간격·같은 시각 문장) 버리지 않고, 영상을 멈춘 채 이어서 읽는다
+      const queueWhenBusy = mode === 'AUTO' || (isDub && mode === 'PAUSE_AFTER')
+      if (mustPause || (queueWhenBusy && narrator.busy)) {
         void holdWhile(() => narrator.say(item), { queue: true })
         return true
       }

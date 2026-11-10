@@ -480,3 +480,29 @@ test('외국어 대사 번역(DIALOGUE): 멈추지 않고 영상 소리를 줄�
     description.dialogues.splice(-2)
   }
 })
+
+test("'멈추고' 모드도 외국어 대사 번역은 멈추지 않고 겹쳐 읽는다 (해설만 문장마다 멈춤)", async () => {
+  const dub = line(53, T(50), '총독 각하의 건배사입니다', {
+    detailLevel: 1,
+    lineType: 'DIALOGUE',
+    gapEndMs: null,
+    audioDurationMs: 2500,
+  })
+  description.lines.push(dub)
+  description.dialogues.push({
+    startMs: T(50),
+    endMs: T(52),
+    text: '총독 각하의 건배사입니다',
+    characterName: null,
+  })
+  try {
+    const { walk, controls, said } = setup({ narrationMode: 'PAUSE_AFTER' })
+    walk(T(45), T(50.2))
+    await flush()
+    expect(said()).toEqual(['총독 각하의 건배사입니다'])
+    expect(controls.pause).not.toHaveBeenCalled()
+  } finally {
+    description.lines.pop()
+    description.dialogues.pop()
+  }
+})

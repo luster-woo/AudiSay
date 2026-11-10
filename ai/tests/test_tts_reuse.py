@@ -18,7 +18,7 @@ def _seeded_line() -> str:
 async def test_demo_audio_is_reused_without_gemini(monkeypatch, tmp_path):
     calls = []
 
-    async def synth(gms, text, ctx):
+    async def synth(gms, text, ctx, voice=tts.VOICE_NAME):
         calls.append(text)
         return b"new", 100
 
@@ -32,7 +32,7 @@ async def test_demo_audio_is_reused_without_gemini(monkeypatch, tmp_path):
 async def test_new_sentence_is_cached_for_next_time(monkeypatch, tmp_path):
     calls = []
 
-    async def synth(gms, text, ctx):
+    async def synth(gms, text, ctx, voice=tts.VOICE_NAME):
         calls.append(text)
         return b"ID3new", 1200
 
@@ -48,7 +48,7 @@ async def test_upload_video_uses_supertonic_not_gemini(monkeypatch, tmp_path):
     """직접 올린 영상(inf 있음): Supertonic F1로 만들고 Gemini TTS·Gemini 음성 캐시는 쓰지 않는다(2026-11-06)."""
     gemini, voices = [], []
 
-    async def synth(gms, text, ctx):
+    async def synth(gms, text, ctx, voice=tts.VOICE_NAME):
         gemini.append(text)
         return b"ID3gemini", 100
 
@@ -166,7 +166,9 @@ async def test_job_tts_saves_in_batches_so_a_timeout_keeps_earlier_audio(monkeyp
             return {"summary_text": None, "summary_audio_key": None}
 
         async def fetch(self, sql, *args):
-            return [{"id": i, "text": f"문장 {i}."} for i in range(1, 6)]
+            if "transcript_segments" in sql:
+                return []
+            return [{"id": i, "text": f"문장 {i}.", "start_ms": i * 1000, "detail_level": 1} for i in range(1, 6)]
 
         def acquire(self):
             return Con()
@@ -177,10 +179,10 @@ async def test_job_tts_saves_in_batches_so_a_timeout_keeps_earlier_audio(monkeyp
     batches = []
 
     async def many(gms, storage, items, ctx, on_done=None, inf=None):
-        batches.append([k for k, _ in items])
+        batches.append([x[0] for x in items])
         if len(batches) == 2:
             raise TimeoutError("시간 제한")
-        return {k: 100 for k, _ in items}
+        return {x[0]: 100 for x in items}
 
     monkeypatch.setattr(tts, "synthesize_many", many)
 
@@ -198,3 +200,27 @@ async def test_job_tts_saves_in_batches_so_a_timeout_keeps_earlier_audio(monkeyp
     with pytest.raises(TimeoutError):
         await tts.Tts(None, None, Db())(env, Events())
     assert saved == [1, 2]  # 첫 묶음은 저장됐다
+
+
+def test_dub_line_is_told_apart_like_be_dublines():
+    """외국어 대사 번역 문장(상세도 1, '이름: ' 뗀 글이 그 시각 대사 안에 있음)만 남성 목소리로 읽는다(BE DubLines와 같은 규칙)."""
+    spoken = [(461_000, 462_000, "신사숙녀여러분!"), (491_000, 526_000, "총독각하의건배사입니다.금일쇼와7년")]
+    assert tts.is_dub(461_000, 1, "일본 고위 관리: 신사 숙녀 여러분!", spoken)
+    assert tts.is_dub(495_000, 1, "금일 쇼와 7년", spoken)  # 긴 연설이 나뉜 뒤쪽 문장
+    assert not tts.is_dub(461_000, 2, "신사 숙녀 여러분!", spoken)  # 해설 상세도
+    assert not tts.is_dub(463_000, 1, "훈장을 단 남성이 마이크 앞에 선다.", spoken)
+    assert not tts.is_dub(600_000, 1, "신사 숙녀 여러분!", spoken)  # 대사 끝 + 15초 지남
+
+
+async def test_dub_voice_is_cached_apart_from_narration_voice(monkeypatch, tmp_path):
+    voices = []
+
+    async def synth(gms, text, ctx, voice=tts.VOICE_NAME):
+        voices.append(voice)
+        return b"ID3" + voice.encode(), 900
+
+    monkeypatch.setattr(tts, "synthesize", synth)
+    storage, ctx = LocalStorage(str(tmp_path)), CallContext("TTS", job_id=1)
+    await tts.synthesize_many(None, storage, [("tts/1/1-a.mp3", "건배!"), ("tts/1/2-b.mp3", "건배!", tts.DUB_VOICE)], ctx)
+    assert sorted(voices) == sorted([tts.VOICE_NAME, tts.DUB_VOICE])  # 같은 문장이라도 목소리가 다르면 따로 만든다
+    assert (tmp_path / "tts/1/2-b.mp3").read_bytes() == b"ID3" + tts.DUB_VOICE.encode()

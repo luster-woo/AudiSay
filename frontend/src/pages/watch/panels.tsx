@@ -235,12 +235,12 @@ export function ScriptPanel({
   return (
     <section aria-labelledby="script-title" className={WRAP}>
       <h2 id="script-title" className={LIST_TITLE}>
-        해설 대본
+        해설 문장
         <Dot />
-        {lines.length}문장
+        {lines.length}개
       </h2>
       {lines.length === 0 ? (
-        <p className="mt-3 text-ink-muted">대본이 없어요.</p>
+        <p className="mt-3 text-ink-muted">해설 문장이 없어요.</p>
       ) : (
         // 줄 사이 ↑ ↓ Home End 이동 (useRovingRows). 키는 안쪽 버튼이 받는다
         <ul ref={listRef} className={LIST} {...listProps}>

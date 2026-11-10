@@ -458,7 +458,7 @@ export function Player({ video }: { video: VideoDetail }) {
         case 'OPEN_SCRIPT':
           setEnlarged(false)
           setTab('script')
-          announce('해설 대본을 열었어요. 입력칸에서 Tab을 세 번 누르면 대본 탭이에요.')
+          announce('해설 문장을 열었어요. 입력칸에서 Tab을 세 번 누르면 해설 탭이에요.')
           return true
         case 'OPEN_HISTORY':
           // 질문 기록은 대화 칸에 늘 보인다
@@ -652,8 +652,8 @@ export function Player({ video }: { video: VideoDetail }) {
     setEnlarged((v) => !v)
     announce(
       enlarged
-        ? '작게 보기로 돌아왔어요. 목차와 대본이 다시 보여요.'
-        : '크게 보기로 바꿨어요. 목차와 대본은 숨기고 질문만 오른쪽에 남겼어요. Esc를 누르면 원래대로 돌아가요.',
+        ? '작게 보기로 돌아왔어요. 목차와 해설이 다시 보여요.'
+        : '크게 보기로 바꿨어요. 목차와 해설은 숨기고 질문만 오른쪽에 남겼어요. Esc를 누르면 원래대로 돌아가요.',
     )
   }
   useEffect(() => {
@@ -664,7 +664,7 @@ export function Player({ video }: { video: VideoDetail }) {
       if (ask.stopAnswer()) return
       if (enlarged) {
         setEnlarged(false)
-        announce('작게 보기로 돌아왔어요. 목차와 대본이 다시 보여요.')
+        announce('작게 보기로 돌아왔어요. 목차와 해설이 다시 보여요.')
       }
     }
     window.addEventListener('keydown', onKey)
@@ -915,7 +915,7 @@ export function Player({ video }: { video: VideoDetail }) {
       {/* 목차와 대본: 눈으로는 영상 바로 아래(왼쪽 3행), 읽는 순서는 대화 칸 뒤. 두 목록은 같은 줄 모양(왼쪽 시각 · 오른쪽 글 · 지금은 노랑)이다 */}
       {!enlarged && (
         <Tabs
-          label="목차와 대본"
+          label="목차와 해설"
           appearance="buttons"
           value={tab}
           onChange={setTab}
@@ -941,7 +941,7 @@ export function Player({ video }: { video: VideoDetail }) {
             },
             {
               value: 'script',
-              label: '대본',
+              label: '해설',
               panel: <ScriptPanel lines={lines} current={currentLine} onPick={onPickLine} />,
             },
           ]}

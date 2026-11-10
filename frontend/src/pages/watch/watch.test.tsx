@@ -354,7 +354,7 @@ test('읽는 순서: 질문 입력칸이 목차·대본 탭보다 먼저 온다 
   renderRoute('/watch/15')
   await screen.findByRole('button', { name: '재생' })
   const input = screen.getByRole('textbox', { name: '챗봇과 대화하기' })
-  const tablist = screen.getByRole('tablist', { name: '목차와 대본' })
+  const tablist = screen.getByRole('tablist', { name: '목차와 해설' })
   expect(input.compareDocumentPosition(tablist) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 })
 
@@ -410,14 +410,14 @@ test('상세도는 누적이다: 기본은 1·2단계, 자세히를 고르면 3�
   const user = userEvent.setup()
   renderRoute('/watch/15')
   await screen.findByRole('button', { name: '재생' })
-  await user.click(screen.getByRole('tab', { name: '대본' }))
-  expect(await screen.findByRole('heading', { name: /^해설 대본, ?2문장$/ })).toBeInTheDocument()
+  await user.click(screen.getByRole('tab', { name: '해설' }))
+  expect(await screen.findByRole('heading', { name: /^해설 문장, ?2개$/ })).toBeInTheDocument()
   expect(screen.queryByText('가운데가 가장 높아요.')).not.toBeInTheDocument()
 
   await user.click(screen.getByRole('radio', { name: '자세한 해설' }))
   expect(usersApi.updateSettings).toHaveBeenCalledWith({ detailLevel: 3 })
   await waitFor(() => expect(band()).toHaveTextContent('해설 상세도 자세한 해설.'))
-  expect(await screen.findByRole('heading', { name: /^해설 대본, ?3문장$/ })).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: /^해설 문장, ?3개$/ })).toBeInTheDocument()
   const texts = screen
     .getAllByText(/칠판이 보여요|세 개의 막대가|가운데가 가장 높아요/)
     .map((el) => el.textContent)
@@ -428,7 +428,7 @@ test('상세도는 누적이다: 기본은 1·2단계, 자세히를 고르면 3�
   ])
 
   await user.click(screen.getByRole('radio', { name: '짧은 해설' }))
-  expect(await screen.findByRole('heading', { name: /^해설 대본, ?1문장$/ })).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: /^해설 문장, ?1개$/ })).toBeInTheDocument()
 })
 
 test('이 문장 신고: 지금 문장을 보여 주고 사유를 골라 보낸다. 여는 동안 영상을 멈춘다', async () => {
@@ -1011,12 +1011,12 @@ test('대본 탭을 보고 있어도 입력을 마치면(명령 포함) 탭은 �
   })
   renderRoute('/watch/15')
   await screen.findByRole('button', { name: '재생' })
-  await user.click(screen.getByRole('tab', { name: '대본' }))
-  expect(screen.getByRole('tab', { name: '대본' })).toHaveAttribute('aria-selected', 'true')
+  await user.click(screen.getByRole('tab', { name: '해설' }))
+  expect(screen.getByRole('tab', { name: '해설' })).toHaveAttribute('aria-selected', 'true')
 
   const input = screen.getByRole('textbox', { name: '챗봇과 대화하기' })
   await user.type(input, '이동 되돌려 줘{Enter}')
-  expect(screen.getByRole('tab', { name: '대본' })).toHaveAttribute('aria-selected', 'true')
+  expect(screen.getByRole('tab', { name: '해설' })).toHaveAttribute('aria-selected', 'true')
   expect(screen.getByRole('region', { name: /^질문 기록/ })).toBeInTheDocument()
   expect(input).toHaveFocus()
   await waitFor(() => expect(chatApi.send).toHaveBeenCalled())

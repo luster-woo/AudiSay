@@ -154,8 +154,8 @@ export const TUTORIAL_STEPS: TutorialStepData[] = [
   {
     screen: SCREENS.watchTabs,
     target: { x: 64, y: 628, w: 777, h: 348 },
-    title: '목차와 대본',
-    body: '영상 아래에서 목차로 원하는 장면에 바로 가고, 대본에서 해설 문장을 다시 볼 수 있습니다.',
+    title: '목차와 해설',
+    body: '영상 아래에서 목차로 원하는 장면에 바로 가고, 해설 탭에서 해설 문장을 다시 볼 수 있습니다.',
     keys: '목록에서 장면이나 문장을 고르면 그 시각으로 옮겨요.',
     mascot: pointImg,
   },

@@ -12,12 +12,14 @@ inference.RemoteInference), 결과는 SQLite 대신 full.json/prepare.json(그 �
    - 소리 쪽: H200 받아쓰기(faster-whisper, 언어 자동) → 외국어면 번역 / 영상 전체를 3초 간격으로 훑은 사진 + H200 효과음
      → H200 줄거리(32B: 핵심 사건과 인물표)
    받아쓴 말이 없는 영상(애니메이션·몸개그)은 장면을 더 잘게 나누고 사진을 더 촘촘히 뽑아 동작 중심으로 쓰게 한다
-4. H200 장면 해설(Qwen3-VL, 사진+대사+글자+줄거리·인물표)
-   → 개조식 끝 고치기·문장 수 줄이기·겹친 시각 띄우기·되풀이 빼기 → H200 요약 → 대사 옮기기·같은 동작·옷차림만 있는 문장 거르기
+4. H200 장면 해설(Qwen3-VL, 사진+대사+글자+줄거리·인물표) / 그동안 H200 32B가 화면 문구(제목·방송 안내·기사 제목·알림)를 고름
+   → 개조식 끝 고치기·대사 옮기기와 옷차림만 있는 문장 거르기·문장 수 줄이기·겹친 시각 띄우기·되풀이 빼기 → H200 요약
+   → 같은 동작 거르기
 5. Gemini 응답과 같은 모양(raw)으로 모아 prepare.normalize → full.json
 H200이 실패하면 Gemini 엔진(영상 파일을 Gemini에 넣음, 크레딧)으로, UPLOAD_ENGINE=gemini면 그 반대 순서.
 """
 import asyncio
+import base64
 import json
 import logging
 import os
@@ -183,7 +185,9 @@ def timeline_frames(playback: Path, work: Path, duration_ms: int, every_ms: int 
 # ---------- 3·4. 오픈소스 분석(데모 local_pipeline.py) ----------
 
 MIN_SCENE_SEC = 4.0  # 2초였을 때 2분 요리 영상이 25장면(평균 5초)으로 잘게 나뉨
-MAX_SCENE_SEC = 30.0  # 장면이 너무 길면 나눠서 해설이 듬성듬성해지지 않게
+# 장면 길이·사진 간격·문장 수·대사 요약 거르기·이름 근거의 기본값은 데모에서 Gemini 정답지 5편(예능·애니·요리·시트콤·드라마)과
+# 견줘 정했다(2026-11-10): 30초·6초·6초에 거르기를 끈 값은 평균 종합 0.41, 지금 값은 0.44(2회 0.443·0.446)
+MAX_SCENE_SEC = 15.0  # 장면이 길면 사건을 놓친다(30초일 때 정답지 사건을 덜 담았다)
 SILENT_MAX_SCENE_SEC = 12.0  # 대사 없는 영상은 더 잘게. 19~22초 장면에서 동작을 놓치고 해설이 18초씩 비었다(2026-11-02 데모 Caminandes)
 
 # 추론 서버에 함께 보내는 해설 지침. 첫 실분석(2026-10-28)에서 "표시됨"처럼 개조식으로 끝나는 문장이 섞여 넣었다
@@ -212,9 +216,9 @@ SCENE_FIX_GUIDE = (" 인물은 '정해 둔 인물·물건 이름'의 호칭과 �
                    " 옷차림만 말하거나 '말하고 있습니다'만 있는 문장은 쓰지 않습니다. 대사로 들리는 내용은 옮기지 않습니다."
                    " 대사로는 알 수 없는 것, 곧 누가 무엇을 하는지(동작), 표정·몸짓·리액션, 화면 자막의 핵심 문구, 장소와 상황의 변화를 씁니다.")
 # all: 제목·화면 글자·대사에 나온 이름을 쓴다. screen: 대사에서만 들린 이름은 쓰지 않는다(들려도 화면의 누가 그 사람인지는 모른다)
-NAME_SOURCE = os.getenv("NAME_SOURCE", "all")
+NAME_SOURCE = os.getenv("NAME_SOURCE", "screen")
 # on이면 말로 한 내용을 요약한 문장("AI가 볼링을 추천합니다")을 쓰지 않게 하고(SPEECH_GUIDE) 남은 것도 뺀다(drop_speech_acts)
-SPEECH_FILTER = os.getenv("SPEECH_FILTER", "off") == "on"
+SPEECH_FILTER = os.getenv("SPEECH_FILTER", "on") == "on"
 SPEECH_GUIDE = (" 인물이 말로 설명·제안·질문·주장하는 내용은 대사로 들리므로 해설에 쓰지 않습니다."
                 " level 1도 말한 내용의 요약이 아니라 화면에서 보이는 행동과 그 결과(일어선다, 계산대로 간다, 휴대폰을 내민다)를 씁니다.")
 MIN_LINE_GAP_MS = 2000  # 한 장면 안 문장 사이 최소 간격. 같은 시각에 두 문장이 겹쳤다(2026-11-02 데모 Caminandes 92초)
@@ -249,8 +253,8 @@ def overlaps(seg: dict, scene: dict) -> bool:
 
 
 def frames_for(scene_ms: int) -> int:
-    """장면 길이에 맞춘 대표 사진 수: 6초에 1장, 4~8장."""
-    return max(4, min(8, round(scene_ms / 6000)))
+    """장면 길이에 맞춘 대표 사진 수: 3초에 1장, 4~8장."""
+    return max(4, min(8, round(scene_ms / 3000)))
 
 
 def frames_for_silent(scene_ms: int) -> int:
@@ -258,7 +262,7 @@ def frames_for_silent(scene_ms: int) -> int:
     return max(4, min(8, round(scene_ms / 3000)))
 
 
-SEC_PER_LINE = 6.0  # 장면 길이 몇 초에 문장 하나(모든 상세도 합). 해설 읽기 약 3~4초 + 대사·여유
+SEC_PER_LINE = 4.0  # 장면 길이 몇 초에 문장 하나(모든 상세도 합). 해설 읽기 약 3~4초
 
 
 def cap_lines(lines: list[dict], scene_ms: int) -> list[dict]:
@@ -356,6 +360,161 @@ def drop_speech_acts(lines: list[dict]) -> list[dict]:
     """말로 한 내용을 요약한 문장을 뺀다(2026-11-09 데모 예능·시트콤: "AI가 볼링을 추천합니다", "남성이 …을 우려합니다").
     대사로 이미 들린다. 표정·몸짓이 함께 있는 문장은 남긴다."""
     return [x for x in lines if not (SPEECH_ACT.search(x["text"]) and not VISUAL_CUE.search(x["text"]))]
+
+
+def drop_early(lines: list[dict], segs: list[dict]) -> list[dict]:
+    """문장 수 한도(cap_lines)보다 먼저 거른다. 한도가 대사를 옮긴 level 1과 옷차림 문장을 남기고 표정·몸짓 문장을 버린 뒤에
+    거르기가 남긴 것마저 빼서, 시트콤 139문장이 한도에서 46문장, 거르기에서 17문장이 됐다(2026-11-10 데모)."""
+    from app.pipeline.video import drop_said  # video가 local을 불러와서 여기서 부른다
+    out = drop_idle(drop_said([{**x, "at": mmss(x["atMs"])} for x in lines], segs))
+    if SPEECH_FILTER:
+        out = drop_speech_acts(out)
+    return [{k: v for k, v in x.items() if k != "at"} for x in out]
+
+
+SCREEN_PICK_PROMPT = """영상 제목: {title}
+이 사진은 영상의 한 순간입니다. 사진에서 읽은 글자 목록이 아래에 있습니다(글자 인식이라 오타가 있을 수 있습니다).
+번호마다 사진에서 그 글자를 찾아 종류(kind)를 하나씩 붙이고, 사진에 보이는 대로 바로잡은 글자(text)를 적으세요. 모든 번호에 붙입니다.
+title: 영상 위에 크게 얹은 제목·소제목·홍보 문구
+notice: 방송·공개 날짜 안내
+news: 화면에 크게 보이는 기사 제목
+message: 사진 속 휴대폰·컴퓨터 화면에 뜬 알림·메시지의 내용
+none: 그 밖의 모든 것(누가 한 말이나 상황을 적은 자막, 예능 프로그램의 설명 자막, 로고·프로그램 이름·채널 이름, 메뉴·분류,
+ 간판·상표, 기기 표시, 작은 글자, 뜻을 알 수 없게 깨진 글자)
+
+{listing}"""
+SCREEN_PICK_SCHEMA = {"type": "object", "required": ["items"], "properties": {"items": {"type": "array", "items": {
+    "type": "object", "required": ["no", "kind", "text"],
+    "properties": {"no": {"type": "integer"}, "text": {"type": "string", "maxLength": 60},
+                   "kind": {"type": "string", "enum": ["title", "notice", "news", "message", "none"]}}}}}}
+SCREEN_LINES = os.getenv("SCREEN_LINES", "on") == "on"  # 화면 문구(제목·방송 안내·기사 제목·알림)를 골라 해설에 넣는다
+SCREEN_PICK_FRAMES = 24  # 32B에 보여 주는 사진 수(사진 한 장에 호출 하나, 8장씩 동시에)
+SCREEN_PICK_WORDS = 8  # 사진 한 장에서 묻는 글자 수
+SCREEN_LINE_SEC = 20  # 영상 이 길이에 화면 문구 문장 하나까지
+SCREEN_LOGO_FRAMES = 3  # 이만큼 여러 사진에서 뽑힌 같은 글자는 늘 떠 있는 로고로 본다
+SCREEN_BUSY_SEC = 3  # 새 글자가 이보다 자주 뜨는 영상(예능 자막)은 화면 문구를 넣지 않는다. 예능 1.5초·드라마 예고편 8초에 하나였다
+
+
+def _spoken(word: str, near: str) -> float:
+    """화면 글자가 근처 대사에 들어 있는 정도(0~1). 두 글자 넘게 이어서 겹친 것만 센다
+    (한 글자씩 흩어져 겹친 것도 세면 '거짓과 기억' 같은 짧은 제목이 대사 자막으로 걸러졌다)."""
+    a, b = _norm(word), _norm(near)
+    if not a or not b:
+        return 0.0
+    return sum(m.size for m in SequenceMatcher(None, a, b, autojunk=False).get_matching_blocks() if m.size >= 2) / len(a)
+
+
+def _same_text(a: str, b: str) -> bool:
+    return a in b or b in a or SequenceMatcher(None, a, b).ratio() >= 0.75
+
+
+def screen_candidates(scenes: list[dict], shots: list[list[Path]], texts: list[list[str]], kept: list[list[str]],
+                      segs: list[dict]) -> list[dict]:
+    """화면 글자 가운데 대사 자막이 아닌 한글 글자와 그 글자가 처음 보인 사진·시각. 장면 해설은 화면 글자를 넘겨줘도
+    문장으로 쓰지 않아(2026-11-09 데모 드라마 예고편: '거짓과 기억'·첫 방송 안내를 하나도 안 씀) 코드가 골라 넣으려고 추린다.
+    texts는 사진마다 읽은 글자, kept는 장면마다 로고를 뺀 글자(clean_ocr). 외국어 글자는 음성으로 읽기 어려워 넣지 않는다."""
+    out, seen, k = [], [], 0
+    for sc, group, ok in zip(scenes, shots, kept):
+        near = " ".join(f"{x['text']} {x.get('original') or ''}" for x in segs
+                        if x["startMs"] < sc["endMs"] + 3000 and x["endMs"] > sc["startMs"] - 3000)
+        n = len(group)
+        for j, words in enumerate(texts[k:k + n]):
+            at = sc["startMs"] + (sc["endMs"] - sc["startMs"]) * (2 * j + 1) // (2 * n)  # frames가 뽑는 시각
+            for w in words:
+                key = _norm(w)
+                if w not in ok or not re.search(r"[가-힣]{2}", w) or _spoken(w, near) >= 0.6:
+                    continue
+                if any(SequenceMatcher(None, key, x).ratio() >= 0.75 for x in seen):  # 조금 다르게 읽은 같은 글자
+                    continue
+                seen.append(key)
+                out.append({"atMs": at, "text": w, "frame": group[j]})
+        k += n
+    return out
+
+
+async def pick_screen_lines(inf, title: str | None, cands: list[dict], duration_ms: int) -> list[dict]:
+    """32B가 사진을 보고 읽어 줄 글자(제목·안내·기사 제목·알림)만 고르고, 문장은 코드가 정해진 틀로 만든다.
+    글자만 주고 고르게 하면 하나도 안 고르거나 메뉴('경제')를 기사 제목으로 골랐다(2026-11-10 데모). 모델이 바로잡은 글자는
+    읽은 글자와 비슷할 때만 쓴다('나이어' → '라이어'). 종류를 틀리게 붙이기도 해서 문장 틀은 하나만 쓴다."""
+    if len(cands) * SCREEN_BUSY_SEC * 1000 > duration_ms:  # 예능 자막은 '(우와)' 같은 것까지 제목으로 골랐다
+        return []
+    by_frame: dict[str, list[dict]] = {}
+    for c in cands:
+        by_frame.setdefault(str(c["frame"]), []).append(c)
+    groups = [cs[:SCREEN_PICK_WORDS] for cs in list(by_frame.values())[:SCREEN_PICK_FRAMES]]
+    gate = asyncio.Semaphore(8)
+
+    async def ask(cs: list[dict]) -> list[tuple[str, str]]:
+        """(문장에 쓸 글자, 같은 글자인지 견줄 때 쓰는 글자). 뒤쪽은 모델이 바로잡은 글자라 로고를 여러 가지로 잘못 읽어도 하나로 모인다."""
+        listing = "\n".join(f"{i + 1}. {c['text']}" for i, c in enumerate(cs))
+        try:
+            image = base64.b64encode(Path(cs[0]["frame"]).read_bytes()).decode()
+            async with gate:
+                r = await inf.generate_json(SCREEN_PICK_PROMPT.format(title=title or "", listing=listing), SCREEN_PICK_SCHEMA,
+                                            max_tokens=600, images=[image])
+            items = r["result"]["items"]
+        except (inference.InferenceError, KeyError, TypeError, OSError):
+            return []
+        out = []
+        for x in items:
+            no = x.get("no") if isinstance(x, dict) else None
+            if not isinstance(no, int) or not 1 <= no <= len(cs) or x.get("kind") not in ("title", "notice", "news", "message"):
+                continue
+            read, fixed = cs[no - 1]["text"], str(x.get("text") or "").strip()
+            text = fixed if fixed and SequenceMatcher(None, _norm(fixed), _norm(read)).ratio() >= 0.6 else read
+            if re.search(r"[가-힣]{2}", text):
+                out.append((text.replace("'", "").strip(), _norm(fixed) or _norm(text)))
+        return out
+
+    answers = await asyncio.gather(*(ask(cs) for cs in groups))
+    count: list[list] = []  # [글자, 그 글자가 뽑힌 사진 수]
+    for picked in answers:
+        for label in {label for _, label in picked}:
+            hit = next((c for c in count if _same_text(label, c[0])), None)
+            if hit:
+                hit[1] += 1
+            else:
+                count.append([label, 1])
+    logos = [c[0] for c in count if c[1] >= SCREEN_LOGO_FRAMES]
+    notes, said = [], []
+    for cs, picked in zip(groups, answers):
+        fresh = []
+        for text, label in picked:
+            if any(_same_text(label, x) for x in logos + said) or any(_same_text(_norm(text), x) for x in said):
+                continue
+            said += [label, _norm(text)]
+            fresh.append(text)
+        if fresh:
+            quotes = fresh[:2]
+            notes.append({"atMs": cs[0]["atMs"], "level": 1, "quotes": quotes,
+                          "text": "화면에 " + ", ".join(f"'{q}'" for q in quotes) + " 문구가 뜹니다."})
+    return notes[:max(3, duration_ms // (SCREEN_LINE_SEC * 1000))]
+
+
+DESCRIBE_CHUNK = 8  # 추론 서버가 /describe 한 번에서 동시에 쓰는 장면 수와 같게
+DESCRIBE_SPLIT = int(os.getenv("DESCRIBE_SPLIT", "3"))  # 장면 해설을 이만큼 동시에 보낸다. 1이면 한 번에
+
+
+async def describe_scenes(inf, payload: dict) -> dict:
+    """장면 해설. 장면을 8개씩 묶어 /describe를 DESCRIBE_SPLIT개까지 동시에 부른다. 장면 프롬프트는 앞뒤 장면을 보지 않아
+    나눠도 같고 '장면 3/8' 번호만 묶음 안 번호가 된다. 데모 5편에서 걸린 시간은 그대로(평균 91초)였고 종합 점수는
+    한 번에 보낼 때 0.42·0.48, 나눠 보낼 때 0.50·0.49였다(2026-11-10)."""
+    scenes = payload["scenes"]
+    if DESCRIBE_SPLIT < 2 or len(scenes) <= DESCRIBE_CHUNK:
+        return await inf.describe(payload)
+    gate = asyncio.Semaphore(DESCRIBE_SPLIT)
+
+    async def one(chunk: list[dict]) -> dict:
+        async with gate:
+            return await inf.describe({**payload, "scenes": chunk})
+
+    outs = await asyncio.gather(*(one(scenes[k:k + DESCRIBE_CHUNK]) for k in range(0, len(scenes), DESCRIBE_CHUNK)))
+    merged = [sc for o in outs for sc in o["scenes"]]
+    for i, sc in enumerate(merged):  # 제목을 못 받은 장면에 서버가 붙이는 "n번째 장면"은 묶음 안 번호라 전체 번호로 고친다
+        if re.fullmatch(r"\d+번째 장면", sc.get("title") or ""):
+            sc["title"] = f"{i + 1}번째 장면"
+    models = list(dict.fromkeys(o["model"] for o in outs if o.get("model")))
+    return {**outs[0], "scenes": merged, **({"model": "+".join(models)} if models else {})}
 
 
 GROUP_MAX_MS = 12_000  # 문장 끝이 안 나와도 이 길이에서 끊는다(받아쓰기가 구두점을 안 찍는 구간)
@@ -555,12 +714,25 @@ async def analyze_opensource(inf, title: str | None, files: dict, work: Path, du
                            "events": " ".join(e["text"] for e in events if s["startMs"] <= e["atMs"] < s["endMs"]),
                            "ocr": ocr_by_scene[i], "frames": [str(p) for p in shots[i]]} for i, s in enumerate(scenes)]}
     t0 = time.monotonic()
-    desc = await inf.describe(payload)
+    # 화면 문구는 장면 해설을 쓰는 동안 고른다
+    cands = screen_candidates(scenes, shots, texts, ocr_by_scene, segs) if SCREEN_LINES else []
+    notes_job = asyncio.create_task(pick_screen_lines(inf, title, cands, duration_ms)) if cands else None
+    try:
+        desc = await describe_scenes(inf, payload)
+    except BaseException:
+        if notes_job:
+            notes_job.cancel()
+        raise
     await inference.log_remote(db, "DESCRIBE", str(desc.get("model", "")), t0, job_id=job_id)
+    notes = await notes_job if notes_job else []
     for sc, sd in zip(desc["scenes"], scenes):
         kept = [{**ln, "text": finish_sentence(ln["text"])} for ln in sc["lines"]
                 if finish_sentence(ln["text"]) and not looks_like_json(ln["text"])]
-        sc["lines"] = spread_lines(cap_lines(kept, sd["endMs"] - sd["startMs"]), sd)
+        kept = drop_early(kept, segs)
+        # 화면 문구는 문장 수 한도와 따로 넣는다. 해설이 이미 그 글자를 썼으면 넣지 않는다
+        shown = [{"atMs": n["atMs"], "level": 1, "text": n["text"]} for n in notes if sd["startMs"] <= n["atMs"] < sd["endMs"]
+                 and not all(any(_norm(q) in _norm(ln["text"]) for ln in kept) for q in n["quotes"])]
+        sc["lines"] = spread_lines(cap_lines(kept, sd["endMs"] - sd["startMs"]) + shown, sd)
     drop_repeats(desc["scenes"])
     lines = [ln for sc in desc["scenes"] for ln in sc["lines"]]
     await progress(17)

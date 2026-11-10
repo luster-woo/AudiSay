@@ -24,7 +24,7 @@ def test_finish_sentence_fixes_noun_endings():
 def test_cap_lines_limits_by_scene_length_and_dedups():
     lines = [{"level": 1, "text": "가"}, {"level": 1, "text": "나"}, {"level": 3, "text": "다"},
              {"level": 2, "text": "라"}, {"level": 2, "text": "라 "}]
-    kept = local.cap_lines(lines, 12_000)  # 12초 → 2문장
+    kept = local.cap_lines(lines, 8000)  # 8초 → 2문장
     assert [x["text"] for x in kept] == ["가", "라"]  # level 1은 한도의 절반(1), 나머지는 낮은 level부터, 같은 문장은 하나
     assert len(local.cap_lines(lines, 1000)) == 1
 
@@ -39,9 +39,9 @@ def test_group_sentences_by_end_mark_or_12s():
 
 
 def test_split_scenes_merges_short_and_splits_long():
-    cuts = [(0, 10_000), (10_000, 12_000), (12_000, 80_000)]
-    assert local.split_scenes(cuts, 80_000) == [{"startMs": 0, "endMs": 12_000}, {"startMs": 12_000, "endMs": 42_000},
-                                                {"startMs": 42_000, "endMs": 72_000}, {"startMs": 72_000, "endMs": 80_000}]
+    cuts = [(0, 10_000), (10_000, 12_000), (12_000, 50_000)]
+    assert local.split_scenes(cuts, 50_000) == [{"startMs": 0, "endMs": 12_000}, {"startMs": 12_000, "endMs": 27_000},
+                                                {"startMs": 27_000, "endMs": 42_000}, {"startMs": 42_000, "endMs": 50_000}]
 
 
 def test_silent_scenes_split_finer_and_frames_dense():
@@ -51,7 +51,7 @@ def test_silent_scenes_split_finer_and_frames_dense():
 
 
 def test_frames_for_and_overlaps():
-    assert local.frames_for(3000) == 4 and local.frames_for(36_000) == 6 and local.frames_for(120_000) == 8
+    assert local.frames_for(3000) == 4 and local.frames_for(15_000) == 5 and local.frames_for(120_000) == 8
     assert local.overlaps({"startMs": 5000, "endMs": 15_000}, {"startMs": 10_000, "endMs": 20_000})
     assert not local.overlaps({"startMs": 0, "endMs": 10_000}, {"startMs": 10_000, "endMs": 20_000})
 
@@ -237,9 +237,70 @@ def test_idle_and_speech_act_lines_are_dropped():
     assert [x["text"] for x in local.drop_speech_acts(lines)] == ["남성이 웃으며 대답합니다.", "여성이 계산대로 걸어갑니다."]
 
 
+def test_filter_before_line_limit():
+    """대사를 옮긴 문장·옷차림만 있는 문장을 문장 수 한도보다 먼저 빼서 표정·몸짓 문장이 자리를 얻는다."""
+    lines = [{"atMs": 1000, "level": 1, "text": "남성이 집에 가자고 말합니다."},
+             {"atMs": 2000, "level": 2, "text": "남성이 검은 옷을 입고 있습니다."},
+             {"atMs": 3000, "level": 2, "text": "아이가 귀를 막고 고개를 젓습니다."}]
+    assert local.drop_early(lines, []) == lines[2:]
+    assert local.cap_lines(local.drop_early(lines, []), 4000) == lines[2:]  # 한도 1: 먼저 거르지 않으면 level 1만 남았다가 뒤에서 빠진다
+
+
+def test_screen_lines_picked_from_ocr(tmp_path):
+    """대사 자막·로고·외국어를 뺀 화면 글자를 사진과 함께 32B에 묻고, 고른 글자로 정해진 틀의 문장을 만든다."""
+    shots = [[tmp_path / "a.jpg", tmp_path / "b.jpg"], [tmp_path / "c.jpg", tmp_path / "d.jpg"]]
+    for group in shots:
+        for f in group:
+            f.write_bytes(b"jpg")
+    scenes = [{"startMs": 0, "endMs": 10_000}, {"startMs": 10_000, "endMs": 20_000}]
+    texts = [["저녁먹죠", "PLAY"], ["거짓과 기억"], ["거짓과기억", "10월 30일 첫 방송", "나이어", "01"], ["엠비씨"]]
+    kept = [["저녁먹죠", "PLAY", "거짓과 기억"], ["거짓과기억", "10월 30일 첫 방송", "나이어", "01"]]  # 엠비씨는 로고로 빠졌다
+    segs = [{"startMs": 1000, "endMs": 3000, "text": "우리 저녁 먹죠"}]
+    cands = local.screen_candidates(scenes, shots, texts, kept, segs)
+    assert [(c["atMs"], c["text"], c["frame"].name) for c in cands] == [
+        (7500, "거짓과 기억", "b.jpg"), (12_500, "10월 30일 첫 방송", "c.jpg"), (12_500, "나이어", "c.jpg")]
+
+    class Inf:
+        async def generate_json(self, prompt, schema, max_tokens=2000, images=None):
+            assert len(images) == 1
+            if "1. 거짓과 기억" in prompt:
+                return {"result": {"items": [{"no": 1, "kind": "title", "text": "완전히 다른 글자"},
+                                             {"no": 5, "kind": "title", "text": "없는 번호"}]}}
+            return {"result": {"items": [{"no": 1, "kind": "notice", "text": "10월 30일 첫 방송"},
+                                         {"no": 2, "kind": "title", "text": "라이어"}]}}
+
+    notes = asyncio.run(local.pick_screen_lines(Inf(), "라이어", cands, 20_000))
+    assert [(n["atMs"], n["text"]) for n in notes] == [(7500, "화면에 '거짓과 기억' 문구가 뜹니다."),
+                                                       (12_500, "화면에 '10월 30일 첫 방송', '라이어' 문구가 뜹니다.")]
+    assert asyncio.run(local.pick_screen_lines(Inf(), "라이어", cands, 5_000)) == []  # 5초에 글자 셋 = 자막이 많은 영상
+
+
+def test_describe_split_keeps_scene_order(monkeypatch):
+    """장면을 8개씩 나눠 동시에 보내도 장면 순서·수는 그대로고 못 받은 제목 번호는 전체 번호다."""
+    calls = []
+
+    class Inf:
+        async def describe(self, payload):
+            calls.append(len(payload["scenes"]))
+            return {"model": "m", "scenes": [{"title": f"{i + 1}번째 장면", "people": [],
+                                              "lines": [{"atMs": s["startMs"], "level": 1, "text": str(s["startMs"])}]}
+                                             for i, s in enumerate(payload["scenes"])]}
+
+    payload = {"title": "t", "scenes": [{"startMs": k * 1000, "endMs": (k + 1) * 1000} for k in range(20)]}
+    out = asyncio.run(local.describe_scenes(Inf(), payload))
+    assert sorted(calls) == [4, 8, 8] and out["model"] == "m"
+    assert [sc["lines"][0]["text"] for sc in out["scenes"]] == [str(k * 1000) for k in range(20)]
+    assert [sc["title"] for sc in out["scenes"]] == [f"{k + 1}번째 장면" for k in range(20)]
+    calls.clear()
+    monkeypatch.setattr(local, "DESCRIBE_SPLIT", 1)
+    one = asyncio.run(local.describe_scenes(Inf(), payload))
+    assert calls == [20] and len(one["scenes"]) == 20
+
+
 def test_ground_names_keeps_only_names_with_evidence(monkeypatch):
     names = [{"name": "철수", "what": "빨간 모자 남성"}, {"name": "영희", "what": "안경 쓴 여성"}, {"name": "민수", "what": ""}]
     segs = [{"text": "영희야 이리 와"}]
+    monkeypatch.setattr(local, "NAME_SOURCE", "all")
     out = local.ground_names(names, "철수의 하루", [["OPEN"]], segs)
     assert [n["name"] for n in out] == ["철수", "영희", "민수"] and out[2]["what"] == ""  # 제목·대사에 있으면 그대로, 호칭이 없으면 이름 유지
     monkeypatch.setattr(local, "NAME_SOURCE", "screen")  # 대사에서만 들린 이름은 화면의 누구인지 몰라 쓰지 않는다

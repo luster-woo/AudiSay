@@ -246,6 +246,35 @@ def test_filter_before_line_limit():
     assert local.cap_lines(local.drop_early(lines, []), 4000) == lines[2:]  # 한도 1: 먼저 거르지 않으면 level 1만 남았다가 뒤에서 빠진다
 
 
+def test_screen_lines_picked_from_ocr(tmp_path):
+    """대사 자막·로고·외국어를 뺀 화면 글자를 사진과 함께 32B에 묻고, 고른 글자로 정해진 틀의 문장을 만든다."""
+    shots = [[tmp_path / "a.jpg", tmp_path / "b.jpg"], [tmp_path / "c.jpg", tmp_path / "d.jpg"]]
+    for group in shots:
+        for f in group:
+            f.write_bytes(b"jpg")
+    scenes = [{"startMs": 0, "endMs": 10_000}, {"startMs": 10_000, "endMs": 20_000}]
+    texts = [["저녁먹죠", "PLAY"], ["거짓과 기억"], ["거짓과기억", "10월 30일 첫 방송", "나이어", "01"], ["엠비씨"]]
+    kept = [["저녁먹죠", "PLAY", "거짓과 기억"], ["거짓과기억", "10월 30일 첫 방송", "나이어", "01"]]  # 엠비씨는 로고로 빠졌다
+    segs = [{"startMs": 1000, "endMs": 3000, "text": "우리 저녁 먹죠"}]
+    cands = local.screen_candidates(scenes, shots, texts, kept, segs)
+    assert [(c["atMs"], c["text"], c["frame"].name) for c in cands] == [
+        (7500, "거짓과 기억", "b.jpg"), (12_500, "10월 30일 첫 방송", "c.jpg"), (12_500, "나이어", "c.jpg")]
+
+    class Inf:
+        async def generate_json(self, prompt, schema, max_tokens=2000, images=None):
+            assert len(images) == 1
+            if "1. 거짓과 기억" in prompt:
+                return {"result": {"items": [{"no": 1, "kind": "title", "text": "완전히 다른 글자"},
+                                             {"no": 5, "kind": "title", "text": "없는 번호"}]}}
+            return {"result": {"items": [{"no": 1, "kind": "notice", "text": "10월 30일 첫 방송"},
+                                         {"no": 2, "kind": "title", "text": "라이어"}]}}
+
+    notes = asyncio.run(local.pick_screen_lines(Inf(), "라이어", cands, 20_000))
+    assert [(n["atMs"], n["text"]) for n in notes] == [(7500, "화면에 '거짓과 기억' 문구가 뜹니다."),
+                                                       (12_500, "화면에 '10월 30일 첫 방송', '라이어' 문구가 뜹니다.")]
+    assert asyncio.run(local.pick_screen_lines(Inf(), "라이어", cands, 5_000)) == []  # 5초에 글자 셋 = 자막이 많은 영상
+
+
 def test_ground_names_keeps_only_names_with_evidence(monkeypatch):
     names = [{"name": "철수", "what": "빨간 모자 남성"}, {"name": "영희", "what": "안경 쓴 여성"}, {"name": "민수", "what": ""}]
     segs = [{"text": "영희야 이리 와"}]

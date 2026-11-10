@@ -74,7 +74,7 @@ test('계정 정보(설정 포함)·이용 횟수를 표시하고 제목에 초�
   expect(await screen.findByText(me.email)).toBeVisible()
   // 회원 등급에는 인증 날짜를 적지 않는다
   expect(screen.queryByText('2026년 10월 22일')).not.toBeInTheDocument()
-  expect(screen.getByText('VIP')).toBeVisible()
+  expect(screen.getByText('시각장애인 인증 회원')).toBeVisible()
   expect(screen.queryByRole('link', { name: '시각장애인 인증' })).not.toBeInTheDocument()
   // 인증을 마친 회원은 인증 버튼 자리에 누를 수 없는 '인증 완료'가 있다
   expect(screen.getByRole('button', { name: '인증 완료' })).toHaveAttribute('aria-disabled', 'true')
@@ -152,7 +152,7 @@ test('미인증 회원은 키보드로 인증 화면에 이동하고 인증 후 
   await userEvent.click(screen.getByRole('button', { name: '인증 신청' }))
   await screen.findByRole('heading', { level: 1, name: '인증이 끝났어요' })
   await userEvent.click(within(screen.getByRole('main')).getByRole('link', { name: '내 정보' }))
-  expect(await screen.findByText('VIP')).toBeVisible()
+  expect(await screen.findByText('시각장애인 인증 회원')).toBeVisible()
   expect(await screen.findByText('5번 중 5번 남음')).toBeInTheDocument()
   expect(screen.queryByRole('link', { name: '시각장애인 인증' })).not.toBeInTheDocument()
   expect(tokenStore.get()).toBe('verified-session')
@@ -208,7 +208,9 @@ test('새 비밀번호의 공백·불일치를 막고 해당 칸으로 초점을
 })
 
 test('현재 비밀번호 불일치는 해당 값만 비우고 오류를 연결한다', async () => {
-  vi.mocked(usersApi.changePassword).mockRejectedValue(new ApiError('USER_002', 400, ''))
+  vi.mocked(usersApi.changePassword).mockRejectedValue(
+    new ApiError('USER_002', 400, '비밀번호가 맞지 않아요.'),
+  )
   renderRoute('/me')
   const dialog = await fillPassword()
   await userEvent.click(dialog.getByRole('button', { name: '비밀번호 바꾸기' }))
@@ -272,7 +274,9 @@ test('탈퇴 모달은 취소에 진입하고 취소하면 호출 버튼으로 �
 })
 
 test('탈퇴에 빈 비밀번호나 틀린 비밀번호를 입력하면 계정을 유지한다', async () => {
-  vi.mocked(usersApi.withdraw).mockRejectedValue(new ApiError('USER_002', 400, ''))
+  vi.mocked(usersApi.withdraw).mockRejectedValue(
+    new ApiError('USER_002', 400, '비밀번호가 맞지 않아요.'),
+  )
   const { router } = renderRoute('/me')
   const dialog = await withdrawDialog()
   await userEvent.click(dialog.getByRole('button', { name: '탈퇴하기' }))

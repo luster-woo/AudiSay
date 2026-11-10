@@ -1,3 +1,4 @@
+import { formatAdminDate } from './format'
 import type { Role } from '@/api/types'
 
 export const ROLE_LABELS: Record<Role, string> = {
@@ -6,13 +7,9 @@ export const ROLE_LABELS: Record<Role, string> = {
   ADMIN: '관리자',
 }
 
-/** 서버 UTC ISO → 한국 시간 "10. 09." (Figma 회원 표: 월·일 두 자리, 연도 생략) */
+/** 서버 UTC ISO → 한국 시간 "2026-10-09" (관리자 표 공통 형식, format.ts) */
 export function formatJoinedAt(iso: string): string {
-  return new Intl.DateTimeFormat('ko-KR', {
-    timeZone: 'Asia/Seoul',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date(iso))
+  return formatAdminDate(iso)
 }
 
 /**

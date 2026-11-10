@@ -1,4 +1,3 @@
-import { useEffect } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Dialog } from '@/components/ui/Dialog'
 import { useAnnouncer } from '@/features/announcer/context'
@@ -25,9 +24,7 @@ export function TermsDialog({
   const { announce } = useAnnouncer()
   const shortName = doc.key === 'terms' ? '이용약관' : '개인정보 안내'
 
-  useEffect(() => {
-    if (open) announce(`${shortName} 창이에요. 제목에 있어요.`)
-  }, [open, shortName, announce])
+  // 창을 열면 제목으로 포커스가 가며 낭독기가 창 이름·제목을 읽는다. 같은 내용을 안내로 또 읽지 않는다 (원칙 2장)
 
   return (
     <Dialog
@@ -36,21 +33,19 @@ export function TermsDialog({
       title={doc.title}
       focusTitle
       longForm
+      // 닫기는 창 머리의 '닫기' 하나만 둔다 (낭독기 버튼 목록에 '닫기'가 두 번 나오지 않게).
+      // 주 동작(동의)은 다른 창과 같이 노랑(accent)
       footer={
-        <>
-          <Button variant="secondary" size="lg" onClick={onClose}>
-            닫기
-          </Button>
-          <Button
-            size="lg"
-            onClick={() => {
-              onAgree()
-              announce(`${shortName}에 동의했어요.`)
-            }}
-          >
-            동의하고 닫기
-          </Button>
-        </>
+        <Button
+          variant="accent"
+          size="xl"
+          onClick={() => {
+            onAgree()
+            announce(`${shortName}에 동의했어요.`)
+          }}
+        >
+          동의하고 닫기
+        </Button>
       }
     >
       {doc.clauses.map((c, i) => (

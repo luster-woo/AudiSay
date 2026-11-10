@@ -221,7 +221,9 @@ test('본인 업로드만 공개 범위 버튼을 제공하고 실제 응답으�
 })
 
 test('공개 범위 변경 실패 시 기존 공개 상태와 버튼을 유지한다', async () => {
-  vi.mocked(videosApi.updateVisibility).mockRejectedValue(new ApiError('COMMON_003', 403, ''))
+  vi.mocked(videosApi.updateVisibility).mockRejectedValue(
+    new ApiError('COMMON_003', 403, '권한이 없어요.'),
+  )
   renderRoute('/me/videos')
   await userEvent.click(await screen.findByRole('button', { name: '비공개로, 영상 2' }))
   await waitFor(() =>

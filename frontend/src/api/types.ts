@@ -142,6 +142,8 @@ export interface Job {
   coveredUntilMs: number | null
   errorCode: JobErrorCode | null
   retryable: boolean | null
+  /** 실패했을 때 서버가 주는 안내 문구 (작업 실패 원인 코드 표). 실패가 아니면 null */
+  errorMessage?: string | null
   queuedAt: string
   startedAt: string | null
   finishedAt: string | null

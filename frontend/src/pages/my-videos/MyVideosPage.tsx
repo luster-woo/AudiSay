@@ -96,12 +96,12 @@ export default function MyVideosPage() {
     focusRef: headingRef,
   })
 
-  // 탭을 바꾼 뒤: 개수를 읽어 준다 (포커스는 탭에 둔다)
+  // 탭을 바꾼 뒤: 개수는 탭 이름('즐겨찾기 3, 탭')에 이미 있어 다시 읽지 않는다 (원칙 2장). 비어 있을 때만 알린다
   useEffect(() => {
     if (!pendingFocus.current || active.isPlaceholderData || total === undefined) return
     pendingFocus.current = null
-    announce(`${label} ${total}개.${total === 0 ? ' 아직 영상이 없어요.' : ''}`)
-  }, [active.isPlaceholderData, total, label, announce])
+    if (total === 0) announce('아직 영상이 없어요.')
+  }, [active.isPlaceholderData, total, announce])
 
   // 더 보기 뒤: 새로 붙은 첫 영상 제목으로 포커스를 옮기고 몇 개 불러왔는지 알린다
   useEffect(() => {

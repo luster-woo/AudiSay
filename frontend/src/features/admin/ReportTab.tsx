@@ -115,7 +115,7 @@ export function ReportTab({
                   <td className={`${TD} font-bold whitespace-nowrap text-danger`}>
                     {REASON_LABELS[r.reason]}
                   </td>
-                  <td className={`${TD} break-keep pl-[calc(1rem+50px)]! [overflow-wrap:anywhere]`}>
+                  <td className={`${TD} pl-[calc(1rem+50px)]! [overflow-wrap:anywhere]`}>
                     {r.reasonDetail ? (
                       `“${r.reasonDetail}”`
                     ) : (

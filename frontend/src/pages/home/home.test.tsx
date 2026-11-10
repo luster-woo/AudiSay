@@ -374,7 +374,9 @@ describe('음성 검색', () => {
   })
 
   test('알아듣지 못하면 다시 말하기에 포커스, 글자로 찾기는 검색 칸으로', async () => {
-    vi.mocked(sttApi.transcribe).mockRejectedValue(new ApiError('CHAT_001', 422, ''))
+    vi.mocked(sttApi.transcribe).mockRejectedValue(
+      new ApiError('CHAT_001', 422, '말을 알아듣지 못했어요. 다시 말씀해 주세요.'),
+    )
     renderRoute('/')
     await userEvent.click(await screen.findByRole('button', { name: '음성 검색' }))
     await userEvent.click(await screen.findByRole('button', { name: '말 끝내기' }))

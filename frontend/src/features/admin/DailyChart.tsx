@@ -58,7 +58,7 @@ export interface DailyChartProps {
 
 /**
  * 날짜별 막대 그림 (한 계열). 마우스를 올리면 그 날 값을 보여 준다.
- * 눈으로 보는 운영자용이라 그림 자체는 낭독기에서 숨기고, 같은 내용은 '표로 보기'에서 읽는다.
+ * 눈으로 보는 관리자용이라 그림 자체는 낭독기에서 숨기고, 같은 내용은 '표로 보기'에서 읽는다.
  */
 export function DailyChart({ daily, metric }: DailyChartProps) {
   const [hover, setHover] = useState<number | null>(null)

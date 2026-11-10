@@ -50,6 +50,8 @@ function mergeEvent(job: Job, msg: JobEvent): Job {
     status: msg.data.status,
     errorCode: msg.data.errorCode,
     retryable: msg.data.retryable,
+    // 실패 문구는 서버 것을 그대로 쓴다
+    errorMessage: msg.data.message,
   }
 }
 
@@ -324,7 +326,7 @@ function JobPage({ jobId }: { jobId: number }) {
           {retryable
             ? '다시 요청해도 오늘 횟수는 줄지 않아요.'
             : job.errorCode
-              ? jobError(job.errorCode).message
+              ? jobError(job.errorCode, job.errorMessage).message
               : '알 수 없는 오류가 났어요.'}
         </p>
       </StatusDialog>

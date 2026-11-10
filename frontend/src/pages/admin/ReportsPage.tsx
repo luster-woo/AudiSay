@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { queryKeys } from '@/api/queryKeys'
 import type { ReportStatus } from '@/api/types'
-import { cn } from '@/components/ui/cn'
 import { AdminPagination } from '@/features/admin/AdminPagination'
 import { ReportDetail } from '@/features/admin/ReportDetail'
 import { ReportList } from '@/features/admin/ReportList'
@@ -56,6 +55,7 @@ export default function ReportsPage() {
 function ReportListView() {
   const navigate = useNavigate()
   const { announce } = useAnnouncer()
+  const sortId = useId()
   const status = useStatus()
   const headingRef = useRef<HTMLHeadingElement>(null)
   const pendingCount = usePendingReportCount()
@@ -100,23 +100,6 @@ function ReportListView() {
     headingRef.current?.focus()
   }
 
-  const sortButton = (value: ReportSort, label: string) => (
-    <button
-      type="button"
-      aria-pressed={sort === value}
-      onClick={() => {
-        setSort(value)
-        setPage(0)
-      }}
-      className={cn(
-        'min-h-0 border-b-2 py-0.5 text-[0.8667rem]',
-        sort === value ? 'border-navy font-bold text-ink' : 'border-transparent text-ink-muted',
-      )}
-    >
-      {label}
-    </button>
-  )
-
   return (
     <div>
       {/* 다른 관리자 화면(통계·회원)과 같은 위쪽 양식: 화면 제목 → 그 아래 조작 줄 */}
@@ -134,12 +117,23 @@ function ReportListView() {
             </h2>
             <StatusSwitch value={status} onChange={changeStatus} pendingCount={pendingCount} />
           </div>
-          <div role="group" aria-label="정렬" className="flex items-center gap-2">
-            {sortButton('oldest', '오래된 순')}
-            <span aria-hidden="true" className="text-[0.8rem] text-line">
-              |
-            </span>
-            {sortButton('most', '신고 많은 순')}
+          {/* 정렬 고르기는 관리자 화면 모두 같은 select (회원 화면과 같은 모양·높이, 키보드는 ↑ ↓) */}
+          <div className="flex items-center gap-2">
+            <label htmlFor={sortId} className="text-[0.8667rem] text-ink-muted">
+              정렬
+            </label>
+            <select
+              id={sortId}
+              value={sort}
+              onChange={(e) => {
+                setSort(e.target.value as ReportSort)
+                setPage(0)
+              }}
+              className="h-[2.5333rem] min-h-0 rounded-sm border-2 border-ink-muted/70 bg-paper px-[0.8rem] text-[0.9333rem] focus-visible:border-ink"
+            >
+              <option value="oldest">오래된 순</option>
+              <option value="most">신고 많은 순</option>
+            </select>
           </div>
         </div>
         {isError && <p className="px-4 py-6">신고 목록을 불러오지 못했어요.</p>}

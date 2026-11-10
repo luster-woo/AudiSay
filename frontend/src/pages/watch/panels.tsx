@@ -36,7 +36,7 @@ function Dot() {
 }
 
 /** 패널 글자는 단어 단위로 줄을 바꾼다 (띄어쓰기 없는 아주 긴 글자만 어디서든 끊는다). 안쪽 글자에 그대로 이어진다 */
-const WRAP = 'break-keep [overflow-wrap:anywhere]'
+const WRAP = '[overflow-wrap:anywhere]'
 
 /* ───────────── 목차·해설: 같은 줄 모양 ───────────── */
 

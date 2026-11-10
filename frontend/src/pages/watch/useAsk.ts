@@ -10,6 +10,7 @@ import type {
   UserSettings,
 } from '@/api/types'
 import type { Narrator } from '@/features/player/Narrator'
+import { DETAIL_LABELS, SETTING_NAMES, VALUE_NAMES } from '@/features/settings/labels'
 import type { ActionResult } from './Player'
 import { withRo } from '@/utils/korean'
 import { formatPositionSpoken } from '@/utils/time'
@@ -60,37 +61,14 @@ export interface AskContext {
   showHistory: () => void
 }
 
-/** 설정 이름과 값을 말로 ("말하기 속도 1.4배") */
-const SETTING_LABEL: Partial<Record<keyof UserSettings, string>> = {
-  detailLevel: '해설 상세도',
-  speechRate: '말하기 속도',
-  originalVolume: '영상 소리 크기',
-  seekStepSec: '앞뒤 이동 간격',
-  fontSizeLevel: '글자 크기',
-  highContrast: '고대비 화면',
-  narrationMode: '해설 방식',
-  soundMix: '소리 구성',
-  subtitleReading: '자막 읽기',
-  summaryMode: '재생 전 요약',
-}
-const VALUE_LABEL: Record<string, string> = {
-  AUTO: '자동',
-  WITH_VIDEO: '영상과 함께',
-  PAUSE_AFTER: '멈춘 후 해설',
-  DIALOGUE_ONLY: '대사만',
-  DIALOGUE_AND_NARRATION: '대사와 해설',
-  ALL: '모두 읽기',
-  DIFFERENT_ONLY: '말과 다른 자막만',
-  OFF: '끄기',
-  ASK: '물어보기',
-  ALWAYS: '항상 듣기',
-  NEVER: '듣지 않기',
-}
+/** 설정 이름과 값을 말로 ("말하기 속도 1.4배"). 이름은 재생 설정 창과 같다 (features/settings/labels) */
+const SETTING_LABEL = SETTING_NAMES
+const VALUE_LABEL = VALUE_NAMES
 export function settingSpoken(key: keyof UserSettings, raw: string) {
   const name = SETTING_LABEL[key] ?? '설정'
   const value =
     key === 'detailLevel'
-      ? ({ '1': '짧은 해설', '2': '기본 해설', '3': '자세한 해설' } as Record<string, string>)[raw]
+      ? DETAIL_LABELS.find((o) => String(o.value) === raw)?.label
       : key === 'speechRate'
         ? `${raw}배`
         : key === 'originalVolume'

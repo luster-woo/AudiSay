@@ -76,7 +76,7 @@ export const shortcutCatalog: ShortcutEntry[] = [
     id: 'tutorial',
     group: 'everywhere',
     keys: ['T'],
-    description: '사용법 보기',
+    description: '튜토리얼 보기',
     hint: 'Tutorial의 T',
     spokenKeys: '티',
   },

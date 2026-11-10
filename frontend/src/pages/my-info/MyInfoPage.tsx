@@ -15,7 +15,7 @@ import { WithdrawDialog } from './WithdrawDialog'
 
 const ROLE_LABELS = {
   GENERAL: '일반 회원',
-  VISUALLY_IMPAIRED: 'VIP',
+  VISUALLY_IMPAIRED: '시각장애인 인증 회원',
   ADMIN: '관리자',
 } as const
 

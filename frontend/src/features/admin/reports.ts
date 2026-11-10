@@ -1,12 +1,10 @@
 import { adminApi } from '@/api/admin'
+import { formatAdminDateTime } from './format'
+import { REPORT_REASON_LABELS } from '@/features/report/reasons'
 import type { AdminReport, ReportReason, ReportStatus } from '@/api/types'
 
-export const REASON_LABELS: Record<ReportReason, string> = {
-  WRONG: '틀린 내용',
-  MISSING: '빠짐',
-  OVERLAP: '대사와 겹침',
-  OTHER: '기타',
-}
+/** 신고 사유 이름: 사용자 신고 창과 같다 */
+export const REASON_LABELS: Record<ReportReason, string> = REPORT_REASON_LABELS
 
 export const STATUS_LABELS: Record<ReportStatus, string> = {
   PENDING: '처리 전',
@@ -104,14 +102,7 @@ export function groupReports(reports: AdminReport[], sort: ReportSort): ReportGr
   )
 }
 
-/** 서버 UTC ISO → 한국 시간 "10. 22. 09:12" (관리자 목록용, 연도 생략) */
+/** 서버 UTC ISO → 한국 시간 "2026-10-22 09:12" (관리자 표 공통 형식, format.ts) */
 export function formatReportedAt(iso: string): string {
-  return new Intl.DateTimeFormat('ko-KR', {
-    timeZone: 'Asia/Seoul',
-    month: 'numeric',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(new Date(iso))
+  return formatAdminDateTime(iso)
 }

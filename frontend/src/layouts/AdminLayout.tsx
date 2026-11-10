@@ -82,7 +82,7 @@ export function AdminLayout() {
 
           {/* 사용자·로그아웃은 사이드바 맨 아래 (사이드바는 화면 높이에 고정) */}
           <div className="mt-auto border-t border-on-sidebar/20 px-[0.4rem] pt-[0.8867rem] text-[0.9333rem]">
-            <p>{user?.name} · 운영자</p>
+            <p>{user?.name} · 관리자</p>
             <button
               type="button"
               onClick={logout}

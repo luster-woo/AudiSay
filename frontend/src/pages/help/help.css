@@ -1,32 +1,13 @@
-:root {
-  --color-help-background: #faf8f3;
-}
-
-body:has(.help-page) {
-  background-color: var(--color-help-background);
-}
-
-html[data-contrast='high'] body:has(.help-page) {
-  background-color: var(--color-cream);
-}
+/* 도움말도 다른 화면과 같은 바탕·글꼴·색 토큰을 쓴다 (2026-11-10 점검: 따로 둔 글꼴·남색·바탕 때문에 다른 서비스처럼 보였다) */
 
 .help-page {
-  --help-navy: #283b5e;
-  --help-ink: #16181d;
-  --help-table-heading: #242a42;
-  --help-border: #c7c5be;
-  --help-rule: #dddad2;
-  color: var(--help-ink);
-  font-family: 'IBM Plex Sans KR', var(--font-sans);
-  padding-top: 0.25rem;
-}
-
-html[data-contrast='high'] .help-page {
   --help-navy: var(--color-navy);
   --help-ink: var(--color-ink);
   --help-table-heading: var(--color-ink);
   --help-border: var(--color-line);
   --help-rule: var(--color-line);
+  color: var(--help-ink);
+  padding-top: 0.25rem;
 }
 
 .help-title {

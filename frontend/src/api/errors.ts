@@ -21,97 +21,37 @@ export class NetworkError extends Error {
   }
 }
 
-/** 명세 에러 코드 → 사용자에게 읽어 줄 쉬운말 문구 */
-export const ERROR_MESSAGES: Record<string, string> = {
-  COMMON_001: '입력한 값을 다시 확인해 주세요.',
-  COMMON_002: '로그인이 필요해요.',
-  COMMON_003: '권한이 없어요.',
-  COMMON_004: '잠시 문제가 생겼어요. 조금 뒤에 다시 시도해 주세요.',
-  COMMON_005: '없는 주소예요.',
-  COMMON_006: '지원하지 않는 요청이에요.',
-  AUTH_001: '이메일 또는 비밀번호가 맞지 않아요.',
-  AUTH_002: '로그인이 만료됐어요. 다시 로그인해 주세요.',
-  AUTH_003: '로그인을 다시 확인하는 중이에요.',
-  USER_001: '이미 사용 중인 이메일이에요.',
-  USER_002: '비밀번호가 맞지 않아요.',
-  USER_003: '이미 인증된 회원이에요.',
-  USER_004: '민감정보 처리에 동의해야 인증할 수 있어요.',
-  USER_005: '없는 회원이에요.',
-  // USER_006(서류 거절)·USER_007(하루 시도 초과)·USER_008(확인 대기 밀림)은 서버가 이유별 문구를 준다.
-  // 여기에 고정 문구를 넣으면 그 문구를 덮어쓰므로 넣지 않는다 (toUserMessage 가 서버 message 를 쓴다)
-  VIDEO_001: '유튜브 주소 형식이 아니에요.',
-  VIDEO_002: '비공개이거나 삭제된 영상이에요.',
-  VIDEO_003: '다른 사이트에서 재생을 막은 영상이에요.',
-  VIDEO_004: '영상이 너무 길어요.',
-  VIDEO_005: '연령 제한이나 실시간 방송 영상은 지원하지 않아요.',
-  VIDEO_006: '없는 영상이에요.',
-  VIDEO_007: '비공개 영상이에요.',
-  VIDEO_008: '지금은 검색을 쓸 수 없어요. 유튜브 주소를 붙여 넣어 주세요.',
-  UPLOAD_001: 'MP4, MOV, WebM 파일만 올릴 수 있어요.',
-  UPLOAD_002: '파일이 너무 커요. 해상도를 낮춰서 올려 주세요.',
-  UPLOAD_003: '저작권 동의가 필요해요.',
-  UPLOAD_004: '이미 끝났거나 중단된 업로드예요.',
-  UPLOAD_005: '올라간 조각 정보가 맞지 않아요.',
-  UPLOAD_006: '아직 재생용 파일을 만드는 중이에요.',
-  LIMIT_001: '오늘 이용 횟수를 다 썼어요.',
-  LIMIT_002: '이 영상은 오늘 더 다시 요청할 수 없어요.',
-  JOB_001: '없는 작업이에요.',
-  JOB_002: '이미 해설을 만드는 중이에요.',
-  JOB_003: '지금은 다시 요청할 수 없어요.',
-  DESC_001: '없는 해설이에요.',
-  DESC_002: '이 구간은 해설이 없어요.',
-  DESC_003: '없는 해설 문장이에요.',
-  CHAT_001: '말을 알아듣지 못했어요. 다시 말씀해 주세요.',
-  CHAT_002: '음성 파일 형식이나 길이가 맞지 않아요.',
-  CHAT_003: '답변이 필요한 입력이 아니에요.',
-  CHAT_004: '없는 질문 기록이에요.',
-  REPORT_001: '이미 신고한 문장이에요.',
-  REPORT_002: '없는 신고예요.',
-  REPORT_003: '이미 처리된 신고예요.',
-}
+/** 서버 문구가 비어 있을 때(응답 형식이 깨졌을 때 등)만 쓰는 문구 */
+const FALLBACK_MESSAGE = '잠시 문제가 생겼어요. 조금 뒤에 다시 시도해 주세요.'
 
-/** 작업 실패 원인 코드 */
-export const JOB_ERROR_MESSAGES: Record<JobErrorCode, { message: string; retryable: boolean }> = {
-  VIDEO_UNAVAILABLE: { message: '영상이 비공개로 바뀌어 해설을 만들 수 없어요.', retryable: false },
-  // AI는 길이가 다를 때뿐 아니라 60분 초과·길이를 읽지 못할 때도 이 코드를 쓴다 (BE 문구와 같게)
-  DURATION_MISMATCH: {
-    message: '영상 길이를 확인할 수 없거나 올릴 수 있는 길이를 넘었어요.',
-    retryable: false,
-  },
-  TRANSCODE_FAILED: { message: '영상 파일을 읽을 수 없어요.', retryable: false },
-  AI_LIMIT: { message: '지금 요청이 많아요. 잠시 뒤에 다시 시도해 주세요.', retryable: true },
-  AI_TIMEOUT: { message: '시간이 오래 걸려 멈췄어요. 다시 시도해 주세요.', retryable: true },
-  UNKNOWN: { message: '알 수 없는 오류가 났어요.', retryable: true },
+/**
+ * 작업 실패 원인 코드 → 다시 요청할 수 있는지 (서버 Job.isRetryable 과 같다).
+ * 실패 문구는 서버가 준다 (작업 조회의 errorMessage, SSE failed 의 message). 여기 따로 두지 않는다
+ */
+const JOB_RETRYABLE: Record<JobErrorCode, boolean> = {
+  VIDEO_UNAVAILABLE: false,
+  DURATION_MISMATCH: false,
+  TRANSCODE_FAILED: false,
+  AI_LIMIT: true,
+  AI_TIMEOUT: true,
+  UNKNOWN: true,
+}
+const JOB_FALLBACK_MESSAGE = '알 수 없는 오류가 났어요.'
+
+/** 작업 실패 → 문구·다시 요청 가능 여부. 문구는 서버 것(message)을 쓰고, 없으면 기본 문구 (화면이 깨지지 않게) */
+export function jobError(code: string | null | undefined, message?: string | null) {
+  return {
+    message: message || JOB_FALLBACK_MESSAGE,
+    retryable: JOB_RETRYABLE[(code ?? 'UNKNOWN') as JobErrorCode] ?? true,
+  }
 }
 
 /**
- * 서버가 이유를 담아 다른 문구를 주기도 하는 코드와 그 코드의 서버 기본 문구.
- * 서버 문구가 기본 문구와 다르면(이유가 들어 있으면) 위 고정 문구 대신 서버 문구를 읽는다.
- * 예: COMMON_001 "입력 문장은 1~500자여야 합니다." · "인증 서류를 첨부해 주세요.", DESC_001 "아직 해설이 없습니다.",
- * LIMIT_001 "오늘 유튜브 해설 요청 횟수를 모두 사용했습니다." — 고정 문구로는 왜 안 되는지 알 수 없다
+ * 사용자에게 읽어 줄 문구. 서버 오류 문구(ErrorCode, 앱 말투 '~해요')를 하나의 기준으로 삼아 그대로 쓴다.
+ * (2026-11-10 점검: 같은 뜻의 문구를 프론트에도 따로 두어 서버 '~습니다'와 섞이거나 서로 달랐다)
  */
-const SERVER_DEFAULT: Record<string, string> = {
-  COMMON_001: '유효하지 않은 요청입니다.',
-  COMMON_003: '권한이 없습니다.',
-  DESC_001: '존재하지 않는 해설입니다.',
-  LIMIT_001: '오늘 이용 횟수를 모두 사용했습니다.',
-  JOB_003: '다시 요청할 수 없는 상태입니다.',
-  UPLOAD_004: '이미 완료되었거나 중단된 업로드입니다.',
-  CHAT_001: '말을 알아듣지 못했어요. 다시 말씀해 주세요.',
-  CHAT_002: '음성 파일 형식·길이가 맞지 않습니다.',
-}
-
-/** 작업 실패 원인 → 문구·다시 요청 가능 여부. 모르는 코드면 UNKNOWN (화면이 깨지지 않게) */
-export function jobError(code: string | null | undefined) {
-  return JOB_ERROR_MESSAGES[(code ?? 'UNKNOWN') as JobErrorCode] ?? JOB_ERROR_MESSAGES.UNKNOWN
-}
-
 export function toUserMessage(err: unknown): string {
-  if (err instanceof ApiError) {
-    const base = SERVER_DEFAULT[err.code]
-    if (base && err.message && err.message !== base) return err.message
-    return ERROR_MESSAGES[err.code] ?? err.message
-  }
+  if (err instanceof ApiError) return err.message || FALLBACK_MESSAGE
   if (err instanceof NetworkError) return err.message
-  return ERROR_MESSAGES.COMMON_004
+  return FALLBACK_MESSAGE
 }

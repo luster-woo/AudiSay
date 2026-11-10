@@ -235,7 +235,12 @@ test('실패(다시 요청 가능): 다시 요청하면 새 작업 화면으로 
 
 test('실패(다시 요청 불가): 이유를 보여 주고 홈으로 가기가 먼저', async () => {
   vi.mocked(jobsApi.get).mockResolvedValue(
-    job({ status: 'FAILED', errorCode: 'TRANSCODE_FAILED', retryable: false }),
+    job({
+      status: 'FAILED',
+      errorCode: 'TRANSCODE_FAILED',
+      retryable: false,
+      errorMessage: '영상 파일을 읽을 수 없어요.',
+    }),
   )
   renderRoute('/jobs/51')
   const dialog = await screen.findByRole('alertdialog', { name: '해설을 만들지 못했어요.' })

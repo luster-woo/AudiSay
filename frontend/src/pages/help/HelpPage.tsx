@@ -5,8 +5,6 @@ import { useAnnouncer } from '@/features/announcer/context'
 import { usePageEntry } from '@/features/page/usePageEntry'
 import { ShortcutHelpPanel } from './ShortcutHelpPanel'
 import { VoiceHelpPanel } from './VoiceHelpPanel'
-import '@fontsource/ibm-plex-sans-kr/400.css'
-import '@fontsource/ibm-plex-sans-kr/700.css'
 import './help.css'
 
 type HelpTab = 'shortcuts' | 'voice'

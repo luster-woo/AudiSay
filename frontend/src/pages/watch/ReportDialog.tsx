@@ -7,13 +7,18 @@ import { Button } from '@/components/ui/Button'
 import { cn } from '@/components/ui/cn'
 import { Dialog } from '@/components/ui/Dialog'
 import { useAnnouncer } from '@/features/announcer/context'
+import { REPORT_REASON_LABELS } from '@/features/report/reasons'
 import { formatClock, formatPositionSpoken } from '@/utils/time'
 
 const REASONS: { value: ReportReason; label: string; hint?: string }[] = [
-  { value: 'WRONG', label: '틀린 내용', hint: '화면과 다르게 설명했어요' },
-  { value: 'MISSING', label: '중요한 내용 빠짐', hint: '꼭 알아야 할 것을 말하지 않았어요' },
-  { value: 'OVERLAP', label: '대사와 겹침', hint: '사람 말소리와 동시에 나와요' },
-  { value: 'OTHER', label: '기타 (직접 입력)' },
+  { value: 'WRONG', label: REPORT_REASON_LABELS.WRONG, hint: '화면과 다르게 설명했어요' },
+  {
+    value: 'MISSING',
+    label: REPORT_REASON_LABELS.MISSING,
+    hint: '꼭 알아야 할 것을 말하지 않았어요',
+  },
+  { value: 'OVERLAP', label: REPORT_REASON_LABELS.OVERLAP, hint: '사람 말소리와 동시에 나와요' },
+  { value: 'OTHER', label: REPORT_REASON_LABELS.OTHER },
 ]
 
 export interface ReportDialogProps {

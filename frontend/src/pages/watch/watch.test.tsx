@@ -417,9 +417,9 @@ test('상세도는 누적이다: 기본은 1·2단계, 자세히를 고르면 3�
   expect(await screen.findByRole('heading', { name: /^해설 문장, ?2개$/ })).toBeInTheDocument()
   expect(screen.queryByText('가운데가 가장 높아요.')).not.toBeInTheDocument()
 
-  await user.click(screen.getByRole('radio', { name: '자세한 해설' }))
+  await user.click(screen.getByRole('radio', { name: '3 자세한 해설' }))
   expect(usersApi.updateSettings).toHaveBeenCalledWith({ detailLevel: 3 })
-  await waitFor(() => expect(band()).toHaveTextContent('해설 상세도 자세한 해설.'))
+  await waitFor(() => expect(band()).toHaveTextContent('해설 상세도 3 자세한 해설.'))
   expect(await screen.findByRole('heading', { name: /^해설 문장, ?3개$/ })).toBeInTheDocument()
   const texts = screen
     .getAllByText(/칠판이 보여요|세 개의 막대가|가운데가 가장 높아요/)
@@ -430,7 +430,7 @@ test('상세도는 누적이다: 기본은 1·2단계, 자세히를 고르면 3�
     '가운데가 가장 높아요.',
   ])
 
-  await user.click(screen.getByRole('radio', { name: '짧은 해설' }))
+  await user.click(screen.getByRole('radio', { name: '1 짧은 해설' }))
   expect(await screen.findByRole('heading', { name: /^해설 문장, ?1개$/ })).toBeInTheDocument()
 })
 
@@ -1244,6 +1244,8 @@ test('영상을 마우스로 누르면 재생 버튼과 같이 재생·멈춤하
   const user = userEvent.setup()
   renderRoute('/watch/15')
   await screen.findByRole('button', { name: '재생' })
+  // 시작 단계(요약 설정)가 정해진 뒤에 누른다
+  await waitFor(() => expect(band()).toHaveTextContent('영상 보기예요.'))
   const overlay = screen.getByTestId('video-click-overlay')
   expect(overlay.closest('[aria-hidden="true"]')).not.toBeNull()
   expect(overlay).not.toHaveAttribute('tabindex')
@@ -1289,7 +1291,7 @@ test('시청 화면 단축키: K 재생·멈춤, J/L 이동, P 위치, 1~3 상�
       expect.objectContaining({ detailLevel: 3 }),
     ),
   )
-  await waitFor(() => expect(band()).toHaveTextContent('해설 상세도 자세한 해설.'))
+  await waitFor(() => expect(band()).toHaveTextContent('해설 상세도 3 자세한 해설.'))
 
   // 한 글자 1/2/3 은 더 이상 상세도를 바꾸지 않는다 (낭독기 제목 이동 키와 겹침)
   vi.mocked(usersApi.updateSettings).mockClear()
@@ -1376,7 +1378,7 @@ test('Alt+Shift+/ 안내 창은 시청 화면에서 쓰는 키 8줄과 어디서
     '홈으로 가기',
     '방금 안내 스크린리더로 다시 듣기',
     '지금 화면의 단축키 보기',
-    '사용법 보기',
+    '튜토리얼 보기',
   ])
   expect(dialog).toHaveAccessibleDescription(/단축키 12개예요/)
 })

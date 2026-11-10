@@ -92,7 +92,8 @@ export function WithdrawDialog({ open, onClose }: { open: boolean; onClose: () =
           error={error}
         />
         <div className="flex flex-wrap gap-4">
-          <Button ref={cancelRef} variant="accent" size="xl" disabled={pending} onClick={close}>
+          {/* 대화상자 버튼 규칙: 취소 = 흰색(secondary), 위험한 동작 = 빨강(danger) */}
+          <Button ref={cancelRef} variant="secondary" size="xl" disabled={pending} onClick={close}>
             취소
           </Button>
           <Button type="submit" variant="danger" size="xl" loading={pending}>

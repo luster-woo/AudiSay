@@ -180,7 +180,7 @@ export const TUTORIAL_STEPS: TutorialStepData[] = [
     target: { x: 64, y: 286, w: 704, h: 56 },
     title: '자유롭게 영상 즐기기',
     body: '이제 준비가 끝났습니다. AI 해설과 챗봇을 활용해 원하는 영상을 자유롭게 감상해 보세요.',
-    keys: '이 사용법은 Alt+Shift+T로 언제든 다시 볼 수 있어요. 다음을 누르면 홈으로 가요.',
+    keys: '이 튜토리얼은 Alt+Shift+T로 언제든 다시 볼 수 있어요. 다음을 누르면 홈으로 가요.',
     mascot: waveImg,
   },
 ]

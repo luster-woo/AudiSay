@@ -263,7 +263,7 @@ describe('신고 처리', () => {
 
   test('신고 탭에서 한 건만 골라 반려할 수 있고, 이미 처리된 신고면 알려 준다', async () => {
     vi.mocked(adminApi.handleReport).mockRejectedValue(
-      new ApiError('REPORT_003', 409, '이미 처리된 신고입니다.'),
+      new ApiError('REPORT_003', 409, '이미 처리된 신고예요.'),
     )
     const user = userEvent.setup()
     renderRoute('/admin/reports/7')

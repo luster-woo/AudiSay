@@ -18,6 +18,7 @@ import { SeekBar } from '@/features/player/SeekBar'
 import { sceneAtMs, useNarration } from '@/features/player/useNarration'
 import { usePlayerSource } from '@/features/player/usePlayerSource'
 import { useSettings } from '@/features/settings/context'
+import { DETAIL_LABELS } from '@/features/settings/labels'
 import { useShortcutEntry, useShortcuts } from '@/features/shortcuts/context'
 import { withRo } from '@/utils/korean'
 import { formatDurationSpoken, formatPositionSpoken } from '@/utils/time'
@@ -31,11 +32,8 @@ import { CandidatesPanel, ChaptersPanel, HistoryPanel, ScriptPanel } from './pan
 import { useAsk } from './useAsk'
 import { VideoStage } from './VideoStage'
 
-const DETAIL_OPTIONS: { value: 1 | 2 | 3; label: string }[] = [
-  { value: 1, label: '짧은 해설' },
-  { value: 2, label: '기본 해설' },
-  { value: 3, label: '자세한 해설' },
-]
+/** 상세도 버튼 이름: 재생 설정 창·챗봇 답과 같다 ('1 짧은 해설') */
+const DETAIL_OPTIONS = DETAIL_LABELS
 type Tab = 'chapters' | 'script'
 /** 영상을 열고 요약을 어떻게 할지 정하는 단계 */
 type SummaryPhase = 'loading' | 'asking' | 'playing' | 'done'
@@ -68,7 +66,7 @@ export function Player({ video }: { video: VideoDetail }) {
   const videoId = video.videoId
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { settings, update } = useSettings()
+  const { settings, update, isLoaded: settingsLoaded } = useSettings()
   const { announce, bindVoice } = useAnnouncer()
   const { setHelpOpen } = useShortcuts()
   const [narrator] = useState(() => new Narrator())
@@ -322,8 +320,9 @@ export function Player({ video }: { video: VideoDetail }) {
    * 시작 단계는 화면에 들어올 때의 설정으로 한 번만 정한다. 보는 도중 재생 설정 창이나 챗봇('요약 항상 들려줘')으로
    * 요약 설정을 바꿔도 요약 창이 뜨거나, 요약이 저절로 읽히거나, 진입 안내가 다시 나오지 않게 한다
    */
+  // 내 설정을 받기 전(기본값 '묻기')에 정해 버리지 않게, 설정을 받은 뒤에 정한다
   const [startMode, setStartMode] = useState<SummaryMode | null>(null)
-  if (summarySettled && startMode === null)
+  if (summarySettled && settingsLoaded && startMode === null)
     setStartMode(summaryQ.isSuccess ? settings.summaryMode : 'NEVER')
   const summaryMode = startMode ?? 'NEVER'
   const phase: SummaryPhase =
@@ -1017,7 +1016,7 @@ export function Player({ video }: { video: VideoDetail }) {
               options={DETAIL_OPTIONS}
               value={settings.detailLevel}
               onChange={setDetail}
-              optionClassName="w-[6.5rem] px-2 text-base"
+              optionClassName="w-[7.5rem] px-2 text-base"
             />
             <div className="flex flex-wrap gap-2">
               <Button

@@ -73,7 +73,7 @@ public class SceneSearchStore {
                 .toList();
     }
 
-    /** 외국어 대사를 한국어로 읽어 주는 해설 문장 id(DubLines, 상세도 1만 본다) */
+    /** 외국어 대사를 한국어로 읽어 주는 해설 문장 id(line_type DIALOGUE, 칸이 생기기 전 해설은 DubLines. 상세도 1만 본다) */
     private Set<Long> dubLineIds(MapSqlParameterSource params) {
         List<DubLines.Spoken> dialogues = jdbc.query("""
                 SELECT start_ms, end_ms, text FROM transcript_segments WHERE description_id = :id
@@ -82,13 +82,10 @@ public class SceneSearchStore {
             Integer end = rs.getObject("end_ms", Integer.class);
             return new DubLines.Spoken(start, end == null ? start : end, rs.getString("text"));
         });
-        if (dialogues.isEmpty()) {
-            return Set.of();
-        }
         Set<Long> ids = new HashSet<>(jdbc.query("""
-                SELECT id, start_ms, text FROM description_lines WHERE description_id = :id AND detail_level = 1
-                """, params, (rs, i) -> DubLines.isDub(rs.getInt("start_ms"), 1, rs.getString("text"), dialogues)
-                ? rs.getLong("id") : null));
+                SELECT id, start_ms, text, line_type FROM description_lines WHERE description_id = :id AND detail_level = 1
+                """, params, (rs, i) -> "DIALOGUE".equals(rs.getString("line_type"))
+                || DubLines.isDub(rs.getInt("start_ms"), 1, rs.getString("text"), dialogues) ? rs.getLong("id") : null));
         ids.remove(null);
         return ids;
     }

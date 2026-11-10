@@ -886,9 +886,10 @@ export function Player({ video }: { video: VideoDetail }) {
         // 3행을 1fr 로 두어 대화 칸이 길 때 남는 높이가 2행(조작 아래)이 아니라 3행으로 가게 한다
         'lg:grid-rows-[auto_auto_1fr]',
         // 크게 보기: 화면 양옆 여백까지 써서 영상을 넓게
+        // 보통: 대화 칸 33rem. 글자 크기 3·배율 100%·화면 폭 1440px(스크롤바 포함)에서도 아래 조작 줄이 한 줄에 들어가게
         enlarged
           ? 'gap-x-[49px] gap-y-5 lg:-mx-10 lg:grid-cols-[minmax(0,1fr)_28rem]'
-          : 'gap-x-10 gap-y-5 lg:grid-cols-[minmax(0,1fr)_36rem]',
+          : 'gap-x-10 gap-y-5 lg:grid-cols-[minmax(0,1fr)_33rem]',
       )}
     >
       {/* 제목: 두 칸 위에 걸쳐 있어 아래 영상과 대화 칸의 윗선이 맞는다 */}
@@ -1013,8 +1014,9 @@ export function Player({ video }: { video: VideoDetail }) {
         {/* 크게 보기에서는 아래 줄을 숨긴다. 상세도 묶음 이름은 낭독기에만 읽힌다 (버튼 글자에 '해설'이 있어 화면에서는 뺐다) */}
         {!enlarged && (
           // 두 묶음: 왼쪽 해설 상세도(한 덩어리 선택) · 오른쪽 보조 버튼(연한 테두리, 조금 낮게). 묶음 사이는 넓게
-          // 한 줄에 다 들어가게 묶음 사이를 좁게 둔다 (대화 칸이 36rem 이라 왼쪽 칸은 696px. 상세도 묶음 332 + 16 + 보조 버튼 340 = 688)
-          <div className="mt-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-4">
+          // 상세도 묶음 332 + 사이 32 이상 + 보조 버튼 340 = 704. 왼쪽 칸은 화면 폭 1440px(스크롤바 17px 포함)에서 727px,
+          // 그보다 넓은 화면에서는 744px 라 한 줄에 들어가고 남는 폭만큼 묶음 사이가 벌어진다
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-x-8 gap-y-4">
             <ChoiceGroup
               legend="해설 상세도"
               hideLegend

@@ -17,10 +17,13 @@ import {
   type YoutubeSearchItem,
 } from '@/api/types'
 import { renderRoute } from '@/test/renderWithProviders'
-import { screenReaderLeadMs } from '@/features/search/speechLead'
+import { beepLeadMs } from '@/features/search/speechLead'
 
 // '띠' 전 기다림은 테스트에서 0 (기다림 자체는 아래 '안내 → 띠 → 녹음' 테스트에서 따로 본다)
-vi.mock('@/features/search/speechLead', () => ({ screenReaderLeadMs: vi.fn(() => 0) }))
+vi.mock('@/features/search/speechLead', () => ({
+  screenReaderLeadMs: vi.fn(() => 0),
+  beepLeadMs: vi.fn(() => 0),
+}))
 
 vi.mock('@/api/client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/api/client')>()
@@ -291,7 +294,7 @@ describe('음성 검색', () => {
     })
 
   test('안내 → 낭독기가 읽는 동안 기다림 → 띠 → 녹음 순서로 시작한다', async () => {
-    vi.mocked(screenReaderLeadMs).mockReturnValueOnce(300)
+    vi.mocked(beepLeadMs).mockReturnValueOnce(300)
     const startSpy = vi.spyOn(FakeRecorder.prototype, 'start')
     renderRoute('/')
     await userEvent.click(await screen.findByRole('button', { name: '음성 검색' }))

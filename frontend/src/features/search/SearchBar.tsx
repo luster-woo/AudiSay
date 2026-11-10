@@ -20,7 +20,7 @@ import { withRo } from '@/utils/korean'
 import { formatClock } from '@/utils/time'
 import { isYoutubeUrl } from '@/utils/youtube'
 import { MIC_MESSAGES } from './micPermission'
-import { screenReaderLeadMs } from './speechLead'
+import { beepLeadMs } from './speechLead'
 import { MAX_RECORD_SEC, VOICE_LABEL, useVoiceRecorder } from './useVoiceRecorder'
 
 /** 듣는 중 파형. 장식이라 숨기고, 움직임 줄이기 설정이면 멈춘다 */
@@ -146,7 +146,7 @@ export function SearchBar({
         const tip = takeVoiceTip() ? ' "고양이 영상 찾아 줘"처럼 문장으로 말해도 돼요.' : ''
         const intro = `'띠' 소리 뒤에 말씀하세요.${tip}`
         announce(intro)
-        return screenReaderLeadMs(intro)
+        return beepLeadMs(intro)
       },
     })
   }, [voice, announce])

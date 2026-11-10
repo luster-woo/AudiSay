@@ -184,6 +184,48 @@ test('영상과 함께: 멈추지 않고, 읽는 중에 덜 중요한 문장이 
   expect(said().slice(-1)).toEqual(['중요한 문장'])
 })
 
+test('0초 문장: 처음에 멈춰 있다가 재생하면 읽는다', () => {
+  const narrator = fakeNarrator()
+  const base: PlayerState = { ready: true, playing: false, ended: false, currentMs: 0, durationMs: T(60) }
+  const hook = renderHook(
+    ({ state }: { state: PlayerState }) =>
+      useNarration({
+        description: { ...description, lines: [line(1, 0, '0초 문장'), line(2, T(10), '첫 문장')] },
+        state,
+        controls: { play: vi.fn(), pause: vi.fn(), seek: vi.fn(), setVolume: vi.fn() },
+        settings: { ...DEFAULT_SETTINGS, narrationMode: 'AUTO' },
+        narrator: narrator as unknown as Narrator,
+        refreshAudioUrl: async () => null,
+        announce: vi.fn(),
+      }),
+    { initialProps: { state: base } },
+  )
+  const said = () => narrator.say.mock.calls.map((c) => (c[0] as { text: string }).text)
+  expect(said()).toEqual([]) // 멈춰 있는 동안은 읽지 않는다
+  act(() => hook.rerender({ state: { ...base, playing: true } }))
+  act(() => hook.rerender({ state: { ...base, playing: true, currentMs: 250 } }))
+  expect(said()).toEqual(['0초 문장'])
+  act(() => hook.rerender({ state: { ...base, playing: true, currentMs: 500 } }))
+  expect(said()).toEqual(['0초 문장']) // 두 번 읽지 않는다
+})
+
+test('자동: 앞 문장을 읽는 중에 다음 문장이 오면 버리지 않고 영상을 멈춘 채 이어서 읽는다', async () => {
+  const narrator = fakeNarrator({ hold: true })
+  const { tick, walk, controls, said } = setup({ narrationMode: 'AUTO' }, narrator)
+  walk(T(28), T(29.8)) // 0 → 28 은 큰 이동이라 한 번 끊는다
+  narrator.stop.mockClear()
+  tick(T(30.1)) // 중요도 1, 영상과 함께 읽기 시작
+  expect(controls.pause).not.toHaveBeenCalled()
+  tick(T(31.2))
+  tick(T(32.1)) // 아직 읽는 중에 다음 문장 → 멈추고 줄 세운다
+  expect(said()).toEqual(['덜 중요한 문장', '중요한 문장'])
+  expect(narrator.stop).not.toHaveBeenCalled() // 읽던 소리를 끊지 않는다
+  expect(controls.pause).toHaveBeenCalledTimes(1)
+  narrator.finish()
+  await flush()
+  expect(controls.play).toHaveBeenCalledTimes(1) // 다 읽으면 이어서 재생
+})
+
 test('멈추고: 문장마다 영상을 멈춘다', async () => {
   const narrator = fakeNarrator({ hold: true })
   const { tick, controls } = setup({ narrationMode: 'PAUSE_AFTER' }, narrator)

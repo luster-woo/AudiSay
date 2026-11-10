@@ -38,8 +38,24 @@ public class VideoRetryService {
     public RetryResponse retry(AuthUser authUser, Long videoId) {
         Role role = userService.getActiveUser(authUser.userId()).getRole();
         Video video = transactionTemplate.execute(status -> checkRetryable(authUser, videoId));
+        boolean rechecked = false;
         if (video.getSourceType() == SourceType.YOUTUBE) {
-            youtubeVideoService.getRequestableVideo(video.getYoutubeVideoId(), role);
+            try {
+                youtubeVideoService.getRequestableVideo(video.getYoutubeVideoId(), role);
+            } catch (BusinessException e) {
+                // 지워졌거나 비공개로 바뀐 영상은 목록·즐겨찾기에 '볼 수 없음'으로 보이게 표시해 둔다
+                if (e.getErrorCode() == ErrorCode.YOUTUBE_VIDEO_UNAVAILABLE) {
+                    transactionTemplate.executeWithoutResult(status ->
+                            videoRepository.findById(videoId).ifPresent(Video::markUnavailable));
+                }
+                throw e;
+            }
+            rechecked = true;
+        }
+        // 화면은 다시 할 수 없는 실패(retryable:false)면 버튼을 숨긴다. API를 직접 불러도 같은 규칙으로 막는다
+        // (같은 이유로 또 실패할 작업이 하루 재시도 횟수와 AI 비용을 쓰지 않게)
+        if (descriptionStateReader.latestFailureNotRetryable(videoId, rechecked)) {
+            throw new BusinessException(ErrorCode.JOB_NOT_RETRYABLE);
         }
         return transactionTemplate.execute(status -> launch(authUser.userId(), videoId));
     }
@@ -65,6 +81,8 @@ public class VideoRetryService {
         Video video = videoRepository.findById(videoId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.VIDEO_NOT_FOUND));
         User user = userService.getActiveUser(userId);
+        // 다시 요청할 수 있으면 볼 수 있는 영상이다 (유튜브는 방금 확인했다)
+        video.markAvailable();
         RetryLauncher.Retried retried = retryLauncher.launch(video, user, preparePayloadFactory.create(video));
         return new RetryResponse(videoId, retried.job().getId(), GenerationResult.NEW_JOB, false,
                 retried.retryRemainingToday());

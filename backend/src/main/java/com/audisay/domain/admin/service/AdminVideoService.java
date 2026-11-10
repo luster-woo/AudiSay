@@ -36,7 +36,8 @@ public class AdminVideoService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.VIDEO_NOT_FOUND));
         User admin = userService.getActiveUser(adminId);
         Long currentDescriptionId = descriptionStateReader.read(videoId).descriptionId();
-        Job job = jobLauncher.launch(video, admin, JobType.REGENERATE, preparePayloadFactory.create(video));
+        // 다시 만들기는 예전 Gemini 결과(캐시)를 쓰지 않는다 (같은 해설이 나오지 않게)
+        Job job = jobLauncher.launch(video, admin, JobType.REGENERATE, preparePayloadFactory.create(video).regenerate());
         return new RegenerateResponse(videoId, job.getId(), job.getJobType(), currentDescriptionId);
     }
 }

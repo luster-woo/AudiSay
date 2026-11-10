@@ -17,6 +17,9 @@ public enum ErrorCode {
     LOGIN_FAILED(HttpStatus.UNAUTHORIZED, "AUTH_001", "이메일 또는 비밀번호가 일치하지 않습니다."),
     REFRESH_TOKEN_INVALID(HttpStatus.UNAUTHORIZED, "AUTH_002", "로그인이 만료되었습니다. 다시 로그인해 주세요."),
     ACCESS_TOKEN_EXPIRED(HttpStatus.UNAUTHORIZED, "AUTH_003", "AccessToken이 만료되었습니다."),
+    /** 같은 기기(sid)의 RefreshToken이 다른 탭·창에서 이미 바뀌었다. 동시에 여러 곳에서 쓸 수 없다(의도된 로그아웃) */
+    REFRESH_TOKEN_REPLACED(HttpStatus.UNAUTHORIZED, "AUTH_004",
+            "다른 탭이나 창에서 로그인 정보가 바뀌어 이 화면은 로그아웃됐어요. AudiSay는 한 번에 한 곳에서만 쓸 수 있어요. 다시 로그인해 주세요."),
 
     DUPLICATE_EMAIL(HttpStatus.CONFLICT, "USER_001", "이미 사용 중인 이메일입니다."),
     PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "USER_002", "비밀번호가 일치하지 않습니다."),
@@ -42,6 +45,7 @@ public enum ErrorCode {
     UPLOAD_ALREADY_CLOSED(HttpStatus.CONFLICT, "UPLOAD_004", "이미 완료되었거나 중단된 업로드입니다."),
     UPLOAD_PART_MISMATCH(HttpStatus.BAD_REQUEST, "UPLOAD_005", "올라간 조각 정보가 맞지 않습니다."),
     PLAYBACK_NOT_READY(HttpStatus.CONFLICT, "UPLOAD_006", "아직 재생용 파일을 만드는 중입니다."),
+    PLAYBACK_FAILED(HttpStatus.UNPROCESSABLE_ENTITY, "UPLOAD_007", "영상 파일을 읽을 수 없어 재생할 수 없어요."),
 
     DAILY_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "LIMIT_001", "오늘 이용 횟수를 모두 사용했습니다."),
     RETRY_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "LIMIT_002", "이 영상은 오늘 더 다시 요청할 수 없습니다."),

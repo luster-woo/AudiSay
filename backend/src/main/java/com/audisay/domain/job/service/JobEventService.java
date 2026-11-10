@@ -281,6 +281,10 @@ public class JobEventService {
 
     private void failJob(Job job, String errorCode) {
         job.fail(errorCode == null ? UNKNOWN_ERROR : errorCode);
+        // 유튜브 영상이 지워졌거나 비공개로 바뀌어 실패했으면 영상도 '볼 수 없음'으로 표시한다
+        if ("VIDEO_UNAVAILABLE".equals(errorCode) && job.getVideo() != null) {
+            job.getVideo().markUnavailable();
+        }
         if (job.getPipeline() == Pipeline.LOCAL) {
             uploadService.failTranscode(job.getVideo().getId());
         }

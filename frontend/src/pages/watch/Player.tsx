@@ -291,8 +291,8 @@ export function Player({ video }: { video: VideoDetail }) {
   }, [narrator])
 
   /*
-   * 요약 창은 요약을 듣는 동안에도, 다 들은 뒤에도 그대로 둔다 (화면이 바뀌면 낭독기가 다시 읽어 소리가 겹친다).
-   * 창은 '건너뛰기'(Esc)로만 닫고, 닫히면 재생하지 않고 재생 버튼에서 기다린다 (원칙 1장: 자동 재생 없음).
+   * 요약 창은 요약을 듣는 동안에는 그대로 두고(화면이 바뀌면 낭독기가 다시 읽어 소리가 겹친다), 다 들으면 닫는다.
+   * 듣는 중에는 '건너뛰기'(Esc)로 닫고, 닫히면 재생하지 않고 재생 버튼에서 기다린다 (원칙 1장: 자동 재생 없음).
    * 창이 닫히는 즉시 재생 버튼으로 포커스를 옮긴다(focusAfterCloseRef)
    */
   const [summaryInDialog, setSummaryInDialog] = useState(false)
@@ -353,9 +353,13 @@ export function Player({ video }: { video: VideoDetail }) {
     setSummaryInDialog(true)
     void playSummary(null).then((end) => {
       if (end === 'stopped') return // 건너뛰기·다시 듣기로 멈췄으면 그쪽에서 처리한다
-      setDecided('done')
-      if (end === 'cut') return // 다른 소리에 끊겼으면 '끝났어요'라고 하지 않는다
-      announce('요약이 끝났어요. 다시 들으려면 Enter, 닫으려면 Esc.')
+      if (end === 'cut') {
+        // 다른 소리에 끊겼으면 '끝났어요'라고 하지 않고 포커스도 옮기지 않는다
+        setDecided('done')
+        return
+      }
+      // 다 들었으면 창을 닫고 재생 버튼에서 기다린다 (재생은 하지 않는다)
+      waitAtPlay('요약이 끝났어요. Space를 누르면 재생해요.')
     })
   }
   // 건너뛰기(Esc): 듣는 중이면 요약을 멈추고, 창을 닫아 재생 버튼에서 기다린다. 재생은 하지 않는다

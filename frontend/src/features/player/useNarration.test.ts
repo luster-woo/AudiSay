@@ -419,6 +419,16 @@ describe('screenTextToRead (명세 CNT-03 · SND-03)', () => {
     expect(screenTextToRead(sub, 2, 'DIFFERENT_ONLY')).toBe('원문')
     expect(screenTextToRead({ ...sub, sameAsDialogue: true }, 2, 'ALL')).toBe('원문')
   })
+  test('한글이 없는 외국어 글은 읽지 않는다 (해설이 한국어로 옮겨 읽는다). 숫자만 있는 글은 읽는다', () => {
+    const letter = {
+      ...base,
+      textType: 'OTHER',
+      fullText: 'Your father left this in my possession before he died.',
+    }
+    expect(screenTextToRead(letter, 2, 'OFF')).toBeNull()
+    expect(screenTextToRead({ ...base, fullText: 'SALE 50% 할인' }, 2, 'ALL')).toBe('SALE 50% 할인')
+    expect(screenTextToRead({ ...base, fullText: '2026.11.11' }, 2, 'ALL')).toBe('2026.11.11')
+  })
 })
 
 test('sceneAtMs: 시각이 든 장면을 찾는다 (끝 시각은 다음 장면)', () => {

@@ -887,9 +887,12 @@ export function Player({ video }: { video: VideoDetail }) {
         'lg:grid-rows-[auto_auto_1fr]',
         // 크게 보기: 화면 양옆 여백까지 써서 영상을 넓게
         // 보통: 대화 칸 33rem. 글자 크기 3·배율 100%·화면 폭 1440px(스크롤바 포함)에서도 아래 조작 줄이 한 줄에 들어가게
+        // 글자 크기 4·5단계: rem 이 커지는 만큼 대화 칸이 그대로 넓어지면 영상이 너무 좁아진다.
+        // 3단계 대비 늘어나는 폭을 절반만 두고, 나머지는 영상 쪽(1fr)으로 돌린다 (영상 높이는 16:9 라 폭을 따라 커진다)
+        //   보통 528px(3) → 594px(4, 원래 660) → 660px(5, 원래 792) / 크게 보기 448px → 504px(원래 560) → 560px(원래 672)
         enlarged
-          ? 'gap-x-[49px] gap-y-5 lg:-mx-10 lg:grid-cols-[minmax(0,1fr)_28rem]'
-          : 'gap-x-10 gap-y-5 lg:grid-cols-[minmax(0,1fr)_33rem]',
+          ? 'gap-x-[49px] gap-y-5 lg:-mx-10 lg:grid-cols-[minmax(0,1fr)_28rem] fs4:lg:grid-cols-[minmax(0,1fr)_504px] fs5:lg:grid-cols-[minmax(0,1fr)_560px]'
+          : 'gap-x-10 gap-y-5 lg:grid-cols-[minmax(0,1fr)_33rem] fs4:lg:grid-cols-[minmax(0,1fr)_594px] fs5:lg:grid-cols-[minmax(0,1fr)_660px]',
       )}
     >
       {/* 제목: 두 칸 위에 걸쳐 있어 아래 영상과 대화 칸의 윗선이 맞는다 */}

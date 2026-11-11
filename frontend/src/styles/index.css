@@ -8,6 +8,7 @@
 @custom-variant hc (html[data-contrast='high']:not(:has([data-layout='admin'])) &);
 
 /* 글자 크기 5단계(가장 큼). 헤더가 한 줄에 들어가도록 여백만 줄일 때 쓴다 */
+@custom-variant fs4 (html[data-font-scale='4'] &);
 @custom-variant fs5 (html[data-font-scale='5'] &);
 
 @theme {

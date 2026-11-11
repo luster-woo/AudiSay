@@ -104,7 +104,7 @@ export function FavoriteVideoCard({
               variant="muted"
               size="xl"
               disabled
-              className="flex-1 px-3"
+              className="text-2xl! flex-1 px-3"
               aria-label={`재생 불가, ${video.title}`}
             >
               재생 불가
@@ -114,7 +114,7 @@ export function FavoriteVideoCard({
               to={`/watch/${video.videoId}`}
               variant="primary"
               size="xl"
-              className="flex-1 px-3"
+              className="text-2xl! flex-1 px-3"
               aria-label={`재생, ${video.title}`}
             >
               재생
@@ -123,7 +123,7 @@ export function FavoriteVideoCard({
             <ButtonLink
               to={`/jobs/${detail.data.activeJobId}`}
               size="xl"
-              className="flex-1 px-3"
+              className="text-2xl! flex-1 px-3"
               aria-label={`진행 상황 보기, ${video.title}`}
             >
               진행 상황
@@ -132,7 +132,7 @@ export function FavoriteVideoCard({
             <ButtonLink
               to={`/search/youtube?url=${encodeURIComponent(sourceUrl)}`}
               size="xl"
-              className="flex-1 px-3"
+              className="text-2xl! flex-1 px-3"
               aria-label={`해설 만들기, ${video.title}`}
             >
               해설 만들기
@@ -142,7 +142,7 @@ export function FavoriteVideoCard({
               variant="muted"
               size="xl"
               disabled
-              className="flex-1 px-3"
+              className="text-2xl! flex-1 px-3"
               aria-label={`${detail.isPending ? '영상 확인 중' : '해설 없음'}, ${video.title}`}
             >
               {detail.isPending ? '확인 중' : '해설 없음'}
@@ -151,7 +151,7 @@ export function FavoriteVideoCard({
           <Button
             variant="on"
             size="xl"
-            className="px-3"
+            className="text-2xl! px-3"
             loading={remove.isPending}
             onClick={() => remove.mutate()}
             aria-label={`즐겨찾기 해제, ${video.title}`}

@@ -21,7 +21,7 @@ const VARIANT: Record<ButtonVariant, string> = {
 }
 const SIZE: Record<ButtonSize, string> = {
   sm: 'min-h-[2.6rem] px-4 text-[0.9333rem]',
-  panel: 'min-h-touch px-2 text-lg',
+  panel: 'min-h-touch px-2 text-2xl',
   md: 'min-h-touch px-5 text-base',
   lg: 'min-h-14 px-8 text-lg',
   xl: 'min-h-touch px-6 text-[1.375rem]',

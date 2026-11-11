@@ -103,7 +103,7 @@ export default function MyInfoPage() {
                       to="/verify"
                       variant="secondary"
                       size="xl"
-                      className="w-[14.375rem] max-w-full"
+                      className="w-[14.375rem] max-w-full text-2xl!"
                     >
                       시각장애인 인증
                     </ButtonLink>
@@ -113,7 +113,7 @@ export default function MyInfoPage() {
                     <Button
                       variant="secondary"
                       size="xl"
-                      className="w-[14.375rem] max-w-full"
+                      className="w-[14.375rem] max-w-full text-2xl!"
                       disabled
                     >
                       인증 완료
@@ -131,7 +131,7 @@ export default function MyInfoPage() {
                   <Button
                     variant="secondary"
                     size="xl"
-                    className="w-[14.375rem] max-w-full"
+                    className="w-[14.375rem] max-w-full text-2xl!"
                     onClick={() => setDialog('password')}
                   >
                     비밀번호 바꾸기
@@ -156,7 +156,7 @@ export default function MyInfoPage() {
                   <Button
                     variant="secondary"
                     size="xl"
-                    className="w-[14.375rem] max-w-full"
+                    className="w-[14.375rem] max-w-full text-2xl!"
                     disabled={!settingsQuery.isSuccess}
                     onClick={() => setDialog('settings')}
                   >
@@ -173,7 +173,7 @@ export default function MyInfoPage() {
           <Button
             variant="danger"
             size="xl"
-            className="min-w-48"
+            className="min-w-48 text-2xl!"
             onClick={() => setDialog('withdraw')}
           >
             회원 탈퇴

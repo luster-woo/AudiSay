@@ -32,8 +32,8 @@ import { CandidatesPanel, ChaptersPanel, HistoryPanel, ScriptPanel } from './pan
 import { useAsk } from './useAsk'
 import { VideoStage } from './VideoStage'
 
-/** 상세도 버튼 이름: 재생 설정 창·챗봇 답과 같다 ('1 짧은 해설') */
-const DETAIL_OPTIONS = DETAIL_LABELS
+/** 상세도 버튼 이름: 재생 설정 창·챗봇 답과 같다 ('짧은 해설'). 단축키 Alt+Shift+1~3 은 aria-keyshortcuts 로 알린다 */
+const DETAIL_OPTIONS = DETAIL_LABELS.map((o) => ({ ...o, keyShortcut: `Alt+Shift+${o.value}` }))
 type Tab = 'chapters' | 'script'
 /** 영상을 열고 요약을 어떻게 할지 정하는 단계 */
 type SummaryPhase = 'loading' | 'asking' | 'playing' | 'done'
@@ -48,11 +48,11 @@ const isTyping = (el: EventTarget | null) =>
   el instanceof HTMLElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName)
 
 /** 재생·해설 상세도·신고·설정·크게 보기: 같은 높이·폭·글자 크기 (글자가 바뀌어도 폭이 그대로) */
-const CONTROL = 'w-[6.75rem] px-2! text-base whitespace-nowrap'
+const CONTROL = 'w-[6.75rem] px-2! text-xl whitespace-nowrap'
 /** 즐겨찾기·신고·재생 설정: 영상 조작보다 가볍게 (연한 테두리, 조금 낮게). 마우스를 올리면 진한 테두리 */
-const SUB_CONTROL = 'min-h-12! border-line! px-2! text-base whitespace-nowrap hover:border-navy!'
+const SUB_CONTROL = 'min-h-12! border-line! px-2! text-xl whitespace-nowrap hover:border-navy!'
 /** '전체 화면 끝내기'는 글자가 길어 조금 넓게 */
-const CONTROL_WIDE = 'w-[9.5rem] px-2! text-base whitespace-nowrap'
+const CONTROL_WIDE = 'w-[9.5rem] px-2! text-xl whitespace-nowrap'
 
 /**
  * 시청 화면 본체. 영상 정보(해설 있음)를 받아 재생 주소·해설·목차·요약을 불러오고,
@@ -1025,7 +1025,7 @@ export function Player({ video }: { video: VideoDetail }) {
               options={DETAIL_OPTIONS}
               value={settings.detailLevel}
               onChange={setDetail}
-              optionClassName="w-[6.5rem] px-1 text-base"
+              optionClassName="w-[6.5rem] px-1 text-xl"
             />
             <div className="flex flex-wrap gap-2">
               <Button
@@ -1091,7 +1091,7 @@ export function Player({ video }: { video: VideoDetail }) {
           appearance="buttons"
           value={tab}
           onChange={setTab}
-          tabListClassName="grid-cols-2! sm:max-w-[22rem]"
+          tabListClassName="grid-cols-2! sm:max-w-[22rem] [&_[role=tab]]:text-2xl"
           panelClassName="pt-4"
           className="mt-3 min-w-0 rounded-2xl border-2 border-line bg-paper p-5 lg:col-start-1 lg:row-start-3"
           items={[

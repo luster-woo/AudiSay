@@ -362,11 +362,11 @@ test('설정 저장 실패 시 이전 값으로 원복하고 성공 안내를 �
   await waitFor(() => expect(open).not.toHaveAttribute('aria-disabled'))
   await userEvent.click(open)
   const dialog = within(screen.getByRole('dialog', { name: '설정' }))
-  await userEvent.click(dialog.getByRole('radio', { name: '3 자세한 해설' }))
-  await waitFor(() => expect(dialog.getByRole('radio', { name: '2 기본 해설' })).toBeChecked())
+  await userEvent.click(dialog.getByRole('radio', { name: '자세한 해설' }))
+  await waitFor(() => expect(dialog.getByRole('radio', { name: '기본 해설' })).toBeChecked())
   expect(queryClient.getQueryData(queryKeys.settings)).toMatchObject({ detailLevel: 2 })
   expect(document.querySelector('[aria-live="polite"]')).not.toHaveTextContent(
-    '해설 상세도 3 자세한 해설.',
+    '해설 상세도 자세한 해설.',
   )
 })
 

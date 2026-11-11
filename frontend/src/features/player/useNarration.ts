@@ -12,6 +12,12 @@ const DUB_DUCK_RATIO = 0.3
 /** 시각을 넘어선 것으로 치지 않을 큰 이동(재생바 조작) 기준 */
 const JUMP_MS = 2000
 
+/**
+ * 글자는 있는데 한글이 하나도 없는 외국어 문구. 안내 목소리(Supertonic)는 한국어만 읽어 영어를 "유어 파서…"처럼 소리 낸다.
+ * 화면의 외국어 글(편지 등)은 해설이 한국어로 옮겨 읽으므로 소리 내지 않는다. 숫자·기호만 있는 글은 그대로 읽는다
+ */
+const isForeign = (text: string) => /\p{L}/u.test(text) && !/[가-힣ㄱ-ㆎ]/.test(text)
+
 /** 화면 글자 중 지금 상세도·자막 설정에서 읽을 문구. 없으면 null (명세 CNT-03, SND-03) */
 export function screenTextToRead(
   t: ScreenText,
@@ -22,9 +28,15 @@ export function screenTextToRead(
     if (subtitle === 'OFF') return null
     if (subtitle === 'DIFFERENT_ONLY' && t.sameAsDialogue) return null
   }
-  if (t.importance === 'HIGH') return level >= 2 ? (t.headline ?? t.fullText) : null
-  if (t.importance === 'MEDIUM') return level === 3 ? t.summaryText : null
-  return null
+  const text =
+    t.importance === 'HIGH'
+      ? level >= 2
+        ? (t.headline ?? t.fullText)
+        : null
+      : t.importance === 'MEDIUM' && level === 3
+        ? t.summaryText
+        : null
+  return text && !isForeign(text) ? text : null
 }
 
 export const sceneAtMs = (scenes: Scene[] | undefined, ms: number) =>

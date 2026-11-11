@@ -106,7 +106,7 @@ export function MyVideoCard({ video }: { video: MyVideo }) {
               variant="muted"
               size="xl"
               disabled
-              className="w-full"
+              className="text-2xl! w-full"
               aria-label={`재생 불가, ${video.title}`}
             >
               재생 불가
@@ -115,7 +115,7 @@ export function MyVideoCard({ video }: { video: MyVideo }) {
             <ButtonLink
               to={`/jobs/${video.jobId}`}
               size="xl"
-              className="w-full"
+              className="text-2xl! w-full"
               aria-label={`진행 상황 보기, ${video.title}`}
             >
               진행 상황 보기
@@ -125,7 +125,7 @@ export function MyVideoCard({ video }: { video: MyVideo }) {
               to={`/watch/${video.videoId}`}
               variant="primary"
               size="xl"
-              className="flex-1 px-4"
+              className="text-2xl! flex-1 px-4"
               aria-label={`재생, ${video.title}`}
             >
               재생
@@ -134,7 +134,7 @@ export function MyVideoCard({ video }: { video: MyVideo }) {
             <Button
               size="xl"
               variant="secondary"
-              className="w-full"
+              className="text-2xl! w-full"
               loading={retry.isPending}
               aria-label={`다시 요청, ${video.title}`}
               onClick={() => retry.mutate()}
@@ -145,7 +145,7 @@ export function MyVideoCard({ video }: { video: MyVideo }) {
             <Button
               size="xl"
               variant="muted"
-              className="w-full"
+              className="text-2xl! w-full"
               disabled
               aria-label={`해설 없음, ${video.title}`}
             >
@@ -156,7 +156,7 @@ export function MyVideoCard({ video }: { video: MyVideo }) {
             <Button
               size="xl"
               variant="secondary"
-              className="flex-1 px-3"
+              className="text-2xl! flex-1 px-3"
               loading={visibility.isPending}
               aria-label={`${privateUpload ? '공개로' : '비공개로'}, ${video.title}`}
               onClick={() => visibility.mutate(privateUpload ? 'PUBLIC' : 'PRIVATE')}

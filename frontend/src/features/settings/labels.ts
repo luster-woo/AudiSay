@@ -5,9 +5,9 @@ import type { UserSettings } from '@/api/types'
  * 챗봇이 '재생 전 요약 물어보기로 바꿨어요'라고 하면 설정 창의 '보기 전 30초 요약 · 묻기'와 같은 항목인지 알기 어려웠다
  */
 export const DETAIL_LABELS: { value: UserSettings['detailLevel']; label: string }[] = [
-  { value: 1, label: '1 짧은 해설' },
-  { value: 2, label: '2 기본 해설' },
-  { value: 3, label: '3 자세한 해설' },
+  { value: 1, label: '짧은 해설' },
+  { value: 2, label: '기본 해설' },
+  { value: 3, label: '자세한 해설' },
 ]
 export const MODE_LABELS: { value: UserSettings['narrationMode']; label: string }[] = [
   { value: 'AUTO', label: '자동' },

@@ -32,7 +32,7 @@ export function LogoutButton() {
   }
 
   return (
-    <Button variant="secondary" loading={loggingOut} onClick={() => void signOut()}>
+    <Button variant="secondary" size="xl" className="text-3xl!" loading={loggingOut} onClick={() => void signOut()}>
       {loggingOut ? '로그아웃 중' : '로그아웃'}
     </Button>
   )

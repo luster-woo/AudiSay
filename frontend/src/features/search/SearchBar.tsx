@@ -225,12 +225,13 @@ export function SearchBar({
               onChange={(e) => setText(e.target.value)}
               className="min-h-touch min-w-0 flex-1 rounded-md border-2 border-navy bg-paper px-5 text-2xl"
             />
-            <Button type="submit" size="xl">
+            <Button type="submit" size="xl" className="text-3xl!">
               검색
             </Button>
             <Button
               variant="secondary"
               size="xl"
+              className="text-3xl!"
               aria-keyshortcuts="Alt+Shift+Q"
               aria-describedby={voiceHintId}
               onClick={() => void startVoice()}

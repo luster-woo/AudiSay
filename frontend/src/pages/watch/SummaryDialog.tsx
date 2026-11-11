@@ -31,6 +31,7 @@ export function SummaryDialog({
       onClose={onSkip}
       // 요약을 듣는 중에는 제목·버튼을 그대로 둔다 (화면이 바뀌면 낭독기가 다시 읽어 요약과 겹친다). 다 들으면 창이 닫힌다
       title="30초 요약을 먼저 들을까요?"
+      titleClassName="text-3xl"
       // 요약 듣기 권장(recommendSummary)은 기획에서 뺐다 (2026-11-05). 모든 영상에 같은 안내
       description="요약을 들으면 무슨 내용인지 미리 알 수 있어요."
       hideCloseButton
@@ -50,23 +51,25 @@ export function SummaryDialog({
           ref={listenRef}
           variant="accent"
           size="xl"
+          className="text-2xl!"
           onClick={onListen}
           aria-keyshortcuts="Enter"
         >
           요약 듣고 시작
         </Button>
-        <span aria-hidden="true" className="mr-3 text-ink-muted">
+        <span aria-hidden="true" className="mr-3 text-xl text-ink-muted">
           Enter
         </span>
         <Button
           variant="secondary"
           size="xl"
+          className="text-2xl!"
           onClick={onSkip}
           aria-keyshortcuts="Escape"
         >
           건너뛰기
         </Button>
-        <span aria-hidden="true" className="text-ink-muted">
+        <span aria-hidden="true" className="text-xl text-ink-muted">
           Esc
         </span>
       </div>

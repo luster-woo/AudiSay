@@ -28,7 +28,7 @@ export function AppLayout() {
             <MainNav />
             {/* 이름은 글자, 로그아웃은 헤더의 마지막 조작 요소 */}
             <div className="flex items-center gap-4 border-l border-line pl-6 max-[46rem]:border-l-0 max-[46rem]:pl-0 fs5:gap-3 fs5:min-[46rem]:pl-4">
-              <p className="text-ink-muted">{user?.name} 님</p>
+              <p className="text-3xl text-ink-muted">{user?.name} 님</p>
               <LogoutButton />
             </div>
           </div>

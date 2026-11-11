@@ -267,7 +267,7 @@ export default function MyVideosPage() {
       <Tabs
         label="내 영상 분류"
         variant="pills"
-        tabListClassName="lg:pr-[25rem]"
+        tabListClassName="lg:pr-[25rem] [&_[role=tab]]:text-2xl!"
         className="mt-6"
         value={tab}
         onChange={changeTab}

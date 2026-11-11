@@ -4,6 +4,8 @@ import { cn } from './cn'
 export interface ChoiceOption<T extends string | number> {
   value: T
   label: ReactNode
+  /** 이 보기를 바로 고르는 단축키 (예: 'Alt+Shift+1'). 낭독기가 읽는다 */
+  keyShortcut?: string
 }
 
 export interface ChoiceGroupProps<T extends string | number> {
@@ -59,7 +61,8 @@ export function ChoiceGroup<T extends string | number>({
               'flex cursor-pointer items-center justify-center font-bold whitespace-nowrap text-navy',
               segmented
                 ? 'min-h-11 rounded-md hover:bg-cream'
-                : 'min-h-touch rounded-md border-2 border-navy bg-paper has-[:checked]:border-4',
+                : // 고르면 바탕색만 바뀐다. 테두리를 굵게 하면 버튼이 커져 옆 버튼이 밀린다
+                  'min-h-touch rounded-md border-2 border-navy bg-paper',
               optionClassName ?? 'px-4',
               'has-[:checked]:bg-navy has-[:checked]:text-cream',
               'has-[:focus-visible]:outline-[3px] has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-navy has-[:focus-visible]:outline-solid',
@@ -71,6 +74,7 @@ export function ChoiceGroup<T extends string | number>({
               value={String(o.value)}
               checked={o.value === value}
               onChange={() => onChange(o.value)}
+              aria-keyshortcuts={o.keyShortcut}
               className="sr-only"
             />
             {o.label}

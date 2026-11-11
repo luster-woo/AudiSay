@@ -43,7 +43,7 @@ test('챗봇이 말하는 설정 이름은 재생 설정 창과 같다', () => {
   expect(settingSpoken('narrationMode', 'PAUSE_AFTER')).toBe('해설 방식 멈추고')
   expect(settingSpoken('subtitleReading', 'DIFFERENT_ONLY')).toBe('자막 읽기 다른 것만')
   expect(settingSpoken('translationReading', 'false')).toBe('외국어 번역 읽기 끄기')
-  expect(settingSpoken('detailLevel', '1')).toBe('해설 상세도 1 짧은 해설')
+  expect(settingSpoken('detailLevel', '1')).toBe('해설 상세도 짧은 해설')
 })
 
 test('이동 답은 시각을 말로 쓴다 (1:30 이 아니라 1분 30초)', async () => {

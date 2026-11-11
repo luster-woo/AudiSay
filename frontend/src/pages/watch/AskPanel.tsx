@@ -225,19 +225,19 @@ export function AskPanel({
             </div>
             {/* 키 안내. 단축키는 버튼 속성(aria-keyshortcuts)에도 있지만 눈으로도 보이게 */}
             {dock && keyHint && (
-              <p className="mt-3 flex flex-wrap justify-center gap-x-3 gap-y-1 text-base text-ink-muted">
+              <p className="mt-3 flex flex-wrap justify-center gap-x-3 gap-y-1 text-xl text-ink-muted">
                 <span className="whitespace-nowrap">
-                  <kbd className="kbd border-line px-1.5 text-[0.9375rem] text-ink">Enter</kbd>{' '}
+                  <kbd className="kbd border-line px-1.5 text-lg text-ink">Enter</kbd>{' '}
                   보내기
                 </span>
                 <span className="whitespace-nowrap">
-                  <kbd className="kbd border-line px-1.5 text-[0.9375rem] text-ink">
+                  <kbd className="kbd border-line px-1.5 text-lg text-ink">
                     Alt+Shift+Q
                   </kbd>{' '}
                   말로 묻기
                 </span>
                 <span className="whitespace-nowrap">
-                  <kbd className="kbd border-line px-1.5 text-[0.9375rem] text-ink">Esc</kbd> 답
+                  <kbd className="kbd border-line px-1.5 text-lg text-ink">Esc</kbd> 답
                   멈추기
                 </span>
               </p>

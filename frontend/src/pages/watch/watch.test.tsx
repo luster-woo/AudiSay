@@ -414,9 +414,9 @@ test('상세도는 누적이다: 기본은 1·2단계, 자세히를 고르면 3�
   expect(await screen.findByRole('heading', { name: /^해설 문장, ?2개$/ })).toBeInTheDocument()
   expect(screen.queryByText('가운데가 가장 높아요.')).not.toBeInTheDocument()
 
-  await user.click(screen.getByRole('radio', { name: '3 자세한 해설' }))
+  await user.click(screen.getByRole('radio', { name: '자세한 해설' }))
   expect(usersApi.updateSettings).toHaveBeenCalledWith({ detailLevel: 3 })
-  await waitFor(() => expect(band()).toHaveTextContent('해설 상세도 3 자세한 해설.'))
+  await waitFor(() => expect(band()).toHaveTextContent('해설 상세도 자세한 해설.'))
   expect(await screen.findByRole('heading', { name: /^해설 문장, ?3개$/ })).toBeInTheDocument()
   const texts = screen
     .getAllByText(/칠판이 보여요|세 개의 막대가|가운데가 가장 높아요/)
@@ -427,7 +427,7 @@ test('상세도는 누적이다: 기본은 1·2단계, 자세히를 고르면 3�
     '가운데가 가장 높아요.',
   ])
 
-  await user.click(screen.getByRole('radio', { name: '1 짧은 해설' }))
+  await user.click(screen.getByRole('radio', { name: '짧은 해설' }))
   expect(await screen.findByRole('heading', { name: /^해설 문장, ?1개$/ })).toBeInTheDocument()
 })
 
@@ -1290,7 +1290,7 @@ test('시청 화면 단축키: K 재생·멈춤, J/L 이동, P 위치, 1~3 상�
       expect.objectContaining({ detailLevel: 3 }),
     ),
   )
-  await waitFor(() => expect(band()).toHaveTextContent('해설 상세도 3 자세한 해설.'))
+  await waitFor(() => expect(band()).toHaveTextContent('해설 상세도 자세한 해설.'))
 
   // 한 글자 1/2/3 은 더 이상 상세도를 바꾸지 않는다 (낭독기 제목 이동 키와 겹침)
   vi.mocked(usersApi.updateSettings).mockClear()

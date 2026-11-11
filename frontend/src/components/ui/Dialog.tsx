@@ -37,6 +37,8 @@ export interface DialogProps {
   kicker?: ReactNode
   /** 제목 크기를 바꿀 때 (기본 text-2xl) */
   titleClassName?: string
+  /** 닫기 버튼 글자 크기 등을 바꿀 때 */
+  closeButtonClassName?: string
   className?: string
 }
 
@@ -61,6 +63,7 @@ export function Dialog({
   hideCloseButton = false,
   kicker,
   titleClassName,
+  closeButtonClassName,
   className,
 }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null)
@@ -203,7 +206,10 @@ export function Dialog({
           <button
             type="button"
             onClick={onClose}
-            className="min-h-touch shrink-0 rounded-md border-2 border-navy px-4 font-bold text-navy"
+            className={cn(
+              'min-h-touch shrink-0 rounded-md border-2 border-navy px-4 font-bold text-navy',
+              closeButtonClassName,
+            )}
           >
             닫기
           </button>

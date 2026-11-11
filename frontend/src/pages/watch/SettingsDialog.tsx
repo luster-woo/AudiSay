@@ -84,7 +84,9 @@ export function SettingsDialog({
           ? '바꾸면 바로 저장되고, 영상을 볼 때 적용돼요. 닫기는 Esc.'
           : '바꾸면 바로 저장되고, 보던 영상에도 바로 적용돼요. 닫기는 Esc.'
       }
-      className="overflow-y-auto p-10"
+      // 버튼 글자만 한 단계 크게 (보기 버튼 base→lg, 속도·소리 크기 −/+ xl→2xl, 가운데 값 lg→xl). 버튼 크기는 그대로
+      className="overflow-y-auto p-10 [&_fieldset_label]:text-lg [&_[role=group]_button]:text-2xl! [&_[role=group]_output]:text-xl!"
+      closeButtonClassName="text-lg"
     >
       <div className="space-y-6">
         <Section title="해설">
@@ -114,7 +116,7 @@ export function SettingsDialog({
               onChange={(v) => void update({ speechRate: v }).catch(() => {})}
               className="flex-1 justify-between"
             />
-            <Button variant="ghost" onClick={onPreview}>
+            <Button variant="ghost" onClick={onPreview} className="text-lg!">
               미리 듣기
             </Button>
           </div>

@@ -39,7 +39,7 @@ export function MainNav() {
         aria-expanded={open}
         aria-controls={listId}
         onClick={() => setOpen((v) => !v)}
-        className="hidden min-h-touch items-center rounded-md border-2 border-navy px-4 text-lg font-bold text-navy max-[46rem]:inline-flex"
+        className="hidden min-h-touch items-center rounded-md border-2 border-navy px-4 text-xl font-bold text-navy max-[46rem]:inline-flex"
       >
         {open ? '메뉴 닫기' : '메뉴'}
       </button>
@@ -57,7 +57,7 @@ export function MainNav() {
                 to={item.to}
                 aria-current={active ? 'page' : undefined}
                 onClick={() => setOpen(false)}
-                className={`flex min-h-touch items-center border-b-4 px-4 text-lg font-bold fs5:px-2.5 ${
+                className={`flex min-h-touch items-center border-b-4 px-4 text-xl font-bold fs5:px-2.5 ${
                   active ? 'border-navy text-navy' : 'border-transparent text-ink'
                 }`}
               >

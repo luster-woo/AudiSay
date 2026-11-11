@@ -142,6 +142,10 @@ def assemble(full: dict, chunks: list[dict], covered_until_ms: int | None = None
     if full.get("title"):
         seen = re.sub(r"\s+", "", " ".join([full["title"]] + [d["text"] for d in full["dialogues"]]
                                            + [t["text"] for s in full["scenes"] for t in s.get("screenTexts", [])]))
+    # 대사가 대부분 외국어인 영상은 이름을 한글로 옮겨 적어(Mitchell → 미첼) 제목·대사·화면 글자와 맞춰 볼 수 없다.
+    # 맞춰 보면 진짜 이름도 지워져 "남성, 검은색 긴팔 옷 착용이 …"처럼 읽혔다(2026-11-11 모던 패밀리). 이때는 근거 말만 본다
+    dialogues = full["dialogues"]
+    foreign = bool(dialogues) and sum(1 for d in dialogues if d.get("dub")) * 2 > len(dialogues)
     names: dict[str, dict] = {}
     dropped: set[str] = set()
     renames: dict[str, str] = {}  # 문장 속 근거 없는 이름 → 근거 있는 짧은 이름이나 겉모습 호칭
@@ -155,7 +159,7 @@ def assemble(full: dict, chunks: list[dict], covered_until_ms: int | None = None
                 # 호칭은 이름 근거 확인 대상이 아니다
                 names.setdefault(p["name"], {"name": p["name"], "appearance": p.get("appearance"), "nameSource": "AI"})
                 continue
-            if name and seen is not None and "사전" not in (p.get("basis") or ""):
+            if name and seen is not None and not foreign and "사전" not in (p.get("basis") or ""):
                 # "임승묵(박성웅)"처럼 배우 이름을 붙여 와도 극중 이름이 제목·대사·화면 글자에 있는지 본다.
                 # 없으면 성을 뗀 이름("금가경" → 자막의 "가경")이 있는지 보고, 그것도 없으면 지운다.
                 # 2026-11-10 '100일의 거짓말': 자막엔 '가경'뿐인데 대사의 가짜 이름 '금서희'와 섞어 '금가경'으로, 나오지도 않는

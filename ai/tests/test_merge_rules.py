@@ -146,7 +146,9 @@ def test_dub_line_keeps_translation_and_only_fixes_speaker():
     """외국어 대사 낭독 문장의 번역 글은 대사(transcript_segments)와 같아야 BE 챗봇(DubLines)이 대사로 알아보고 화면 해설에서 뺀다.
     그래서 근거 없는 이름은 앞의 말한 사람만 고치고 번역 글은 건드리지 않는다."""
     full = {**FULL, "title": "가경의 진심",
-            "dialogues": [{"startMs": 1000, "endMs": 3000, "speaker": "임승묵(박성웅)", "text": "승묵 씨 왔어요", "dub": True}],
+            "dialogues": [{"startMs": 1000, "endMs": 3000, "speaker": "임승묵(박성웅)", "text": "승묵 씨 왔어요", "dub": True},
+                          {"startMs": 4000, "endMs": 5000, "speaker": None, "text": "어서 와요"},  # 한국어 대사가 더 많은 영상
+                          {"startMs": 6000, "endMs": 7000, "speaker": None, "text": "앉으세요"}],
             "scenes": [{"startMs": 0, "endMs": 60_000, "title": "가경", "screenTexts": [],
                         "people": [{"name": "금가경", "basis": "자막", "appearance": "재킷"},
                                    {"name": "임승묵(박성웅)", "basis": "자막", "appearance": "중년 여성"}]}]}
@@ -154,3 +156,14 @@ def test_dub_line_keeps_translation_and_only_fixes_speaker():
     plan = assemble(full, [{"chunkIndex": 0, "screenTexts": [], "lines": [dub("임승묵: 승묵 씨 왔어요"), dub("금가경: 가자")]}])
     assert [x["text"] for x in plan.lines] == ["승묵: 승묵 씨 왔어요", "가경: 가자"]
     assert plan.lines[0]["text"].partition(": ")[2] == plan.dialogues[0]["text"]  # 번역 글은 대사와 같게
+
+
+def test_foreign_video_keeps_transliterated_names():
+    """대사가 대부분 외국어면(번역 낭독) 한글로 옮긴 이름(Mitchell → 미첼)을 제목·대사와 맞춰 보지 않는다(2026-11-11 모던 패밀리)."""
+    full = {**FULL, "title": "Modern Family | Lily Goes to a Vietnamese Restaurant",
+            "dialogues": [{"startMs": 1000, "endMs": 3000, "speaker": "미첼", "text": "맛있다", "original": "So good", "dub": True}],
+            "scenes": [{"startMs": 0, "endMs": 60_000, "title": "식당", "screenTexts": [],
+                        "people": [{"name": "미첼", "basis": "대사 속 호명", "appearance": "남성, 검은색 긴팔 옷 착용"}]}]}
+    line = {"detailLevel": 1, "startMs": 5000, "gapEndMs": None, "importance": 3, "text": "미첼이 박수를 친다.", "flags": []}
+    plan = assemble(full, [{"chunkIndex": 0, "screenTexts": [], "lines": [line]}])
+    assert [c["name"] for c in plan.characters] == ["미첼"] and plan.lines[0]["text"] == "미첼이 박수를 친다."

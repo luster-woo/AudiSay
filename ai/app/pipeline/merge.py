@@ -219,6 +219,7 @@ def assemble(full: dict, chunks: list[dict], covered_until_ms: int | None = None
     lines.sort(key=lambda x: (x["startMs"], x["detailLevel"]))
     # 1초쯤 간격으로 붙은 문장은 두 문장짜리 해설 하나로 묶고, 그래도 겹치는 문장은 뒤로 띄운다(조각 경계를 넘는 것까지 보려고 여기서)
     lines = spread(join_near(lines), full["dialogues"], duration)
+    lines.sort(key=lambda x: (x["startMs"], x["detailLevel"]))  # 번역은 제자리, 해설만 밀려 순서가 바뀔 수 있다
     for i, x in enumerate(lines, 1):
         x["lineIndex"] = i
     plan.lines = lines

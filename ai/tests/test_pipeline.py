@@ -189,3 +189,15 @@ def test_dub_voices_one_per_person_main_first():
     assert v[3] == POOLS[("male", "middle")][1] != v[2]  # 같은 성별·나이대라도 다른 목소리
     assert v[1] in POOLS[("female", "middle")] and v[5] in POOLS[("female", "child")]
     assert "Kore" not in v.values()
+
+
+def test_spread_keeps_dub_lines_on_their_dialogue_and_does_not_push_narration_far():
+    """번역 문장은 대사 시각에 고정하고(밀면 쌓여 40초 넘게 늦어졌다, 2026-11-11 53번), 해설은 번역 뒤로 2초까지만 민다."""
+    dub = lambda s, t: {"detailLevel": 1, "startMs": s, "gapEndMs": None, "importance": 3, "text": t, "flags": ["DIALOGUE_DUB"]}
+    dialogues = [{"startMs": s, "endMs": s + 1500, "text": t, "dub": True} for s, t in ((0, "가나다라마바사"), (2000, "아자차카타파"),
+                                                                                       (4000, "하거너더러머"), (6000, "버서어저처커"))]
+    lines = [dub(0, "가나다라마바사"), _ln(1, 1000, "식당에 가족이 앉아 있다."), dub(2000, "아자차카타파"), dub(4000, "하거너더러머"),
+             _ln(1, 5000, "종업원이 다가온다."), dub(6000, "버서어저처커")]
+    out = spread(lines, dialogues, 60_000)
+    assert [x["startMs"] for x in out if x["flags"]] == [0, 2000, 4000, 6000]
+    assert all(0 <= x["startMs"] - s <= 2000 for x, s in zip([out[1], out[4]], (1000, 5000)))

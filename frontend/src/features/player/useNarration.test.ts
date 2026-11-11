@@ -557,3 +557,30 @@ test('번역을 읽는 사이에 원래 소리를 바꾸면, 다 읽은 뒤 바�
     description.dialogues.pop()
   }
 })
+
+test("'영상과 함께' 모드: 해설을 읽는 중에 외국어 대사 번역이 오면 버리지 않고 해설을 끊고 읽는다", () => {
+  const dub = line(54, T(11), '더 필요한 건 없으신가요?', {
+    detailLevel: 1,
+    importance: 1, // 읽던 해설(중요도 2)보다 낮아도 버리지 않는다
+    lineType: 'DIALOGUE',
+    gapEndMs: null,
+    audioDurationMs: 1500,
+  })
+  description.lines.push(dub)
+  description.dialogues.push({
+    startMs: T(11),
+    endMs: T(12),
+    text: '더 필요한 건 없으신가요?',
+    characterName: null,
+  })
+  try {
+    const narrator = fakeNarrator({ hold: true })
+    const { walk, said } = setup({ narrationMode: 'WITH_VIDEO' }, narrator)
+    walk(T(9), T(11.2)) // 10초 '첫 문장'을 읽는 중에 11초 번역
+    expect(said()).toEqual(['첫 문장', '더 필요한 건 없으신가요?'])
+    expect(narrator.stop).toHaveBeenCalled()
+  } finally {
+    description.lines.pop()
+    description.dialogues.pop()
+  }
+})

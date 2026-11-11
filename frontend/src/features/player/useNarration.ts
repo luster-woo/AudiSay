@@ -123,6 +123,8 @@ export function useNarration({
   const heldPlayingRef = useRef(false)
   const playingRef = useRef(state.playing)
   const speakingImportance = useRef<number | null>(null)
+  /** 지금 영상 위에 겹쳐 읽는 소리가 외국어 대사 번역인지 (해설이면 번역이 끊고 들어간다) */
+  const speakingDub = useRef(false)
   const coveredWarned = useRef(false)
   /** 외국어 대사 번역을 겹쳐 읽는 중인 수 (겹치면 마지막 것이 끝날 때 영상 소리를 되돌린다) */
   const duckingRef = useRef(0)
@@ -231,16 +233,23 @@ export function useNarration({
         return true
       }
       if (narrator.busy) {
-        if (line.importance <= (speakingImportance.current ?? 0)) return true
-        narrator.stop()
+        if (isDub) {
+          // 외국어 대사 번역은 버리지 않는다: 읽던 해설은 끊고, 앞 번역이면 그 뒤에 이어 읽는다(Narrator 가 줄 세움)
+          if (!speakingDub.current) narrator.stop()
+        } else {
+          if (line.importance <= (speakingImportance.current ?? 0)) return true
+          narrator.stop()
+        }
       }
       speakingImportance.current = line.importance
+      speakingDub.current = isDub
       // 영상 위에 겹쳐 읽는 번역은 그동안 영상 소리를 줄인다
       if (isDub && duckingRef.current++ === 0) {
         controls.setVolume(Math.round(originalVolume * DUB_DUCK_RATIO))
       }
       void narrator.say(item).finally(() => {
         speakingImportance.current = null
+        speakingDub.current = false
         if (isDub && --duckingRef.current === 0) controls.setVolume(originalVolumeRef.current)
       })
       return true

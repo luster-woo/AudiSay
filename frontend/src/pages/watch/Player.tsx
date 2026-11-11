@@ -986,8 +986,10 @@ export function Player({ video }: { video: VideoDetail }) {
                 disabled={summaryBusy}
                 className="min-w-[14rem] flex-1"
               />
-              {/* 화면 크기 버튼 둘은 아래 줄의 신고·설정 버튼과 같은 크기·간격이라 세로로 줄이 맞는다 */}
-              <div className="ml-auto flex gap-2">
+              {/* 화면 크기 버튼 둘은 아래 줄의 신고·설정 버튼과 같은 크기·간격이라 세로로 줄이 맞는다.
+                  ml-auto 를 두지 않는다: 같은 줄이면 재생바(flex-1)가 남는 폭을 채워 오른쪽 끝에 붙고,
+                  글자 크기·확대로 다음 줄로 내려가면 왼쪽부터 놓인다 */}
+              <div className="flex gap-2">
                 {!fullscreen && (
                   <Button
                     ref={enlargeRef}

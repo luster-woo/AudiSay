@@ -8,6 +8,8 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
 TS = "영상 시작부터의 시각, 반드시 MM:SS 형식(예: 01:05, 12:14)"
+# 대사 시각은 0.1초까지: 외국어 대사 번역을 말하는 입에 맞춰 겹쳐 읽는다(1초 단위면 최대 1초 어긋남, 2026-11-11)
+DIALOGUE_TS = "영상 시작부터의 시각, 반드시 MM:SS.s 형식으로 0.1초까지(예: 01:05.3, 12:14.0)"
 
 CATEGORY_KO = Literal["교육", "요리·음식", "게임", "음악", "과학·IT", "뉴스", "예능", "스포츠", "기타"]
 CATEGORY_CODE = {"교육": "EDUCATION", "요리·음식": "COOKING", "게임": "GAME", "음악": "MUSIC", "과학·IT": "SCIENCE_IT",
@@ -17,8 +19,8 @@ IMPORTANCE_CODE = {"상": "HIGH", "중": "MEDIUM", "하": "LOW"}
 
 
 class Dialogue(BaseModel):
-    start: str = Field(description=TS)
-    end: str = Field(description=TS)
+    start: str = Field(description=DIALOGUE_TS)
+    end: str = Field(description=DIALOGUE_TS)
     speaker: Optional[str] = Field(description="말한 사람. 근거가 없으면 null")
     text: str = Field(description="들리는 말 그대로(외국어면 그 언어 원문)")
     language: str = Field(description="말한 언어. ko, en, ja, zh 같은 두 글자 코드")
@@ -75,7 +77,8 @@ class Narration(BaseModel):
 # 6: 기억으로 이름을 채우지 않기·성 붙이거나 이름 합치지 않기(v5가 같은 영상에서 나오지도 않은 '임승묵(박성웅)'을 지어내고
 #    자막의 '가경'과 대사의 가명 '금서희'를 섞어 '금가경'으로 부름, 2026-11-10)
 # 7: 대사마다 말한 사람의 성별·나이대(gender·age)를 받아 외국어 대사를 인물별 목소리로 읽는다(pipeline/voices.py, 2026-11-11)
-PROMPT_VERSION = 7
+# 8: 대사 시각을 0.1초까지(MM:SS.s). 1초 단위면 외국어 대사 번역이 말하는 입보다 최대 1초 이르거나 늦었다(2026-11-11)
+PROMPT_VERSION = 8
 
 PROMPT = """당신은 시각장애인을 위한 화면해설 작가입니다. 이 영상을 처음부터 끝까지 보고 듣고 아래 JSON을 만드세요.
 
@@ -84,12 +87,13 @@ PROMPT = """당신은 시각장애인을 위한 화면해설 작가입니다. �
 1) dialogue → 2) scenes(장면·화면 글자·인물) → 3) lines → 4) 마지막 점검 → 5) summary_30s
 
 공통 규칙
-- 모든 시각은 영상 시작부터의 MM:SS 형식(예: 01:05).
+- 모든 시각은 영상 시작부터의 MM:SS 형식(예: 01:05). 단 dialogue의 start·end는 MM:SS.s로 0.1초까지(예: 01:05.3) 적습니다.
 - 보이지 않거나 확실하지 않은 것은 쓰지 않습니다. 지어내느니 비워 둡니다.
 - 영상의 뒷부분도 앞부분과 같은 밀도로 봅니다.
 
 1) dialogue — 들리는 말
 - 들리는 모든 말(대사·내레이션·노래 가사)을 시간 순서대로, start와 end를 모두 적습니다. 해설이 들어갈 틈을 계산하는 데 씁니다.
+  start는 입을 떼는 순간, end는 말이 끝나는 순간을 0.1초까지 정확히 적습니다. 외국어 대사는 이 시각에 맞춰 번역을 겹쳐 읽습니다.
 - language에 그 말의 언어를 적습니다(ko, en, ja …). 한 영상에 여러 언어가 섞여 있으면 대사마다 따로 적습니다.
 - 외국어 대사(language가 ko가 아님): text에는 들리는 원문을, translation에는 한국어 번역을 적습니다. 이용자는 외국어를 알아듣지 못해
   translation을 그 대사 시각에 한국어로 읽어 줍니다. 빠뜨리지 않습니다.

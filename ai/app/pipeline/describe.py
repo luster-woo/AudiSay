@@ -71,7 +71,8 @@ def gap_end(t: int, dialogues: list[dict], duration_ms: int) -> int | None:
 READ_MS_PER_CHAR, READ_MIN_MS, READ_REST_MS = 180, 800, 500  # 읽는 시간 어림(FE estimateSpeechMs와 같음) + 숨
 FITS_SLACK_MS = 300  # 재생 엔진(FE useNarration)은 음성이 빈 구간 + 0.3초보다 길면 영상을 멈추고 읽는다
 PAUSED_STEP_MS = 1000  # 멈추고 읽는 문장 다음 문장과의 간격(영상 시각). 같은 시각이면 재생 엔진이 한 번에 겹쳐 받는다
-TAIL_MS = 1000  # 밀린 문장도 영상 끝 1초 전에는 시작하게(끝 시각에 두면 영상이 끝나 읽히지 않는다)
+TAIL_MS = 1000
+DUB_PUSH_MAX_MS = 2000  # 해설을 외국어 대사 번역 뒤로 미는 최대 거리(더 밀어야 하면 제자리에서 멈추고 읽음)  # 밀린 문장도 영상 끝 1초 전에는 시작하게(끝 시각에 두면 영상이 끝나 읽히지 않는다)
 
 
 DUB_FLAG = "DIALOGUE_DUB"  # 외국어 대사를 한국어로 읽어 주는 문장 표시(해설 문장이 아님)
@@ -138,13 +139,25 @@ def spread(lines: list[dict], dialogues: list[dict], duration_ms: int) -> list[d
     2026-11-10 박진영 직캠: 해설이 0·1·2·3초, 2:00에 두 문장처럼 몰려 재생 엔진이 뒤 문장을 버렸다(문장 하나 읽는 데 2.5~3초).
     영상과 함께 읽을 수 있는 문장(빈 구간에 들어감) 뒤에는 읽는 시간만큼, 멈추고 읽는 문장 뒤에는 PAUSED_STEP_MS만 띄운다
     (멈춘 동안은 영상 시각이 흐르지 않는다). 밀린 문장의 gapEndMs는 새 시각으로 다시 구한다."""
-    free = 0
+    free = dub_free = 0
     for x in lines:
+        if DUB_FLAG in (x.get("flags") or []):
+            # 외국어 대사 번역은 그 대사 시각에 고정한다(더빙은 말하는 입과 맞아야 한다). 밀면 뒤로 갈수록 쌓여
+            # 53번 모던 패밀리에서 번역 45개 중 43개가 대사보다 늦게, 최대 40초 넘게 밀렸다(2026-11-11)
+            need = max(READ_MIN_MS, len(x["text"]) * READ_MS_PER_CHAR)
+            dub_free = max(dub_free, x["startMs"] + need + READ_REST_MS)
+            continue
         start = max(x["startMs"], min(free, max(0, duration_ms - TAIL_MS)))
+        # 번역 낭독 뒤로는 DUB_PUSH_MAX_MS까지만 민다. 대사가 빽빽하면 해설이 장면보다 10~20초씩 늦어져서(53번),
+        # 더 밀어야 하면 제자리에 두고 재생 엔진이 영상을 멈추고 읽게 한다(앞 번역을 다 읽은 뒤 이어 읽는다)
+        if start < dub_free <= x["startMs"] + DUB_PUSH_MAX_MS:
+            start = min(dub_free, max(0, duration_ms - TAIL_MS))
         if start != x["startMs"]:
             # 밀린 시각이 대사 한가운데면 place처럼 대사 끝으로 다시 옮긴다(MAX_SHIFT_MS 안에서). 안 그러면 대사가 시작되고
             # 곧 영상이 멈추고 해설이 끼어든다(2026-11-10 점검: 2~8초 대사 사이 1.8초 문장이 2.5초로 밀림)
-            if any(d["startMs"] <= start < d["endMs"] for d in dialogues):
+            # 외국어 대사 한가운데면 옮기지 않는다: 번역 낭독과 겹치면 어차피 영상을 멈추고 읽고, 옮기면 빽빽한 대사 끝마다
+            # 밀려 장면보다 10초 넘게 늦어진다(2026-11-11 53번)
+            if any(d["startMs"] <= start < d["endMs"] and not d.get("dub") for d in dialogues):
                 start = min(place(start, dialogues, duration_ms)[0], max(start, duration_ms - TAIL_MS))
             x["startMs"], x["gapEndMs"] = start, gap_end(start, dialogues, duration_ms)
         need = max(READ_MIN_MS, len(x["text"]) * READ_MS_PER_CHAR)

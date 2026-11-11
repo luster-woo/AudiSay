@@ -82,12 +82,12 @@ def dub_lines(dialogues: list[dict]) -> list[dict]:
     """외국어 대사(dub 표시, text는 한국어 번역)를 그 대사 시각에 읽어 줄 문장으로 만든다. dialogues는 시각 순.
     2026-11-10 '100일의 거짓말': 일본어·영어 연설을 알아들을 수 없었다(넷플릭스 화면해설은 성우가 한국어로 읽는다).
     - 상세도 1(내용을 따라가는 데 꼭 필요), gapEndMs null: 대사와 겹치므로 재생 엔진이 영상을 멈추고 읽은 뒤 원래 말을 들려준다.
-    - 말한 사람이 바뀔 때만 "태웅: …"처럼 이름을 붙인다(한국어 대사가 끼면 다시 붙인다).
+    - 말머리("태웅: ")는 붙이지 않는다. 인물은 목소리로 구별한다(merge가 voices.cast로 인물별 목소리를 정함, 2026-11-11 사용자 결정).
+      그래서 문장에 말한 사람·성별·나이대(speaker·gender·age)를 싣는다.
     - MAX_CHARS를 넘는 번역은 문장 단위로 나누고, 시각은 대사 길이에 글자 수 비율로 나눠 준다."""
-    out, prev = [], None
+    out = []
     for d in dialogues:
         if not d.get("dub"):
-            prev = None
             continue
         # "김태웅(진영)" → "김태웅". Gemini가 모르는 사람을 문자열 "null"로 줄 때가 있다(2026-11-10 '100일의 거짓말')
         speaker = re.sub(r"\s*\(.*?\)", "", d.get("speaker") or "").strip()
@@ -102,9 +102,8 @@ def dub_lines(dialogues: list[dict]) -> list[dict]:
         for i, p in enumerate(parts):
             start = d["startMs"] + (d["endMs"] - d["startMs"]) * done // total
             done += len(p)
-            text = f"{speaker}: {p}" if i == 0 and speaker and speaker != prev else p
-            out.append({"detailLevel": 1, "startMs": start, "gapEndMs": None, "importance": 3, "text": text, "flags": [DUB_FLAG]})
-        prev = speaker
+            out.append({"detailLevel": 1, "startMs": start, "gapEndMs": None, "importance": 3, "text": p, "flags": [DUB_FLAG],
+                        "speaker": speaker, "gender": d.get("gender"), "age": d.get("age")})
     return out
 
 

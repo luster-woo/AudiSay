@@ -3,7 +3,7 @@
 - job.tts: 유튜브 영상은 상세도 1·2·3 문장 전부(2026-11-10 사용자 결정: 유튜브는 상세도 전부 Gemini TTS), 직접 올린 영상도
   상세도 1·2·3 문장 전부(2026-11-10 점검 수정) + 30초 요약을 Gemini TTS(목소리 Kore)로 만들어 S3에 올리고
   description_lines.audio_key·audio_duration_ms, descriptions.summary_audio_key·summary_duration_ms를 채운다.
-  외국어 대사를 한국어로 읽어 주는 문장(is_dub)은 해설과 구별되게 남성 목소리(DUB_VOICE)로 만든다.
+  외국어 대사를 한국어로 읽어 주는 문장(is_dub)은 인물마다 다른 목소리(pipeline/voices.py 배역, 없으면 DUB_VOICE)로 만든다.
   payload(BE TtsPayload): {descriptionId, voiceCode("ko-female-1")} — 목소리가 하나뿐이라 voiceCode는 읽지 않는다.
   PROGRESS는 80→100을 10% 단위(90)로 보내고, 완료 result에 descriptionId를 넣는다(BE TtsResult가 그 값만 읽음).
   해설 공개(PUBLISHED·READY)는 BE가 TTS 완료 이벤트를 받고 한다(descriptionService.publish) → 여기서는 하지 않는다.
@@ -39,6 +39,7 @@ from app.errors import WorkerError
 from app.gms.client import CallContext, GmsClient
 from app.mq.envelope import Envelope
 from app.mq.worker import Events
+from app.pipeline.voices import voices_key
 from app.storage import Storage
 from app.tts_text import normalize_ko
 
@@ -324,11 +325,11 @@ class Tts:
         pool = _pool(self.db)
         desc_id = await _description_id(pool, p, job_id)
         d = await pool.fetchrow("SELECT summary_text, summary_audio_key FROM descriptions WHERE id = $1", desc_id)
-        rows = await pool.fetch("SELECT id, text, start_ms, detail_level FROM description_lines WHERE description_id = $1"
+        rows = await pool.fetch("SELECT id, line_index, text, start_ms, detail_level FROM description_lines WHERE description_id = $1"
                                 " AND detail_level <= $2 AND audio_key IS NULL ORDER BY line_index",
                                 desc_id, await _pre_tts_level(pool, desc_id))
         await events.started()
-        items = await _line_items(pool, desc_id, rows)
+        items = await _line_items(pool, self.storage, desc_id, rows)
         if d["summary_text"] and not d["summary_audio_key"]:
             items.append((summary_key(desc_id), d["summary_text"]))
 
@@ -390,14 +391,14 @@ class LineTts:
         pool = _pool(self.db)
         desc_id = int(p["descriptionId"])
         if p.get("lineIds"):
-            rows = await pool.fetch("SELECT id, text, start_ms, detail_level FROM description_lines WHERE description_id = $1"
+            rows = await pool.fetch("SELECT id, line_index, text, start_ms, detail_level FROM description_lines WHERE description_id = $1"
                                     " AND id = ANY($2::bigint[]) AND audio_key IS NULL ORDER BY line_index",
                                     desc_id, [int(x) for x in p["lineIds"]])
         else:
-            rows = await pool.fetch("SELECT id, text, start_ms, detail_level FROM description_lines WHERE description_id = $1"
+            rows = await pool.fetch("SELECT id, line_index, text, start_ms, detail_level FROM description_lines WHERE description_id = $1"
                                     " AND detail_level = $2 AND audio_key IS NULL ORDER BY line_index",
                                     desc_id, int(p.get("detailLevel") or 3))
-        items = await _line_items(pool, desc_id, rows)
+        items = await _line_items(pool, self.storage, desc_id, rows)
         inf = await _upload_inf(pool, desc_id, self.inf)
         done = await synthesize_many(self.gms, self.storage, items, CallContext("TTS", job_id=env.jobId), inf=inf) if items else {}
         async with pool.acquire() as con, con.transaction():
@@ -428,9 +429,14 @@ def is_dub(start_ms: int, level: int, text: str, spoken: list[tuple[int, int, st
     return len(body) >= 2 and any(a <= start_ms <= b + DUB_AFTER_END_MS and body in t for a, b, t in spoken)
 
 
-async def _line_items(pool, desc_id: int, rows) -> list[tuple[str, str, str]]:
-    """[(S3 키, 문장, 목소리)]. 외국어 대사를 읽어 주는 문장은 DUB_VOICE, 나머지는 해설 목소리.
+async def _line_items(pool, storage: Storage, desc_id: int, rows) -> list[tuple[str, str, str]]:
+    """[(S3 키, 문장, 목소리)]. 해설은 VOICE_NAME(Kore), 외국어 대사를 읽어 주는 문장은 merge가 정한 인물별 목소리
+    (jobs/{jobId}/voices.json, pipeline/voices.py). 배역이 없으면(예전 해설) DUB_VOICE.
     종류 칸(line_type)이 DIALOGUE면 대사 번역, 칸이 생기기 전 해설(모두 NARRATION)은 대사 글과 비교해 가른다(is_dub)."""
+    cast: dict[str, str] = {}
+    job_id = await pool.fetchval("SELECT job_id FROM descriptions WHERE id = $1", desc_id) if rows else None
+    if job_id is not None and await storage.exists(voices_key(job_id)):
+        cast = await storage.get_json(voices_key(job_id))
     dialogue_ids: set[int] = set()
     if rows and await has_column(pool, "description_lines", "line_type"):
         dialogue_ids = {r["id"] for r in await pool.fetch(
@@ -442,9 +448,12 @@ async def _line_items(pool, desc_id: int, rows) -> list[tuple[str, str, str]]:
                                 " AND start_ms BETWEEN $2 AND $3", desc_id, max(0, min(starts) - DUB_LOOKBACK_MS), max(starts))
         spoken = [(s["start_ms"], s["end_ms"] if s["end_ms"] is not None else s["start_ms"], re.sub(r"\s+", "", s["text"] or ""))
                   for s in segs]
-    return [(line_key(desc_id, r["id"], r["text"]), r["text"],
-             DUB_VOICE if r["id"] in dialogue_ids or is_dub(r["start_ms"], r["detail_level"], r["text"], spoken) else VOICE_NAME)
-            for r in rows]
+    def voice(r) -> str:
+        if r["id"] in dialogue_ids or is_dub(r["start_ms"], r["detail_level"], r["text"], spoken):
+            return cast.get(str(r["line_index"])) or DUB_VOICE
+        return VOICE_NAME
+
+    return [(line_key(desc_id, r["id"], r["text"]), r["text"], voice(r)) for r in rows]
 
 
 async def _upload_inf(pool, desc_id: int, inf: inference.Inference | None) -> inference.Inference | None:

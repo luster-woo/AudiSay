@@ -125,10 +125,10 @@ def test_foreign_dialogue_is_read_in_korean_at_its_time():
 
     lines = [x for x in build_chunk(f, 0, 0, 190_000)["lines"] if "DIALOGUE_DUB" in x["flags"]]
     assert [(x["startMs"], x["text"]) for x in lines] == [
-        (20_000, "총독: 금일 5월 15일."),
-        (30_000, "태웅: 총독 각하의 건배사입니다. 조선 최초의 기송관이 성공적으로 개통되었습니다."),  # 60자 안에서 문장끼리 묶음
+        (20_000, "금일 5월 15일."),  # 말머리 없이 목소리로 인물을 구별한다
+        (30_000, "총독 각하의 건배사입니다. 조선 최초의 기송관이 성공적으로 개통되었습니다."),  # 60자 안에서 문장끼리 묶음
         (40_123, "이는 조선 근대화의 새로운 이정표이며 만선 번영의 첫걸음이 될 것입니다."),
-        (50_000, "이상입니다."),  # 같은 사람이 이어 말하면 이름을 다시 붙이지 않는다
+        (50_000, "이상입니다."),
     ]
     assert all(x["detailLevel"] == 1 and x["gapEndMs"] is None for x in lines)
     # 붙어 있어도 해설 문장과 한 문장으로 묶지 않는다
@@ -152,7 +152,8 @@ def test_dub_lines_are_read_but_kept_out_of_chapters_and_scenes():
 def test_dub_speaker_drops_actor_name_and_null():
     from app.pipeline.describe import dub_lines
     d = lambda s, sp: {"startMs": s, "endMs": s + 1000, "speaker": sp, "text": "건배!", "dub": True}
-    assert [x["text"] for x in dub_lines([d(0, "김태웅(진영)"), d(2000, "null")])] == ["김태웅: 건배!", "건배!"]
+    lines = dub_lines([d(0, "김태웅(진영)"), d(2000, "null")])
+    assert [(x["speaker"], x["text"]) for x in lines] == [("김태웅", "건배!"), (None, "건배!")]
 
 
 def test_spread_does_not_push_a_line_into_the_middle_of_dialogue():
@@ -170,5 +171,21 @@ def test_dub_lines_are_stored_as_dialogue_type():
     f = normalize(_foreign_raw(), 15, "gemini-3.5-flash", 190_000)
     plan = assemble(f, [{**build_chunk(f, 0, 0, 190_000), "chunkIndex": 0}])
     types = {x["text"]: line_type(x) for x in plan.lines}
-    assert types["총독: 금일 5월 15일."] == "DIALOGUE"
+    assert types["금일 5월 15일."] == "DIALOGUE"
     assert {t for x, t in types.items() if "DIALOGUE_DUB" not in next(y for y in plan.lines if y["text"] == x)["flags"]} == {"NARRATION"}
+
+
+def test_dub_voices_one_per_person_main_first():
+    """외국어 대사는 인물마다 목소리 하나(영상 끝까지 같게). 대사가 많은 인물부터 성별·나이대 후보 중 안 쓴 목소리를 받고,
+    해설 목소리(Kore)는 쓰지 않는다. 성별을 모르면 기본(Charon)."""
+    from app.pipeline.voices import POOLS, cast
+    dub = lambda i, sp, g, a: {"lineIndex": i, "flags": ["DIALOGUE_DUB"], "speaker": sp, "gender": g, "age": a}
+    lines = [dub(1, "Gloria", "female", "middle"), dub(2, "Mitchell", "male", "middle"), dub(3, "Cam", "male", "middle"),
+             dub(4, "Mitchell", "male", "middle"), dub(5, "Lily", "female", "child"), dub(6, None, None, None),
+             {"lineIndex": 7, "flags": [], "text": "해설"}, dub(8, "Mitchell", "male", "middle")]
+    v = cast(lines, "DIALOGUE_DUB")
+    assert 7 not in v and v[6] == "Charon"
+    assert v[2] == v[4] == v[8] == POOLS[("male", "middle")][0]  # 대사가 가장 많은 Mitchell이 첫 후보
+    assert v[3] == POOLS[("male", "middle")][1] != v[2]  # 같은 성별·나이대라도 다른 목소리
+    assert v[1] in POOLS[("female", "middle")] and v[5] in POOLS[("female", "child")]
+    assert "Kore" not in v.values()

@@ -23,6 +23,9 @@ class Dialogue(BaseModel):
     text: str = Field(description="들리는 말 그대로(외국어면 그 언어 원문)")
     language: str = Field(description="말한 언어. ko, en, ja, zh 같은 두 글자 코드")
     translation: Optional[str] = Field(description="외국어 대사의 한국어 번역. 한국어 대사·노래 가사·통역으로 되풀이한 말은 null")
+    gender: Optional[str] = Field(default=None, description="말한 사람의 성별: male, female. 모르면 null")
+    age: Optional[str] = Field(default=None, description="말한 사람의 나이대: child(어린이), teen(10대), young(20~30대), "
+                                                         "middle(40~50대), senior(60대 이상). 모르면 null")
 
 
 class ScreenText(BaseModel):
@@ -71,7 +74,8 @@ class Narration(BaseModel):
 #    번역 없이 원문만 들어오고, 한국어 번역 자막은 '대사와 같은 자막'이라 읽히지 않았다. 넷플릭스 화면해설은 성우가 한국어로 읽는다)
 # 6: 기억으로 이름을 채우지 않기·성 붙이거나 이름 합치지 않기(v5가 같은 영상에서 나오지도 않은 '임승묵(박성웅)'을 지어내고
 #    자막의 '가경'과 대사의 가명 '금서희'를 섞어 '금가경'으로 부름, 2026-11-10)
-PROMPT_VERSION = 6
+# 7: 대사마다 말한 사람의 성별·나이대(gender·age)를 받아 외국어 대사를 인물별 목소리로 읽는다(pipeline/voices.py, 2026-11-11)
+PROMPT_VERSION = 7
 
 PROMPT = """당신은 시각장애인을 위한 화면해설 작가입니다. 이 영상을 처음부터 끝까지 보고 듣고 아래 JSON을 만드세요.
 
@@ -95,6 +99,9 @@ PROMPT = """당신은 시각장애인을 위한 화면해설 작가입니다. �
     (같은 내용을 두 번 읽지 않게). 옮긴 말이 한국어면 처음 말의 translation도 null입니다(곧 한국어로 들림).
   - 노래 가사, "OK"·"Hello"처럼 누구나 아는 한두 마디는 translation을 null로 둡니다.
 - 한국어 대사는 translation을 null로 둡니다.
+- gender·age: 말한 사람의 성별과 나이대를 보이는 모습과 목소리로 적습니다. 같은 사람은 영상 끝까지 같게 적습니다.
+  외국어 대사는 인물마다 다른 목소리로 읽어 주므로 빠뜨리지 않습니다. 정말 알 수 없을 때만 null.
+  speaker도 같은 사람은 영상 끝까지 같은 이름(또는 같은 겉모습 호칭)으로 적습니다.
 - 노래는 가사를 한 소절(한 줄)씩 나눠 각각 적습니다. 한 절·한 곡을 한 덩어리로 적지 않습니다. 간주·반주만 나오는 구간은 적지 않습니다.
 
 2) scenes — 장면

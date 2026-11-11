@@ -135,7 +135,7 @@ async def test_youtube_pre_makes_all_levels_upload_only_two():
     assert await tts._pre_tts_level(Pool("UPLOAD"), 1) == 3
 
 
-async def test_job_tts_saves_in_batches_so_a_timeout_keeps_earlier_audio(monkeypatch):
+async def test_job_tts_saves_in_batches_so_a_timeout_keeps_earlier_audio(monkeypatch, tmp_path):
     """job.tts는 SAVE_BATCH 문장마다 저장한다. 중간에 끊겨도 앞서 만든 음성은 남고, 다시 할 때 남은 문장만 만든다(2026-11-10 점검)."""
     import pytest
 
@@ -168,7 +168,7 @@ async def test_job_tts_saves_in_batches_so_a_timeout_keeps_earlier_audio(monkeyp
         async def fetch(self, sql, *args):
             if "transcript_segments" in sql:
                 return []
-            return [{"id": i, "text": f"문장 {i}.", "start_ms": i * 1000, "detail_level": 1} for i in range(1, 6)]
+            return [{"id": i, "line_index": i, "text": f"문장 {i}.", "start_ms": i * 1000, "detail_level": 1} for i in range(1, 6)]
 
         def acquire(self):
             return Con()
@@ -198,7 +198,7 @@ async def test_job_tts_saves_in_batches_so_a_timeout_keeps_earlier_audio(monkeyp
 
     env = Envelope(messageId="t", type="JOB_TTS", jobId=1, payload={"descriptionId": 1})
     with pytest.raises(TimeoutError):
-        await tts.Tts(None, None, Db())(env, Events())
+        await tts.Tts(LocalStorage(str(tmp_path)), None, Db())(env, Events())
     assert saved == [1, 2]  # 첫 묶음은 저장됐다
 
 

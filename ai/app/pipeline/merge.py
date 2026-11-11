@@ -20,6 +20,7 @@ BE(MergePayload, 2026-10-29 develop)가 보내는 payload: {videoId, pipeline, s
 """
 import logging
 import re
+from collections import Counter
 from dataclasses import dataclass, field
 
 from app.db import Db, has_column
@@ -28,6 +29,7 @@ from app.mq.envelope import Envelope
 from app.mq.worker import Events
 from app.pipeline.describe import DUB_FLAG, join_near, spread
 from app.pipeline.keywords import extract
+from app.pipeline.voices import cast, voices_key
 from app.storage import Storage
 
 log = logging.getLogger(__name__)
@@ -121,6 +123,7 @@ class Plan:
     chapters: list[dict] = field(default_factory=list)  # {chapterIndex, startMs, endMs, title, summary, keywords}
     screen_texts: list[dict] = field(default_factory=list)  # {startMs, endMs, textType, importance, fullText, sameAsDialogue}
     dropped_names: list[str] = field(default_factory=list)  # 근거가 없어 지운 이름(로그용)
+    voices: dict[int, str] = field(default_factory=dict)  # 외국어 대사 낭독 문장의 목소리 {lineIndex: Gemini TTS 목소리}
 
 
 def assemble(full: dict, chunks: list[dict], covered_until_ms: int | None = None, model: str | None = None) -> Plan:
@@ -139,6 +142,10 @@ def assemble(full: dict, chunks: list[dict], covered_until_ms: int | None = None
     if full.get("title"):
         seen = re.sub(r"\s+", "", " ".join([full["title"]] + [d["text"] for d in full["dialogues"]]
                                            + [t["text"] for s in full["scenes"] for t in s.get("screenTexts", [])]))
+    # 대사가 대부분 외국어인 영상은 이름을 한글로 옮겨 적어(Mitchell → 미첼) 제목·대사·화면 글자와 맞춰 볼 수 없다.
+    # 맞춰 보면 진짜 이름도 지워져 "남성, 검은색 긴팔 옷 착용이 …"처럼 읽혔다(2026-11-11 모던 패밀리). 이때는 근거 말만 본다
+    dialogues = full["dialogues"]
+    foreign = bool(dialogues) and sum(1 for d in dialogues if d.get("dub")) * 2 > len(dialogues)
     names: dict[str, dict] = {}
     dropped: set[str] = set()
     renames: dict[str, str] = {}  # 문장 속 근거 없는 이름 → 근거 있는 짧은 이름이나 겉모습 호칭
@@ -152,7 +159,7 @@ def assemble(full: dict, chunks: list[dict], covered_until_ms: int | None = None
                 # 호칭은 이름 근거 확인 대상이 아니다
                 names.setdefault(p["name"], {"name": p["name"], "appearance": p.get("appearance"), "nameSource": "AI"})
                 continue
-            if name and seen is not None and "사전" not in (p.get("basis") or ""):
+            if name and seen is not None and not foreign and "사전" not in (p.get("basis") or ""):
                 # "임승묵(박성웅)"처럼 배우 이름을 붙여 와도 극중 이름이 제목·대사·화면 글자에 있는지 본다.
                 # 없으면 성을 뗀 이름("금가경" → 자막의 "가경")이 있는지 보고, 그것도 없으면 지운다.
                 # 2026-11-10 '100일의 거짓말': 자막엔 '가경'뿐인데 대사의 가짜 이름 '금서희'와 섞어 '금가경'으로, 나오지도 않는
@@ -207,13 +214,15 @@ def assemble(full: dict, chunks: list[dict], covered_until_ms: int | None = None
             if text and int(x["startMs"]) <= duration:
                 lines.append({"detailLevel": int(x["detailLevel"]), "startMs": int(x["startMs"]), "gapEndMs": x.get("gapEndMs"),
                               "importance": int(x.get("importance") or 4 - int(x["detailLevel"])), "text": text,
-                              "flags": list(x.get("flags") or []) + (["UNSUPPORTED_NAME"] if any(n in text for n in plan.dropped_names) else [])})
+                              "flags": list(x.get("flags") or []) + (["UNSUPPORTED_NAME"] if any(n in text for n in plan.dropped_names) else []),
+                              **{k: x[k] for k in ("speaker", "gender", "age") if x.get(k)}})
     lines.sort(key=lambda x: (x["startMs"], x["detailLevel"]))
     # 1초쯤 간격으로 붙은 문장은 두 문장짜리 해설 하나로 묶고, 그래도 겹치는 문장은 뒤로 띄운다(조각 경계를 넘는 것까지 보려고 여기서)
     lines = spread(join_near(lines), full["dialogues"], duration)
     for i, x in enumerate(lines, 1):
         x["lineIndex"] = i
     plan.lines = lines
+    plan.voices = cast(lines, DUB_FLAG)  # 외국어 대사는 인물마다 다른 목소리로(말머리 없이 목소리로 구별)
 
     # 외국어 대사를 읽어 주는 문장(DIALOGUE_DUB)은 해설이 아니라 대사 번역이다. 플레이어는 description_lines로 읽어 주지만
     # 목차 요약·키워드·장면 설명에는 넣지 않는다(이 글들은 합쳐 저장돼 BE 챗봇이 나중에 가를 수 없다. 대사는 transcript_segments에 따로 있음)
@@ -305,6 +314,9 @@ class Merge:
         if plan.dropped_names:
             log.info("근거 없는 이름 제외 job=%s: %s", job_id, plan.dropped_names)
 
+        if plan.voices:  # 외국어 대사 낭독 목소리 배역: 이어지는 job.tts가 읽는다(DB에 칸이 없어 S3에 둔다)
+            await self.storage.put_json(voices_key(job_id), {str(k): v for k, v in plan.voices.items()})
+            log.info("대사 목소리 job=%s %s", job_id, dict(sorted(Counter(plan.voices.values()).items())))
         desc_id = await self._save(pool, int(video_id), job_id, plan)
         log.info("merge 완료 job=%s description=%s 문장 %s개 장면 %s개 인물 %s명", job_id, desc_id, len(plan.lines),
                  len(plan.scenes), len(plan.characters))

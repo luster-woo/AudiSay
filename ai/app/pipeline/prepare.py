@@ -65,6 +65,8 @@ def normalize(raw: dict, video_id: int | None, model: str, duration_ms: int | No
         ko = (r.get("translation") or "").strip()
         if ko and (r.get("language") or "ko").lower()[:2] != "ko" and ko != d["text"].strip():
             d.update(text=ko, original=d["text"], dub=True)
+        # 프롬프트 v7: 말한 사람의 성별·나이대(외국어 대사 낭독 목소리 배역, pipeline/voices.py)
+        d.update({k: r[k] for k in ("gender", "age") if r.get(k)})
     scenes = [{
         "startMs": to_ms(s["start"]), "endMs": to_ms(s["end"]), "title": s["title"],
         "people": [{"name": p.get("name"), "basis": p.get("basis"), "appearance": p["appearance"]}

@@ -24,9 +24,18 @@ def test_finish_sentence_fixes_noun_endings():
 def test_cap_lines_limits_by_scene_length_and_dedups():
     lines = [{"level": 1, "text": "가"}, {"level": 1, "text": "나"}, {"level": 3, "text": "다"},
              {"level": 2, "text": "라"}, {"level": 2, "text": "라 "}]
-    kept = local.cap_lines(lines, 8000)  # 8초 → 2문장
-    assert [x["text"] for x in kept] == ["가", "라"]  # level 1은 한도의 절반(1), 나머지는 낮은 level부터, 같은 문장은 하나
+    kept = local.cap_lines(lines, 8000)  # 8초 → 상세도 1·2는 1문장, 상세도 3은 2문장
+    assert [x["text"] for x in kept] == ["가", "다"]  # 상세도 3에 몫이 남으면 level 3을 넣는다, 같은 문장은 하나
     assert len(local.cap_lines(lines, 1000)) == 1
+
+
+def test_cap_lines_gives_each_detail_level_its_own_share():
+    """짧은 장면이 이어져도 상세도 2와 3이 달라야 한다(2026-11-12 크레페: level 3이 0개라 상세도 2·3이 같았다)."""
+    lines = [{"level": 1, "text": f"일{i}"} for i in range(3)] + [{"level": 2, "text": f"이{i}"} for i in range(4)] \
+        + [{"level": 3, "text": f"삼{i}"} for i in range(3)]
+    for ms, want in [(6000, (1, 0, 1)), (12_000, (1, 1, 1)), (20_000, (2, 1, 2))]:
+        kept = local.cap_lines(lines, ms)
+        assert tuple(sum(x["level"] == lv for x in kept) for lv in (1, 2, 3)) == want, ms
 
 
 def test_group_sentences_by_end_mark_or_12s():
@@ -153,8 +162,8 @@ def test_local_analysis_end_to_end_with_mock_h200(tmp_path, monkeypatch):
     assert raw["dialogue"][0]["text"] == "양파 두 개를 넣어요." and raw["dialogue"][0]["original"] == "Add two onions."
     assert raw["lines"][0]["text"] == "양파가 냄비에 들어가 있습니다."  # 개조식 끝 고침
     # 끊긴 JSON 조각, 앞 장면에서 한 말, 옷차림만 있는 문장은 빠지고 겹친 시각은 2초 띄운다(0.5초·2초 → 2.5초)
-    assert [(x["at"], x["text"]) for x in raw["lines"]] == [("00:00", "양파가 냄비에 들어가 있습니다."), ("00:02", "냄비가 빨갛습니다."),
-                                                           ("00:25", "주걱으로 볶습니다.")]
+    assert [(x["at"], x["text"]) for x in raw["lines"]] == [("00:00", "양파가 냄비에 들어가 있습니다."),
+                                                           ("00:25", "주걱으로 볶습니다.")]  # 0.5초·2초 두 문장은 4.5초 안이라 하나만(thin_levels)
     assert raw["scenes"][0]["screen_text"] == [{"text": "STEP 1", "text_type": "OTHER", "importance": "중", "same_as_dialogue": False}]
 
     full = normalize(raw, 3, model, 40_000)
@@ -428,3 +437,15 @@ def test_h200_down_goes_straight_to_gemini(tmp_path, monkeypatch):
     raw, model, errors = asyncio.run(local.analyze("video", DownH200(), object(), True, "t", {"playback": Path("x"), "wav": None},
                                                    tmp_path, 10_000, progress, 1))
     assert called == ["gemini"] and errors == ["h200: 연결 안 됨"] and model == "gemini:gemini-3.8-flash (대체)"
+
+
+def test_thin_levels_spreads_detail_levels_like_youtube():
+    """너무 가까운 level 1은 level 2로, level 1·2는 level 3으로 낮추고, 4.5초 안의 문장은 뺀다(2026-11-12 크레페:
+    상세도 2가 4.7초에 한 문장으로 유튜브의 두 배)."""
+    scenes = [{"lines": [{"atMs": 0, "level": 1, "text": "a"}, {"atMs": 5000, "level": 1, "text": "b"}]},
+              {"lines": [{"atMs": 10_000, "level": 1, "text": "c"}, {"atMs": 12_000, "level": 2, "text": "d"},
+                         {"atMs": 15_000, "level": 2, "text": "e"}]}]
+    local.thin_levels(scenes)
+    got = [(x["text"], x["level"]) for sc in scenes for x in sc["lines"]]
+    # b: level 1과 5초 → 2, 그런데 level 1·2와도 5초 → 3. c: 10초 뒤라 level 1. d: 2초 → 뺌. e: c와 5초 → level 3
+    assert got == [("a", 1), ("b", 3), ("c", 1), ("e", 3)]

@@ -203,14 +203,9 @@ test('업로드 멈추기 → 확인 → 멈추기: 올린 조각을 지우고 �
     'aria-valuenow',
     '0',
   )
-  const steps = within(screen.getByRole('list', { name: '진행 단계' })).getAllByRole('listitem')
-  expect(steps.map((li) => li.textContent)).toEqual([
-    '영상 업로드, 진행 중',
-    '영상 분석, 대기',
-    '장면 해설 만들기, 대기',
-    '해설 합치고 다듬기, 대기',
-    '해설 음성 만들기, 대기',
-  ])
+  // 해설 만들기 화면과 같은 모양(오디 + 한 줄 상태). 단계 목록은 두지 않는다
+  expect(screen.getByRole('button', { name: /캐릭터 움직임/ })).toBeInTheDocument()
+  expect(screen.queryByRole('list', { name: '진행 단계' })).not.toBeInTheDocument()
 
   await user.click(screen.getByRole('button', { name: '업로드 멈추기' }))
   const dialog = await screen.findByRole('dialog', { name: '업로드를 멈출까요?' })

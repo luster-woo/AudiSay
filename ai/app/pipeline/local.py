@@ -263,12 +263,19 @@ def frames_for_silent(scene_ms: int) -> int:
 
 
 SEC_PER_LINE = 4.0  # 장면 길이 몇 초에 문장 하나(모든 상세도 합). 해설 읽기 약 3~4초
+# 상세도별 누적 한도: 상세도 1은 10초에 하나, 상세도 2(1+2)는 6초에 하나, 상세도 3(1+2+3)은 SEC_PER_LINE초에 하나
+SEC_PER_LINE_L1 = 10.0
+SEC_PER_LINE_L2 = 6.0
 
 
 def cap_lines(lines: list[dict], scene_ms: int) -> list[dict]:
-    """장면 길이에 비해 문장이 너무 많으면 줄인다. level 1은 한도의 절반까지(최소 1), 나머지는 낮은 level(중요한 것)부터 남긴다.
-    모델이 짧은 장면에도 문장을 3~5개씩 써서 2분 영상이 115문장이 된 문제(2026-10-29)."""
-    limit = max(1, round(scene_ms / 1000 / SEC_PER_LINE))
+    """장면 길이에 비해 문장이 너무 많으면 줄인다. 모델이 짧은 장면에도 문장을 3~5개씩 써서 2분 영상이 115문장이 된
+    문제(2026-10-29). 상세도마다 누적 한도를 따로 둔다: 전체 한도 하나로 낮은 level부터 채우면 짧은 장면에서 level 2가
+    자리를 다 써서 level 3이 늘 잘렸고, 상세도 2와 3이 똑같이 들렸다(2026-11-12 크레페 level 3 문장 0개)."""
+    sec = scene_ms / 1000
+    b1 = max(1, int(sec // SEC_PER_LINE_L1))
+    b2 = max(b1, round(sec / SEC_PER_LINE_L2))
+    b3 = max(b2, round(sec / SEC_PER_LINE))
     seen: set[str] = set()
     uniq = []
     for x in lines:  # 같은 문장이 두 번 나오면 하나만
@@ -277,9 +284,9 @@ def cap_lines(lines: list[dict], scene_ms: int) -> list[dict]:
             seen.add(k)
             uniq.append(x)
     lines = uniq
-    l1 = [x for x in lines if x["level"] == 1][:max(1, limit // 2)]
-    rest = sorted([x for x in lines if x["level"] != 1], key=lambda x: x["level"])
-    keep = (l1 + rest)[:max(limit, len(l1))]
+    keep = [x for x in lines if x["level"] == 1][:b1]
+    keep += [x for x in lines if x["level"] == 2][:max(0, b2 - len(keep))]
+    keep += [x for x in lines if x["level"] >= 3][:max(0, b3 - len(keep))]
     order = {id(x): i for i, x in enumerate(lines)}
     return sorted(keep, key=lambda x: order[id(x)])
 
@@ -317,9 +324,12 @@ def spread_lines(lines: list[dict], scene: dict) -> list[dict]:
     """한 장면 안 문장이 MIN_LINE_GAP_MS보다 붙어 있으면 뒤로 민다. 장면 끝을 넘는 level 2·3 문장은 뺀다."""
     out: list[dict] = []
     last = None
+    edge = max(scene["startMs"], scene["endMs"] - 300)
     for ln in sorted(lines, key=lambda x: x["atMs"]):
         at = ln["atMs"] if last is None else max(ln["atMs"], last + MIN_LINE_GAP_MS)
-        if at > scene["endMs"] - 300 and out and ln["level"] > 1:
+        # 장면 끝에 붙이면 같은 시각에 겹친다(2026-11-12 크레페 마지막 300.4초에 4문장). level 1이라도 앞 문장이 이미
+        # 끝에 붙어 있으면 뺀다
+        if at >= edge and out and (ln["level"] > 1 or last >= edge - MIN_LINE_GAP_MS):
             continue
         out.append({**ln, "atMs": min(at, max(scene["startMs"], scene["endMs"] - 300))})
         last = out[-1]["atMs"]
@@ -328,6 +338,31 @@ def spread_lines(lines: list[dict], scene: dict) -> list[dict]:
 
 NEAR_REPEAT_MS = 30_000  # 이 시간 안의 비슷한 문장은 더 느슨하게(NEAR_RATIO) 같은 말로 본다
 NEAR_RATIO = 0.7
+HAN_CHAR = re.compile("[一-鿿]")  # 해설에 섞인 한자("R 자样的 문양", 2026-11-12 해리포터)
+
+# 상세도별 최소 간격(영상 전체 시간 순서). 유튜브(Gemini) 해설은 평균 상세도 1이 약 19초, 상세도 2(1+2)가 약 9초에
+# 문장 하나인데, 오픈소스는 장면마다 level 1을 하나씩 써서 크레페가 11.6초·4.7초로 두 배였다(2026-11-12 실측)
+LEVEL_GAP_MS = {1: 9_000, 2: 6_000, 3: 4_500}
+
+
+def thin_levels(desc_scenes: list[dict]) -> None:
+    """영상 전체를 시간 순서로 보며, 앞 문장과 너무 가까운 문장의 상세도를 낮춘다: level 1끼리 9초 안이면 level 2로,
+    level 1·2끼리 6초 안이면 level 3으로, 모든 문장끼리 4.5초 안이면 뺀다. 내용은 높은 상세도에 남는다."""
+    last = {1: -10**9, 2: -10**9, 3: -10**9}  # 상세도 n에서 들리는 마지막 문장 시각
+    for sc in desc_scenes:
+        kept = []
+        for ln in sorted(sc["lines"], key=lambda x: x["atMs"]):
+            at, lv = ln["atMs"], ln["level"]
+            if lv == 1 and at - last[1] < LEVEL_GAP_MS[1]:
+                lv = 2
+            if lv <= 2 and at - last[2] < LEVEL_GAP_MS[2]:
+                lv = 3
+            if at - last[3] < LEVEL_GAP_MS[3]:
+                continue
+            kept.append({**ln, "level": lv})
+            for n in range(lv, 4):  # 상세도 n 이상에서 이 문장이 들린다
+                last[n] = at
+        sc["lines"] = kept
 
 
 def drop_repeats(desc_scenes: list[dict], ratio: float = 0.85) -> None:
@@ -758,13 +793,14 @@ async def analyze_opensource(inf, title: str | None, files: dict, work: Path, du
     notes = await notes_job if notes_job else []
     for sc, sd in zip(desc["scenes"], scenes):
         kept = [{**ln, "text": finish_sentence(ln["text"])} for ln in sc["lines"]
-                if finish_sentence(ln["text"]) and not looks_like_json(ln["text"])]
+                if finish_sentence(ln["text"]) and not looks_like_json(ln["text"]) and not HAN_CHAR.search(ln["text"])]
         kept = drop_early(kept, segs)
         # 화면 문구는 문장 수 한도와 따로 넣는다. 해설이 이미 그 글자를 썼으면 넣지 않는다
         shown = [{"atMs": n["atMs"], "level": 1, "text": n["text"]} for n in notes if sd["startMs"] <= n["atMs"] < sd["endMs"]
                  and not all(any(_norm(q) in _norm(ln["text"]) for ln in kept) for q in n["quotes"])]
         sc["lines"] = spread_lines(cap_lines(kept, sd["endMs"] - sd["startMs"]) + shown, sd)
     drop_repeats(desc["scenes"])
+    thin_levels(desc["scenes"])
     scenes, desc["scenes"], ocr_by_scene = merge_similar_scenes(scenes, desc["scenes"], ocr_by_scene)
     lines = [ln for sc in desc["scenes"] for ln in sc["lines"]]
     await progress(17)

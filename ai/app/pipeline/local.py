@@ -248,8 +248,12 @@ def finish_sentence(text: str) -> str:
 
 
 def overlaps(seg: dict, scene: dict) -> bool:
-    """대사 묶음이 장면과 겹치는가. 문장으로 묶은 대사(최대 12초)가 앞 장면에서 시작해도 이 장면에 넘겨 준다."""
-    return seg["startMs"] < scene["endMs"] and seg["endMs"] > scene["startMs"]
+    """대사 묶음이 장면과 겹치는가. 문장으로 묶은 대사(최대 12초)가 앞 장면에서 시작해도 이 장면에 넘겨 준다.
+    다만 끝자락만 걸친 대사는 넘기지 않는다(겹친 길이가 대사 길이의 절반과 2초 가운데 짧은 쪽보다 짧으면): 해리포터 81~91.6초
+    "메리 크리스마스" 대사가 91~101초 장면에 0.6초 걸쳐 들어가, 올빼미·잠에서 깨는 장면을 "크리스마스 인사를 나누는
+    소년들"로 썼다(2026-11-12)."""
+    shared = min(seg["endMs"], scene["endMs"]) - max(seg["startMs"], scene["startMs"])
+    return shared > 0 and shared >= min(2000, (seg["endMs"] - seg["startMs"]) / 2)
 
 
 def frames_for(scene_ms: int) -> int:
@@ -346,38 +350,51 @@ HAN_CHAR = re.compile("[一-鿿]")  # 해설에 섞인 한자("R 자样的 문�
 # 하나가 됐다(같은 날 크레페 재생성) → 평균을 맞추는 토큰 방식으로
 LEVEL_AVG_MS = {1: 18_000, 2: 9_000}
 LEVEL_BURST = 1.5  # 조용한 구간 뒤에 몰아 쓸 수 있는 문장 수
-MIN_GAP_MS = 3_000  # 모든 문장 사이 최소 간격. 이보다 가까우면 뒤 문장을 빼되, 앞이 level 3이고 뒤가 더 중요하면 앞을 뺀다
+MIN_GAP_MS = 3_000  # 모든 문장 사이 최소 간격. 이보다 가까우면 덜 중요한(모델이 준 level이 높은) 문장을 뺀다
 
 
 def thin_levels(desc_scenes: list[dict]) -> None:
     """영상 전체를 시간 순서로 보며 상세도 1·2의 평균 밀도를 유튜브 수준으로 맞춘다. 상세도 n마다 시간이 지나면 쌓이는
-    몫(토큰)이 있고, 몫이 없으면 그 문장을 한 단계 높은 상세도로 낮춘다(내용은 상세도 3에 남는다). 3초 안 문장은 뺀다."""
+    몫(토큰)이 있고, 몫이 없으면 그 문장을 한 단계 높은 상세도로 낮춘다(내용은 상세도 3에 남는다).
+    모델이 level 1로 쓴 핵심 사건은 level 2까지만 낮춰 기본 상세도(2)에서 늘 들린다. 3초 안에 붙은 두 문장은 덜 중요한
+    쪽을 뺀다: 장면 첫 문장(level 1)이 앞 장면 끝 문장과 붙으면 뒤를 빼서 해리포터 망토 꺼내기·투명해지기가 빠졌다
+    (2026-11-12)."""
     tokens = {1: 1.0, 2: 1.0}
     prev = None
-    last = -10**9
+    heard: list[tuple[list, dict]] = []  # 남긴 문장(그 장면의 kept 목록, 문장)
     for sc in desc_scenes:
-        kept = []
+        kept: list[dict] = []
         for ln in sorted(sc["lines"], key=lambda x: x["atMs"]):
-            at, lv = ln["atMs"], ln["level"]
+            at, orig = ln["atMs"], ln["level"]
             if prev is not None:
                 for n in tokens:
                     tokens[n] = min(LEVEL_BURST, tokens[n] + (at - prev) / LEVEL_AVG_MS[n])
             prev = at
-            if at - last < MIN_GAP_MS:
-                if not (kept and kept[-1]["level"] == 3 and lv < 3):
-                    continue
-                kept.pop()  # 앞의 level 3 문장 대신 이 문장을 남긴다(level 3은 몫을 쓰지 않았다)
+            if heard and at - heard[-1][1]["atMs"] < MIN_GAP_MS:
+                box, old = heard[-1]
+                if old["_orig"] <= orig:
+                    continue  # 앞 문장이 같거나 더 중요하다
+                box.remove(old)  # 이 문장이 더 중요하다: 앞 문장을 빼고 그 몫을 돌려준다
+                heard.pop()
+                for n in tokens:
+                    if old["level"] <= n:
+                        tokens[n] += 1
+            lv = orig
             if lv == 1 and tokens[1] < 1:
                 lv = 2
-            if lv <= 2 and tokens[2] < 1:
+            if lv == 2 and tokens[2] < (1 if orig == 2 else -1):  # 핵심 사건은 몫이 크게 모자랄 때만
                 lv = 3
-            if lv == 1:
-                tokens[1] -= 1
-            if lv <= 2:
-                tokens[2] -= 1
-            kept.append({**ln, "level": lv})
-            last = at
+            for n in tokens:
+                if lv <= n:
+                    tokens[n] -= 1
+            x = {**ln, "level": lv, "_orig": orig}
+            kept.append(x)
+            heard.append((kept, x))
         sc["lines"] = kept
+    for sc in desc_scenes:
+        for x in sc["lines"]:
+            if x.pop("_orig", None) == 1:
+                x["key"] = True  # 모델이 level 1로 쓴 핵심 사건(같은 동작 되풀이 거르기에서 지키려고)
 
 
 def drop_repeats(desc_scenes: list[dict], ratio: float = 0.85) -> None:
@@ -610,13 +627,19 @@ async def describe_scenes(inf, payload: dict) -> dict:
 
 
 GROUP_MAX_MS = 12_000  # 문장 끝이 안 나와도 이 길이에서 끊는다(받아쓰기가 구두점을 안 찍는 구간)
+GROUP_GAP_MS = 3_000  # 조각 사이가 이만큼 비면 다른 문장으로 본다
 
 
 def group_sentences(segs: list[dict]) -> list[dict]:
-    """받아쓰기 조각을 문장 단위로 묶는다(조각마다 번역하면 숫자가 엉뚱한 재료에 붙었다). 문장 끝(.?!)이나 12초에서 끊는다."""
+    """받아쓰기 조각을 문장 단위로 묶는다(조각마다 번역하면 숫자가 엉뚱한 재료에 붙었다). 문장 끝(.?!)이나 12초에서 끊고,
+    조각 사이가 GROUP_GAP_MS 이상 비면 묶지 않는다: 해리포터 91초 "happy"와 108초 "christmas harry…"를 한 문장(91~117초)으로
+    묶어 그 사이 올빼미 장면에 대사가 붙었다(2026-11-12)."""
     out: list[dict] = []
     cur: dict | None = None
     for x in segs:
+        if cur is not None and x["startMs"] - cur["endMs"] >= GROUP_GAP_MS:
+            out.append(cur)
+            cur = None
         if cur is None:
             cur = {"startMs": x["startMs"], "endMs": x["endMs"], "text": x["text"].strip()}
         else:
@@ -839,7 +862,13 @@ async def analyze_opensource(inf, title: str | None, files: dict, work: Path, du
     raw = to_raw(segs, language, scenes, desc["scenes"], ocr_by_scene, lines, summ)
     # 영상 보기 경로와 같은 거르기(대사 옮기기·같은 동작 되풀이) + 옷·"말한다"만 있는 문장
     ordered = sorted(raw["lines"], key=lambda x: (to_ms(x["at"]), x["level"]))
-    raw["lines"] = drop_idle(drop_repeated_actions(drop_said(ordered, segs)))
+    said = drop_said(ordered, segs)
+    # 핵심 사건(level 1)은 같은 동작 되풀이로 빼지 않는다: "망토를 입자 몸이 사라집니다"가 앞의 "망토를 꺼냅니다"와 같은
+    # 동작으로 잡혀 빠졌다(2026-11-12 해리포터)
+    kept_ids = {id(x) for x in drop_repeated_actions(said)}
+    raw["lines"] = drop_idle([x for x in said if x["level"] == 1 or x.get("key") or id(x) in kept_ids])
+    for x in raw["lines"]:
+        x.pop("key", None)
     if SPEECH_FILTER:
         raw["lines"] = drop_speech_acts(raw["lines"])
     return raw, f"local:{desc.get('model', inf.name)}"
@@ -857,7 +886,8 @@ def to_raw(segs: list[dict], language: str | None, scenes: list[dict], desc_scen
         "scenes": [{"start": mmss(s["startMs"]), "end": mmss(s["endMs"]), "title": d["title"], "people": d.get("people", []),
                     "screen_text": [{"text": w, "text_type": "OTHER", "importance": "중", "same_as_dialogue": False}
                                     for w in ocr_by_scene[i]]} for i, (s, d) in enumerate(zip(scenes, desc_scenes))],
-        "lines": [{"at": mmss(ln["atMs"]), "level": ln["level"], "text": ln["text"]} for ln in lines],
+        "lines": [{"at": mmss(ln["atMs"]), "level": ln["level"], "text": ln["text"], **({"key": True} if ln.get("key") else {})}
+                  for ln in lines],
     }
 
 

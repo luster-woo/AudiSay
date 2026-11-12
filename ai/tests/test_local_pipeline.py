@@ -457,7 +457,7 @@ def test_thin_levels_spreads_detail_levels_like_youtube():
     scenes = [{"lines": lines}]
     local.thin_levels(scenes)
     out = scenes[0]["lines"]
-    assert [sum(x["level"] <= n for x in out) for n in (1, 2, 3)] == [10, 20, 30]  # 18초·9초·6초에 하나
+    assert [sum(x["level"] <= n for x in out) for n in (1, 2, 3)] == [10, 22, 30]  # 약 18초·8초·6초에 하나(핵심 사건은 덜 낮춘다)
 
 
 def test_thin_levels_drops_lines_too_close_but_keeps_the_important_one():
@@ -466,3 +466,39 @@ def test_thin_levels_drops_lines_too_close_but_keeps_the_important_one():
     local.thin_levels(scenes)
     # b(level 3) 1초 뒤 c(level 1): b를 빼고 c를 남긴다. d는 c와 1초라 뺀다
     assert [(x["text"], x["level"]) for x in scenes[0]["lines"]] == [("a", 1), ("c", 1)]
+
+
+def test_thin_levels_keeps_key_event_at_scene_start_over_previous_detail():
+    """장면 첫 문장(level 1)이 앞 장면 끝의 덜 중요한 문장과 3초 안에 붙으면 앞 문장을 뺀다(2026-11-12 해리포터:
+    '망토를 꺼냅니다'·'몸이 사라집니다'가 빠졌다). 핵심 사건은 level 2까지만 낮춰 기본 상세도에서 들린다."""
+    scenes = [{"lines": [{"atMs": 150_000, "level": 1, "text": "편지를 읽습니다"},
+                         {"atMs": 152_000, "level": 2, "text": "손으로 편지를 펼칩니다"}]},
+              {"lines": [{"atMs": 154_300, "level": 1, "text": "망토를 꺼냅니다"}]}]
+    local.thin_levels(scenes)
+    got = [(x["text"], x["level"]) for sc in scenes for x in sc["lines"]]
+    assert ("망토를 꺼냅니다", 2) in got or ("망토를 꺼냅니다", 1) in got
+    assert ("손으로 편지를 펼칩니다", 2) not in got and ("손으로 편지를 펼칩니다", 3) not in got
+
+
+def test_dialogue_only_touching_scene_edge_is_not_given_to_scene():
+    """장면 끝자락에 0.6초 걸친 10초 대사는 그 장면 대사로 넘기지 않는다(2026-11-12 해리포터 1분 31초)."""
+    scene = {"startMs": 91_000, "endMs": 101_000}
+    assert not local.overlaps({"startMs": 81_400, "endMs": 91_600}, scene)
+    assert local.overlaps({"startMs": 90_000, "endMs": 93_000}, scene)  # 3초 중 2초가 이 장면
+    assert local.overlaps({"startMs": 100_500, "endMs": 101_200}, scene)  # 짧은 대사는 절반 이상이면
+
+
+def test_key_event_is_not_dropped_as_repeated_action():
+    """같은 물건으로 다른 일을 하는 핵심 사건은 남는다(2026-11-12 해리포터 '망토를 입자 몸이 사라집니다')."""
+    from app.pipeline.video import drop_repeated_actions
+    lines = [{"at": "02:35", "level": 1, "text": "안경을 쓴 소년이 선물에서 검은 망토를 꺼냅니다."},
+             {"at": "02:48", "level": 1, "text": "안경을 쓴 소년이 검은 망토를 입자 몸이 사라집니다."}]
+    kept_ids = {id(x) for x in drop_repeated_actions(lines)}
+    assert [x["text"] for x in lines if x["level"] == 1 or id(x) in kept_ids] == [x["text"] for x in lines]
+
+
+def test_group_sentences_does_not_join_across_long_silence():
+    segs = [{"startMs": 90_900, "endMs": 91_600, "text": "happy"},
+            {"startMs": 107_900, "endMs": 116_600, "text": "christmas harry happy christmas ron"}]
+    g = local.group_sentences(segs)
+    assert [(x["startMs"], x["endMs"]) for x in g] == [(90_900, 91_600), (107_900, 116_600)]

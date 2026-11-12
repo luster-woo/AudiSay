@@ -28,7 +28,7 @@ from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-VERSION = 26
+VERSION = 28
 VLM_REPO = os.getenv("VLM_REPO", "Qwen/Qwen3-VL-8B-Instruct")
 WHISPER_REPO = os.getenv("WHISPER_REPO", "deepdml/faster-whisper-large-v3-turbo-ct2")
 DEVICE = os.getenv("DEVICE", "cuda:0")
@@ -426,13 +426,29 @@ def stt(audio: UploadFile = File(...), language: str = Form("ko"), prompt: str =
         segs = list(segs)
     _count("stt", t0)
 
-    def span(s) -> tuple[float, float]:
-        ws = [w for w in (s.words or []) if w.word.strip()]
-        return (ws[0].start, ws[-1].end) if ws else (s.start, s.end)
-
-    return {"segments": [{"startMs": int(span(s)[0] * 1000), "endMs": int(span(s)[1] * 1000), "text": s.text.strip()}
-                         for s in segs if s.text.strip()], "model": WHISPER_REPO,
+    return {"segments": [p for s in segs if s.text.strip() for p in _split_on_gaps(s)], "model": WHISPER_REPO,
             "language": getattr(info, "language", lang), "languageProbability": round(float(getattr(info, "language_probability", 0) or 0), 2)}
+
+
+STT_WORD_GAP = 1.5  # 단어 사이가 이만큼(초) 비면 구간을 나눈다(버전 28)
+
+
+def _split_on_gaps(s) -> list[dict]:
+    """받아쓰기 구간 하나를 단어 사이 빈 곳(STT_WORD_GAP초 이상)에서 나눈다. 버전 28: 해리포터 81초 "Happy Christmas"와
+    108초 "Happy Christmas, Harry"가 한 구간(81~110초)으로 묶여, 그 사이 올빼미·잠에서 깨는 장면(91~101초)에 대사가
+    통째로 붙었다(2026-11-12). 단어 시각이 없으면 구간 그대로."""
+    ws = [w for w in (s.words or []) if w.word.strip()]
+    if not ws:
+        return [{"startMs": int(s.start * 1000), "endMs": int(s.end * 1000), "text": s.text.strip()}]
+    out, cur = [], [ws[0]]
+    for w in ws[1:]:
+        if w.start - cur[-1].end >= STT_WORD_GAP:
+            out.append(cur)
+            cur = []
+        cur.append(w)
+    out.append(cur)
+    return [{"startMs": int(g[0].start * 1000), "endMs": int(g[-1].end * 1000), "text": "".join(w.word for w in g).strip()}
+            for g in out if "".join(w.word for w in g).strip()]
 
 
 @app.post("/ocr")
@@ -909,7 +925,7 @@ class DescribeBody(BaseModel):
 
 
 DESCRIBE_SYSTEM = """당신은 시각장애인을 위한 화면해설 작가입니다. 한 장면의 사진 몇 장과 그 장면의 대사·화면 글자·소리, 영상 전체의 핵심 사건을 받습니다.
-화면에 보이는 것만 쓰고 추측하지 않습니다. 대사 내용을 반복하지 않습니다.
+화면에 보이는 것만 쓰고 추측하지 않습니다. 대사 내용을 반복하지 않습니다. 대사·핵심 사건·소리는 참고일 뿐이고, 사진과 다르면 사진을 따릅니다(예: 대사가 인사말이어도 사진에 잠에서 깨는 모습이면 깨는 모습을 씁니다).
 문장 규칙(꼭 지키세요)
 - 모든 문장은 "~합니다", "~있습니다", "~입니다"처럼 현재형으로 끝나는 완결된 문장입니다. "표시됨", "구성됨", "있음"처럼 명사형으로 끝내지 않습니다.
 - 한 문장은 40자 안팎, 한 문장에 한 가지 내용. 장면마다 문장 3~5개.
@@ -918,7 +934,7 @@ DESCRIBE_SYSTEM = """당신은 시각장애인을 위한 화면해설 작가입�
 해설 문장(lines)은 누적형입니다: level 1은 이 장면의 핵심 사건(주어진 핵심 사건이 이 장면 사진에 보이면 반드시 담음, 위험·충돌·구출을 먼저), level 2는 행동·표정·장소, level 3은 배경·분위기.
 제목(title)과 문장은 이 장면 사진에 보이는 것으로 씁니다. 핵심 사건의 시각은 몇 초 어긋날 수 있어서, 사진에 아직 안 나온(다음 장면의) 일은 쓰지 않습니다.
 지어내지 않기(버전 16): 안경·장신구·작은 무늬·정확한 색처럼 작은 특징은 여러 사진에서 분명할 때만 씁니다. 만화·애니메이션의 큰 눈이나 눈 테두리는 안경이 아닙니다.
-인물·물건은 주어진 이름만 씁니다(같은 물건을 구슬·포도·딸기로 바꿔 부르지 않습니다). 핵심 사건·소리와 어긋나는 내용은 쓰지 않습니다.
+인물·물건은 주어진 이름만 씁니다(같은 물건을 구슬·포도·딸기로 바꿔 부르지 않습니다). 사진에 없는 일을 대사·핵심 사건만 보고 쓰지 않습니다.
 사람 이름은 화면 글자나 대사, 또는 주어진 등장인물 사전에 근거가 있을 때만 쓰고, 근거를 basis에 적습니다. 없으면 name은 null.
 반드시 JSON 하나로만 답하세요:
 {"title": "장면 목차용 한 줄 제목", "people": [{"name": null, "basis": null, "appearance": "겉모습"}],

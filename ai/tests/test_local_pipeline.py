@@ -254,16 +254,27 @@ def test_similar_lines_nearby_are_dropped_but_far_ones_kept():
 
 
 def test_neighbor_scenes_with_same_title_merge_into_one_chapter():
-    scenes = [{"startMs": 66_000, "endMs": 78_000}, {"startMs": 78_000, "endMs": 81_000},
+    scenes = [{"startMs": 46_000, "endMs": 78_000}, {"startMs": 78_000, "endMs": 81_000},
               {"startMs": 81_000, "endMs": 88_000}, {"startMs": 88_000, "endMs": 103_000}]
     desc = [{"title": "가루 재료를 액체에 넣고 섞습니다", "people": [], "lines": [{"text": "a"}]},
             {"title": "반죽을 체에 거릅니다", "people": [], "lines": []},
             {"title": "반죽을 체에 거릅니다", "people": [], "lines": [{"text": "b"}]},
             {"title": "반죽을 체에 거릅니다.", "people": [], "lines": [{"text": "c"}]}]
     s2, d2, o2 = local.merge_similar_scenes(scenes, desc, [["체"], [], ["체", "125g"], []])
-    assert [(s["startMs"], s["endMs"]) for s in s2] == [(66_000, 78_000), (78_000, 103_000)]
+    assert [(s["startMs"], s["endMs"]) for s in s2] == [(46_000, 78_000), (78_000, 103_000)]
     assert d2[1]["title"] == "반죽을 체에 거릅니다" and [x["text"] for x in d2[1]["lines"]] == ["b", "c"]
     assert o2 == [["체"], ["체", "125g"]]
+
+
+def test_short_neighbor_scenes_merge_until_chapter_is_long_enough():
+    """목차 하나가 20초가 될 때까지 짧은 이웃 장면을 합치고, 가장 긴 장면의 제목을 쓴다(2026-11-12 크레페 31개 → 12개)."""
+    scenes = [{"startMs": 0, "endMs": 8000}, {"startMs": 8000, "endMs": 20_000}, {"startMs": 20_000, "endMs": 30_000}]
+    desc = [{"title": "접시 위 크레페", "people": [], "lines": [{"text": "a"}]},
+            {"title": "계란 무게 재기", "people": [], "lines": [{"text": "b"}]},
+            {"title": "버터 녹이기", "people": [], "lines": [{"text": "c"}]}]
+    s2, d2, _ = local.merge_similar_scenes(scenes, desc, [[], [], []])
+    assert [(s["startMs"], s["endMs"], d["title"]) for s, d in zip(s2, d2)] == [(0, 20_000, "계란 무게 재기"), (20_000, 30_000, "버터 녹이기")]
+    assert [x["text"] for x in d2[0]["lines"]] == ["a", "b"]
 
 
 def test_idle_and_speech_act_lines_are_dropped():
@@ -440,12 +451,54 @@ def test_h200_down_goes_straight_to_gemini(tmp_path, monkeypatch):
 
 
 def test_thin_levels_spreads_detail_levels_like_youtube():
-    """너무 가까운 level 1은 level 2로, level 1·2는 level 3으로 낮추고, 4.5초 안의 문장은 뺀다(2026-11-12 크레페:
-    상세도 2가 4.7초에 한 문장으로 유튜브의 두 배)."""
-    scenes = [{"lines": [{"atMs": 0, "level": 1, "text": "a"}, {"atMs": 5000, "level": 1, "text": "b"}]},
-              {"lines": [{"atMs": 10_000, "level": 1, "text": "c"}, {"atMs": 12_000, "level": 2, "text": "d"},
-                         {"atMs": 15_000, "level": 2, "text": "e"}]}]
+    """상세도 1·2의 평균 밀도를 유튜브(약 18초·9초에 한 문장)로 맞춘다(2026-11-12 크레페: 상세도 2가 4.7초에 한 문장으로
+    두 배였고, 최소 간격으로 막았더니 21.5초로 너무 적었다). 내용은 상세도 3에 남는다."""
+    lines = [{"atMs": t, "level": 1, "text": str(t)} for t in range(0, 180_000, 6000)]  # 3분 동안 6초마다 level 1
+    scenes = [{"lines": lines}]
+    local.thin_levels(scenes)
+    out = scenes[0]["lines"]
+    assert [sum(x["level"] <= n for x in out) for n in (1, 2, 3)] == [10, 22, 30]  # 약 18초·8초·6초에 하나(핵심 사건은 덜 낮춘다)
+
+
+def test_thin_levels_drops_lines_too_close_but_keeps_the_important_one():
+    scenes = [{"lines": [{"atMs": 0, "level": 1, "text": "a"}, {"atMs": 20_000, "level": 3, "text": "b"},
+                         {"atMs": 21_000, "level": 1, "text": "c"}, {"atMs": 22_000, "level": 3, "text": "d"}]}]
+    local.thin_levels(scenes)
+    # b(level 3) 1초 뒤 c(level 1): b를 빼고 c를 남긴다. d는 c와 1초라 뺀다
+    assert [(x["text"], x["level"]) for x in scenes[0]["lines"]] == [("a", 1), ("c", 1)]
+
+
+def test_thin_levels_keeps_key_event_at_scene_start_over_previous_detail():
+    """장면 첫 문장(level 1)이 앞 장면 끝의 덜 중요한 문장과 3초 안에 붙으면 앞 문장을 뺀다(2026-11-12 해리포터:
+    '망토를 꺼냅니다'·'몸이 사라집니다'가 빠졌다). 핵심 사건은 level 2까지만 낮춰 기본 상세도에서 들린다."""
+    scenes = [{"lines": [{"atMs": 150_000, "level": 1, "text": "편지를 읽습니다"},
+                         {"atMs": 152_000, "level": 2, "text": "손으로 편지를 펼칩니다"}]},
+              {"lines": [{"atMs": 154_300, "level": 1, "text": "망토를 꺼냅니다"}]}]
     local.thin_levels(scenes)
     got = [(x["text"], x["level"]) for sc in scenes for x in sc["lines"]]
-    # b: level 1과 5초 → 2, 그런데 level 1·2와도 5초 → 3. c: 10초 뒤라 level 1. d: 2초 → 뺌. e: c와 5초 → level 3
-    assert got == [("a", 1), ("b", 3), ("c", 1), ("e", 3)]
+    assert ("망토를 꺼냅니다", 2) in got or ("망토를 꺼냅니다", 1) in got
+    assert ("손으로 편지를 펼칩니다", 2) not in got and ("손으로 편지를 펼칩니다", 3) not in got
+
+
+def test_dialogue_only_touching_scene_edge_is_not_given_to_scene():
+    """장면 끝자락에 0.6초 걸친 10초 대사는 그 장면 대사로 넘기지 않는다(2026-11-12 해리포터 1분 31초)."""
+    scene = {"startMs": 91_000, "endMs": 101_000}
+    assert not local.overlaps({"startMs": 81_400, "endMs": 91_600}, scene)
+    assert local.overlaps({"startMs": 90_000, "endMs": 93_000}, scene)  # 3초 중 2초가 이 장면
+    assert local.overlaps({"startMs": 100_500, "endMs": 101_200}, scene)  # 짧은 대사는 절반 이상이면
+
+
+def test_key_event_is_not_dropped_as_repeated_action():
+    """같은 물건으로 다른 일을 하는 핵심 사건은 남는다(2026-11-12 해리포터 '망토를 입자 몸이 사라집니다')."""
+    from app.pipeline.video import drop_repeated_actions
+    lines = [{"at": "02:35", "level": 1, "text": "안경을 쓴 소년이 선물에서 검은 망토를 꺼냅니다."},
+             {"at": "02:48", "level": 1, "text": "안경을 쓴 소년이 검은 망토를 입자 몸이 사라집니다."}]
+    kept_ids = {id(x) for x in drop_repeated_actions(lines)}
+    assert [x["text"] for x in lines if x["level"] == 1 or id(x) in kept_ids] == [x["text"] for x in lines]
+
+
+def test_group_sentences_does_not_join_across_long_silence():
+    segs = [{"startMs": 90_900, "endMs": 91_600, "text": "happy"},
+            {"startMs": 107_900, "endMs": 116_600, "text": "christmas harry happy christmas ron"}]
+    g = local.group_sentences(segs)
+    assert [(x["startMs"], x["endMs"]) for x in g] == [(90_900, 91_600), (107_900, 116_600)]

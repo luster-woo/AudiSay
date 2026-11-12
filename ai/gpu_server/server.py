@@ -28,7 +28,7 @@ from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-VERSION = 23
+VERSION = 24
 VLM_REPO = os.getenv("VLM_REPO", "Qwen/Qwen3-VL-8B-Instruct")
 WHISPER_REPO = os.getenv("WHISPER_REPO", "deepdml/faster-whisper-large-v3-turbo-ct2")
 DEVICE = os.getenv("DEVICE", "cuda:0")
@@ -75,8 +75,12 @@ VLLM_PARALLEL = int(os.getenv("VLLM_PARALLEL", "8"))  # 한 요청 안에서 동
 # 버전 17: 영상 전체 줄거리(/story)만 더 큰 모델에 맡긴다(8B는 사진 대신 소리 목록·예시를 베꼈다, 2026-11-03).
 # 비어 있거나 꺼져 있으면 위 8B vLLM → HF 순서로 대체
 STORY_VLLM_URL = os.getenv("STORY_VLLM_URL", "http://127.0.0.1:8201/v1").rstrip("/")
-STORY_MODEL = os.getenv("STORY_MODEL", "Qwen/Qwen3-VL-32B-Instruct-FP8")
+# 버전 24(2026-11-12): 8201의 모델을 Qwen3-VL-32B FP8(2025년)에서 Qwen3.8-27B FP8로 바꿨다. 실측(benchmarks/README.md):
+# 영상 통째 해설이 30~40% 빠르고 영상 끝까지 쓰며(32B는 마지막 20~40초를 빠뜨림), 줄거리·번역은 약 2배 빠르고 번역 용어가 맞다
+STORY_MODEL = os.getenv("STORY_MODEL", "Qwen/Qwen3.8-27B-FP8")
 VLLM_MODEL = os.getenv("VLLM_MODEL", STORY_MODEL)  # VLLM_URL에 떠 있는 모델 이름(HF 대체는 VLM_REPO)
+# Qwen3.8은 기본으로 답 앞에 생각 과정을 길게 쓴다(느리고 JSON이 깨짐). vLLM 요청마다 끈다. Qwen3-VL은 이 값을 무시한다
+NO_THINK = {"chat_template_kwargs": {"enable_thinking": False}}
 
 
 def _post_json(url: str, body: dict, timeout: float) -> dict:
@@ -93,7 +97,7 @@ def vllm_generate(system: str, user: str, images_b64: list[str] | None = None, m
     if not url:
         return None
     content = [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + b}} for b in images_b64 or []]
-    body = {"model": model or VLLM_MODEL, "temperature": 0, "max_tokens": max_new,
+    body = {"model": model or VLLM_MODEL, "temperature": 0, "max_tokens": max_new, **NO_THINK,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": content + [{"type": "text", "text": user}]}]}
     if repetition_penalty != 1.0:
         body["repetition_penalty"] = repetition_penalty
@@ -115,7 +119,7 @@ def llm(system: str, user: str, max_new: int = 512) -> str:
 
 def vllm_stream(system: str, user: str, max_new: int = 200):
     """vLLM 답을 조각씩(서버가 보내는 SSE 한 줄 = 조각 하나). 연결 전에 실패하면 예외 → 부르는 쪽이 HF로."""
-    body = {"model": VLLM_MODEL, "temperature": 0, "max_tokens": max_new, "stream": True,
+    body = {"model": VLLM_MODEL, "temperature": 0, "max_tokens": max_new, "stream": True, **NO_THINK,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
     req = urllib.request.Request(VLLM_URL + "/chat/completions", json.dumps(body).encode(), {"Content-Type": "application/json"})
     r = urllib.request.urlopen(req, timeout=60)
@@ -723,7 +727,7 @@ def describe_video(video: UploadFile = File(...), prompt: str = Form(...), schem
     MEDIA_DIR.mkdir(parents=True, exist_ok=True)
     path = MEDIA_DIR / f"req_{os.getpid()}_{threading.get_ident()}_{int(t0 * 1000)}.mp4"
     path.write_bytes(video.file.read())
-    body = {"model": STORY_MODEL, "temperature": 0.2, "max_tokens": max_tokens,
+    body = {"model": STORY_MODEL, "temperature": 0.2, "max_tokens": max_tokens, **NO_THINK,
             "messages": [{"role": "user", "content": [{"type": "video_url", "video_url": {"url": path.as_uri()}},
                                                       {"type": "text", "text": prompt}]}],
             "response_format": {"type": "json_schema", "json_schema": {"name": "Narration", "schema": json.loads(schema)}}}
@@ -764,7 +768,7 @@ def generate_json(b: JsonBody):
     if not (STORY_VLLM_URL and vllm_ok(STORY_VLLM_URL)):
         return JSONResponse({"error": "story model off"}, status_code=503)
     content = [{"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{x}"}} for x in b.images[:8]]
-    body = {"model": STORY_MODEL, "temperature": 0.2, "max_tokens": b.max_tokens,
+    body = {"model": STORY_MODEL, "temperature": 0.2, "max_tokens": b.max_tokens, **NO_THINK,
             "messages": [{"role": "user", "content": content + [{"type": "text", "text": b.prompt}] if content else b.prompt}],
             "response_format": {"type": "json_schema", "json_schema": {"name": "Result", "schema": b.json_schema}}}
     # 깨진 JSON(출력 한도에 걸려 끊김·같은 말 되풀이)이면 반복 벌점을 주고 한 번 더(describe_video와 같게, 버전 23).

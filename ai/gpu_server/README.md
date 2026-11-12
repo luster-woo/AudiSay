@@ -227,3 +227,15 @@ curl -sL -o voxceleb_resnet34_LM.onnx https://huggingface.co/Wespeaker/wespeaker
 sha256sum voxceleb_resnet34_LM.onnx   # 7bb2f06e9df17cdf1ef14ee8a15ab08ed28e8d0ef5054ee135741560df2ec068
 ```
 이전 파일은 `server_v22_backup.py`.
+
+## 서버 버전 24 (2026-11-12) — 8201 모델을 Qwen3.8-27B로
+
+지금 모델(Qwen3-VL-32B FP8)이 1년 전 것이라 바꿨다. 근거는 `benchmarks/README.md`: 영상 통째 해설이 30~40% 빠르고 영상 끝까지 쓰며(32B는 마지막 20~40초를 빠뜨림), 줄거리·번역은 약 2배 빠르고 번역 용어(계피·정향)가 맞다.
+
+| 바뀐 것 | 내용 |
+|---|---|
+| `start_vllm_story.sh` | `Qwen/Qwen3.8-27B-FP8`(`MODEL=`로 바꿈), 메모리 50% → 35%(약 72GB → 50GB), max-num-seqs 4 → 8, `--mm-processor-kwargs` 뺌. 이전 파일은 `start_vllm_story_v23_backup.sh` |
+| `server.py` | `STORY_MODEL` 기본값을 새 모델로. vLLM 요청마다 `chat_template_kwargs.enable_thinking=false`(Qwen3.8은 기본으로 생각 과정을 길게 써서 느리고 JSON이 깨짐) |
+
+되돌리기: `pkill -f "[v]llm serve .*--port 8201"; bash ~/gpu_server/start_vllm_story_v23_backup.sh` 후 추론 서버를 `STORY_MODEL=Qwen/Qwen3-VL-32B-Instruct-FP8`로 다시 켠다.
+이전 파일은 `server_v23_backup.py`.

@@ -28,7 +28,7 @@ from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-VERSION = 25
+VERSION = 26
 VLM_REPO = os.getenv("VLM_REPO", "Qwen/Qwen3-VL-8B-Instruct")
 WHISPER_REPO = os.getenv("WHISPER_REPO", "deepdml/faster-whisper-large-v3-turbo-ct2")
 DEVICE = os.getenv("DEVICE", "cuda:0")
@@ -419,11 +419,18 @@ def stt(audio: UploadFile = File(...), language: str = Form("ko"), prompt: str =
     samples = wav_16k(audio.file.read())
     lang = None if language == "auto" else language
     with _lock:
+        # 버전 26: 단어 시각을 켜고 구간을 첫 단어~끝 단어로 좁힌다. 영화 배경음악을 VAD가 말소리로 봐서 "Knight to E5"
+        # (실제 39.7~41.5초)가 1.0~41.4초로 잡혔고, 0~39초 장면마다 체스 대사가 붙어 해설이 앞당겨졌다(2026-11-12 해리포터)
         segs, info = whisper().transcribe(samples, language=lang, beam_size=5, vad_filter=True, condition_on_previous_text=False,
-                                          initial_prompt=prompt.strip()[:400] or None)
+                                          initial_prompt=prompt.strip()[:400] or None, word_timestamps=True)
         segs = list(segs)
     _count("stt", t0)
-    return {"segments": [{"startMs": int(s.start * 1000), "endMs": int(s.end * 1000), "text": s.text.strip()}
+
+    def span(s) -> tuple[float, float]:
+        ws = [w for w in (s.words or []) if w.word.strip()]
+        return (ws[0].start, ws[-1].end) if ws else (s.start, s.end)
+
+    return {"segments": [{"startMs": int(span(s)[0] * 1000), "endMs": int(span(s)[1] * 1000), "text": s.text.strip()}
                          for s in segs if s.text.strip()], "model": WHISPER_REPO,
             "language": getattr(info, "language", lang), "languageProbability": round(float(getattr(info, "language_probability", 0) or 0), 2)}
 

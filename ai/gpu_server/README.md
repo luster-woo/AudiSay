@@ -239,3 +239,9 @@ sha256sum voxceleb_resnet34_LM.onnx   # 7bb2f06e9df17cdf1ef14ee8a15ab08ed28e8d0e
 
 되돌리기: `pkill -f "[v]llm serve .*--port 8201"; bash ~/gpu_server/start_vllm_story_v23_backup.sh` 후 추론 서버를 `STORY_MODEL=Qwen/Qwen3-VL-32B-Instruct-FP8`로 다시 켠다.
 이전 파일은 `server_v23_backup.py`.
+
+## 서버 버전 25 (2026-11-12) — 번역 JSON 깨짐
+
+Qwen3.8이 짧은 대사에서 `{"ko": ["잘 써요."}]`처럼 괄호를 거꾸로 닫아, 다시 시켜도 같은 답이라 대사가 영어로 남았다(해리포터 업로드, 최소 3줄).
+`/translate`가 vLLM에 JSON 형식(조각 수까지)을 강제하고(`vllm_generate(json_schema=...)`), 그래도 깨진 답이면 `"ko": [` 뒤 따옴표 안 글만 건진다.
+같은 대사 8개: 실패 0, 0.8초. 이전 파일은 `server_v24_backup.py`.

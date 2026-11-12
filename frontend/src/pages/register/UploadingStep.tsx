@@ -3,8 +3,8 @@ import { Button } from '@/components/ui/Button'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { useAnnouncer } from '@/features/announcer/context'
 import { usePageEntry } from '@/features/page/usePageEntry'
-import { JobSteps } from '@/features/job/JobSteps'
-import { uploadOverallPercent, uploadSteps } from '@/features/job/stages'
+import { JobMascot } from '@/features/job/JobMascot'
+import { uploadOverallPercent } from '@/features/job/stages'
 import { formatSize } from '@/features/upload/fileRules'
 import { StatusDialog } from '@/features/upload/StatusDialog'
 import type { UploadPhase } from '@/features/upload/useVideoUpload'
@@ -16,7 +16,7 @@ function remainText(etaSec: number | null) {
 }
 
 /**
- * 올리는 중: 해설 만들기 전체 진행률 + 단계 목록(영상 업로드 진행 중) + 업로드 멈추기.
+ * 올리는 중: 해설 만들기 전체 진행률 + 오디 + 한 줄 상태(해설 만들기 화면과 같은 모양) + 업로드 멈추기.
  * 전체 진행률에서 업로드는 앞 15%다(features/job/stages). 다 올리면 RegisterPage 가 /jobs/:id 로 넘긴다.
  * 연결이 끊기면 '업로드 멈춤' 창.
  */
@@ -47,7 +47,6 @@ export function UploadingStep({
   const finished = phase === 'completing' || phase === 'done'
   const remain = finished ? '다 올렸어요' : remainText(etaSec)
   const overall = uploadOverallPercent(percent)
-  const steps = uploadSteps(phase === 'failed' ? 'failed' : finished ? 'done' : 'active')
 
   usePageEntry({
     title: '영상 올리는 중',
@@ -84,21 +83,25 @@ export function UploadingStep({
       <p className="mt-6 text-2xl">
         {title} · {formatSize(totalBytes)}
       </p>
-      <p aria-hidden="true" className="mt-6 text-[6rem] leading-none font-bold">
-        {overall}%
-      </p>
+      {/* 해설 만들기 화면(JobPage)과 같은 모양: 큰 숫자 + 오디 + 진행 줄 + 한 줄 상태. 업로드가 끝나 넘어갈 때
+          화면이 바뀌어 보이지 않게 한다(2026-11-12: 20% 전후로 예전 화면 → 오디 화면으로 바뀌어 보였다) */}
+      <div className="mt-8 flex flex-wrap items-end justify-between gap-6">
+        <p aria-hidden="true" className="text-[8rem] leading-none font-bold tracking-tight">
+          {overall}%
+        </p>
+        <JobMascot phase={phase === 'failed' ? 'failed' : 'running'} />
+      </div>
       <ProgressBar
         value={overall}
         label="해설 만들기 진행률"
         valueText={`전체 ${overall}퍼센트, 영상 업로드 ${percent}퍼센트, ${remain}`}
-        className="mt-10 h-7"
+        className="mt-12 h-8"
       />
-      <p className="mt-6 text-2xl text-ink-muted">
+      <p className="mt-10 text-2xl text-ink-muted">
         영상 업로드 {percent}% · {formatSize(finished ? totalBytes : loaded)} /{' '}
         {formatSize(totalBytes)} · {remain}
       </p>
-      <JobSteps steps={steps} className="mt-10" />
-      <p className="mt-8 text-2xl">
+      <p className="mt-10 text-[1.625rem] font-bold">
         {finished
           ? '해설 만들기를 시작하고 있어요.'
           : '다 올라가면 해설 만들기가 바로 시작돼요. 올리는 동안 이 화면에 머물러 주세요.'}

@@ -75,6 +75,13 @@ TTS_AUDIO_URL_SEC = 6 * 3600  # 안내 음성 presigned 주소(답변 음성과 
 STT_MAX_BYTES = 10 * 1024 * 1024
 WHISPER_TIMEOUT = 5  # GMS whisper-1(PoC 1.0~2.6초). H200 STT_TIMEOUT과 합쳐 Spring 제한 10초 안
 STT_HINT_CHARS = 400  # whisper prompt는 224토큰까지
+# 아무 말도 안 한 녹음을 whisper가 "감사합니다.", "다음 영상에서 만나요."처럼 지어내 받아쓴다(2026-11-12 화면 확인).
+# 받아쓰기 전에 소리 크기를 본다: 30ms 조각의 크기가 STT_SPEECH_RMS(-40dBFS) 이상인 길이가 STT_SPEECH_MIN_MS보다 짧으면 말이 없는 녹음
+STT_FRAME = 480  # 16kHz에서 30ms
+STT_SPEECH_RMS = 0.01
+STT_SPEECH_MIN_MS = 150
+# 소리는 있는데(잡음) 말이 없을 때 whisper가 자주 지어내는 유튜브 끝인사. 질문·검색어로 올 말이 아니라 받아쓴 글이 이것뿐이면 버린다
+STT_MADE_UP = {"다음영상에서만나요", "다음영상에서뵙겠습니다", "시청해주셔서감사합니다", "구독과좋아요부탁드립니다"}
 _answering: set[int] = set()  # Redis가 없을 때(개발) 처리 중인 chatLogId
 
 
@@ -331,6 +338,10 @@ async def stt(request: Request, audio: UploadFile = File(...), videoId: int | No
         wav = await _to_wav16k(raw)
     except Exception:  # noqa: BLE001
         raise _err(400, "STT_FORMAT", "녹음 파일을 읽지 못했어요. 다시 말해 주세요.") from None
+    voiced = _voiced_ms(wav)
+    if voiced is not None and voiced < STT_SPEECH_MIN_MS:  # 말이 없는 녹음은 받아쓰지 않는다(GMS 크레딧도 안 쓴다)
+        log.info("받아쓰기 건너뜀: 말소리 %dms(videoId=%s)", voiced, videoId)
+        raise _err(422, "STT_EMPTY", "말을 알아듣지 못했어요. 다시 말해 주세요.")
     t0 = time.monotonic()
     db = getattr(request.app.state, "db", None)
     hint = await _stt_hint(request, videoId)
@@ -359,7 +370,7 @@ async def stt(request: Request, audio: UploadFile = File(...), videoId: int | No
                                           estimated_credits=float(seconds)))
     if text is None:
         raise _err(502, "GMS_ERROR", "음성 인식 서버에 연결하지 못했어요. 글자로 입력해 주세요.")
-    if not text:
+    if not text or re.sub(r"[\W_]+", "", text) in STT_MADE_UP:
         raise _err(422, "STT_EMPTY", "말을 알아듣지 못했어요. 다시 말해 주세요.")
     return {"text": text, "latencyMs": int((time.monotonic() - t0) * 1000), "engine": engine}
 
@@ -385,6 +396,21 @@ async def _stt_hint(request: Request, video_id: int | None) -> str:
     except Exception as e:  # noqa: BLE001 — 힌트가 없어도 받아쓰기는 한다
         log.warning("받아쓰기 힌트 실패 video=%s: %s", video_id, e)
         return ""
+
+
+def _voiced_ms(wav: bytes) -> int | None:
+    """16kHz mono 16bit wav에서 말소리 크기(STT_SPEECH_RMS) 이상인 조각의 길이(ms). wav를 못 읽으면 None(막지 않는다)."""
+    import numpy as np
+
+    at = wav.find(b"data", 12)  # ffmpeg가 pipe로 내면 data 앞에 LIST 조각이 올 수 있다
+    if not wav.startswith(b"RIFF") or at < 0:
+        return None
+    pcm = wav[at + 8:]
+    x = np.frombuffer(pcm[:len(pcm) // (2 * STT_FRAME) * (2 * STT_FRAME)], dtype="<i2").astype(np.float32) / 32768.0
+    if not x.size:
+        return 0
+    rms = np.sqrt((x.reshape(-1, STT_FRAME) ** 2).mean(axis=1))
+    return int((rms >= STT_SPEECH_RMS).sum()) * 30
 
 
 async def _to_wav16k(raw: bytes) -> bytes:

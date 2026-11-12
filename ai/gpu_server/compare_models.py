@@ -50,7 +50,7 @@ ANSWER_QUESTIONS = ["지금 뭐 넣었어?", "앞치마 무슨 색이야?", "이
 
 def load_prompts(server_py: Path) -> dict:
     """server.py를 실행하지 않고 프롬프트 상수만 꺼낸다(f-string은 앞서 읽은 상수로 채운다)."""
-    want = {"UNANSWERABLE", "INTENT_SYSTEM", "ANSWER_SYSTEM", "DESCRIBE_SYSTEM"}
+    want = {"UNANSWERABLE", "INTENT_SYSTEM", "ANSWER_SYSTEM", "DESCRIBE_SYSTEM", "STORY_SYSTEM", "TRANSLATE_SYSTEM", "RETRY_HINT"}
     ns: dict = {}
     for node in ast.parse(server_py.read_text(encoding="utf-8")).body:
         if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
@@ -63,12 +63,14 @@ def load_prompts(server_py: Path) -> dict:
     return ns
 
 
-def call(base: str, model: str, system: str, user: str, images: list[str] | None = None, max_tokens: int = 512) -> dict:
-    content = [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + b}} for b in images or []]
+def call(base: str, model: str, system: str | None, user: str, images: list[str] | None = None, max_tokens: int = 512,
+         extra: dict | None = None, pre: list[dict] | None = None) -> dict:
+    """extra: body에 더할 값(temperature·response_format 등), pre: 글 앞에 붙일 content(영상 등)."""
+    content = (pre or []) + [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + b}} for b in images or []]
+    messages = ([{"role": "system", "content": system}] if system else []) + \
+        [{"role": "user", "content": content + [{"type": "text", "text": user}]}]
     body = {"model": model, "temperature": 0, "max_tokens": max_tokens,
-            "chat_template_kwargs": {"enable_thinking": False},
-            "messages": [{"role": "system", "content": system},
-                         {"role": "user", "content": content + [{"type": "text", "text": user}]}]}
+            "chat_template_kwargs": {"enable_thinking": False}, "messages": messages, **(extra or {})}
     req = urllib.request.Request(base + "/chat/completions", json.dumps(body).encode(), {"Content-Type": "application/json"})
     t0 = time.time()
     try:

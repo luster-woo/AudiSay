@@ -322,6 +322,28 @@ describe('음성 검색', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe('/search'))
   })
 
+  test('알아듣는 중에는 말 끝내기에 aria-disabled 를 주지 않는다 (낭독기가 "사용 불가"를 읽지 않게)', async () => {
+    let finishStt!: (v: { text: string; latencyMs: number }) => void
+    vi.mocked(sttApi.transcribe).mockReturnValue(
+      new Promise((resolve) => {
+        finishStt = resolve
+      }),
+    )
+    const { router } = renderRoute('/')
+    await userEvent.click(await screen.findByRole('button', { name: '음성 검색' }))
+    const finish = await screen.findByRole('button', { name: '말 끝내기' })
+    await screen.findByText('듣고 있어요')
+    await userEvent.keyboard(' ')
+    expect(await screen.findByText('알아듣는 중이에요')).toBeInTheDocument()
+    expect(finish).toHaveFocus()
+    expect(finish).not.toHaveAttribute('aria-disabled')
+    // 알아듣는 중에 또 눌러도 녹음·변환을 다시 하지 않는다
+    await userEvent.keyboard(' ')
+    expect(sttApi.transcribe).toHaveBeenCalledTimes(1)
+    finishStt({ text: '오징어 게임', latencyMs: 1 })
+    await waitFor(() => expect(router.state.location.pathname).toBe('/search'))
+  })
+
   test('"~ 영상 찾아 줘"는 챗봇이 뽑은 검색어로 검색한다', async () => {
     localStorage.removeItem('audisay.voiceSearchTipCount')
     vi.mocked(sttApi.transcribe).mockResolvedValue({ text: '오리 영상 찾아 줘', latencyMs: 1 })

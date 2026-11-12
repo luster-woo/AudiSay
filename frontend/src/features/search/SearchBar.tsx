@@ -270,11 +270,15 @@ export function SearchBar({
                 {formatClock(voice.elapsed * 1000)} / {formatClock(MAX_RECORD_SEC * 1000)}
               </span>
             </div>
+            {/* 알아듣는 중에는 aria-disabled 를 주지 않는다: 포커스가 있는 버튼의 상태가 바뀌면 낭독기가
+                "사용 불가"를 읽어 "알아듣는 중이에요"·검색 결과 안내 앞에 끼어든다 (11-12 NVDA 실측).
+                눈으로만 흐리게 하고, 누름은 voice.stop 이 녹음 중이 아니면 아무 일도 하지 않아 막힌다 */}
             <Button
               ref={finishRef}
               variant="accent"
               size="xl"
-              disabled={voice.state !== 'listening'}
+              disabled={voice.state === 'preparing'}
+              className={cn(voice.state === 'processing' && 'cursor-progress opacity-60')}
               onClick={voice.stop}
             >
               말 끝내기

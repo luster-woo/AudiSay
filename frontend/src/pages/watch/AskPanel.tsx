@@ -260,11 +260,14 @@ export function AskPanel({
             </div>
             {/* 버튼 크기·폭은 평소(보내기·음성 인식)와 같게: 상태가 바뀌어도 칸 높이가 출렁이지 않는다 */}
             <div className="mt-4 grid grid-cols-2 gap-2">
+              {/* 알아듣는 중에는 aria-disabled 를 주지 않는다 (SearchBar 와 같은 이유: 포커스가 있는 버튼의
+                  상태가 바뀌면 낭독기가 "사용 불가"를 읽는다). 눈으로만 흐리게 한다 */}
               <Button
                 ref={finishRef}
                 variant="accent"
                 size="panel"
-                disabled={voice.state !== 'listening'}
+                disabled={voice.state === 'preparing'}
+                className={cn(voice.state === 'processing' && 'cursor-progress opacity-60')}
                 onClick={voice.stop}
               >
                 말 끝내기

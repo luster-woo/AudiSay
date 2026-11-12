@@ -326,20 +326,51 @@ def spread_lines(lines: list[dict], scene: dict) -> list[dict]:
     return out
 
 
+NEAR_REPEAT_MS = 30_000  # 이 시간 안의 비슷한 문장은 더 느슨하게(NEAR_RATIO) 같은 말로 본다
+NEAR_RATIO = 0.7
+
+
 def drop_repeats(desc_scenes: list[dict], ratio: float = 0.85) -> None:
     """앞 장면에서 이미 한 말과 거의 같은 문장은 뺀다. 장면을 따로 써서 한 사람이 말하는 영상에서 "안경 쓴 남자가
     나무 테이블에 앉아 있습니다"가 30초마다 되풀이됐다(2026-11-02 데모). 다 겹치면 그 장면은 해설 없이 둔다
-    (첫 문장을 남기던 때 같은 문장이 9장면에 남았다)."""
-    said: list[str] = []
+    (첫 문장을 남기던 때 같은 문장이 9장면에 남았다). 30초 안에서는 조금 덜 닮아도 뺀다: 크레페 영상에서 "크레페를
+    뒤집습니다"가 말만 바꿔 12초 동안 네 번 나왔다(2026-11-12)."""
+    said: list[tuple[str, int]] = []
     for sc in desc_scenes:
         kept = []
         for ln in sc["lines"]:
-            k = _norm(ln["text"])
-            if any(SequenceMatcher(None, k, s).ratio() >= ratio for s in said):
+            k, at = _norm(ln["text"]), ln.get("atMs", 0)
+            if any(SequenceMatcher(None, k, s).ratio() >= (NEAR_RATIO if abs(at - t) <= NEAR_REPEAT_MS else ratio)
+                   for s, t in said):
                 continue
             kept.append(ln)
-            said.append(k)
+            said.append((k, at))
         sc["lines"] = kept
+
+
+MERGE_TITLE_RATIO = 0.8  # 이웃 장면 제목이 이만큼 닮으면 한 장면(목차 하나)으로 합친다
+
+
+def merge_similar_scenes(scenes: list[dict], desc_scenes: list[dict], ocr_by_scene: list[list[str]]
+                         ) -> tuple[list[dict], list[dict], list[list[str]]]:
+    """제목이 같거나 거의 같은 이웃 장면을 하나로 합친다. 목차가 장면마다 하나라 크레페 5분 영상이 41개 목차가 되고
+    "반죽을 체에 거릅니다"가 다섯 번 이어졌다(2026-11-12). 합친 장면은 앞 장면 제목을 쓰고 문장·인물·화면 글자를 모은다."""
+    out_s: list[dict] = []
+    out_d: list[dict] = []
+    out_o: list[list[str]] = []
+    for s, d, o in zip(scenes, desc_scenes, ocr_by_scene):
+        if out_d and SequenceMatcher(None, _norm(out_d[-1]["title"]), _norm(d["title"])).ratio() >= MERGE_TITLE_RATIO:
+            out_s[-1] = {**out_s[-1], "endMs": s["endMs"]}
+            prev = out_d[-1]
+            seen = {p.get("appearance") for p in prev.get("people", [])}
+            out_d[-1] = {**prev, "lines": prev["lines"] + d["lines"],
+                         "people": prev.get("people", []) + [p for p in d.get("people", []) if p.get("appearance") not in seen]}
+            out_o[-1] = out_o[-1] + [w for w in o if w not in out_o[-1]]
+            continue
+        out_s.append(dict(s))
+        out_d.append(dict(d))
+        out_o.append(list(o))
+    return out_s, out_d, out_o
 
 
 IDLE_LINE = re.compile(r"(입고 있|착용하고 있|말하고 있|말합니다|말한다|말하는 자세를 취하고 있)(습니다|다)?\.?$")
@@ -617,14 +648,14 @@ def split_scenes(cuts: list[tuple[int, int]], duration_ms: int) -> list[dict]:
 
 
 def split_long(scenes: list[dict], max_sec: float) -> list[dict]:
+    """max_sec보다 긴 장면을 고르게 나눈다. 앞에서부터 max_sec씩 자르면 15초 장면이 12초 + 3초가 되어, 3초 장면마다
+    따로 해설·제목을 써서 "반죽을 체에 거릅니다"가 목차 5개로 되풀이됐다(2026-11-12 크레페)."""
     step = int(max_sec * 1000)
     out = []
     for s in scenes:
         a, b = s["startMs"], s["endMs"]
-        while b - a > step:
-            out.append({"startMs": a, "endMs": a + step})
-            a += step
-        out.append({"startMs": a, "endMs": b})
+        n = max(1, -(-(b - a) // step))
+        out += [{"startMs": a + (b - a) * k // n, "endMs": a + (b - a) * (k + 1) // n} for k in range(n)]
     return out
 
 
@@ -734,6 +765,7 @@ async def analyze_opensource(inf, title: str | None, files: dict, work: Path, du
                  and not all(any(_norm(q) in _norm(ln["text"]) for ln in kept) for q in n["quotes"])]
         sc["lines"] = spread_lines(cap_lines(kept, sd["endMs"] - sd["startMs"]) + shown, sd)
     drop_repeats(desc["scenes"])
+    scenes, desc["scenes"], ocr_by_scene = merge_similar_scenes(scenes, desc["scenes"], ocr_by_scene)
     lines = [ln for sc in desc["scenes"] for ln in sc["lines"]]
     await progress(17)
     t0 = time.monotonic()

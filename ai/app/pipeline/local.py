@@ -340,28 +340,43 @@ NEAR_REPEAT_MS = 30_000  # 이 시간 안의 비슷한 문장은 더 느슨하�
 NEAR_RATIO = 0.7
 HAN_CHAR = re.compile("[一-鿿]")  # 해설에 섞인 한자("R 자样的 문양", 2026-11-12 해리포터)
 
-# 상세도별 최소 간격(영상 전체 시간 순서). 유튜브(Gemini) 해설은 평균 상세도 1이 약 19초, 상세도 2(1+2)가 약 9초에
-# 문장 하나인데, 오픈소스는 장면마다 level 1을 하나씩 써서 크레페가 11.6초·4.7초로 두 배였다(2026-11-12 실측)
-LEVEL_GAP_MS = {1: 9_000, 2: 6_000, 3: 4_500}
+# 상세도별 평균 간격(영상 전체 시간 순서). 유튜브(Gemini) 해설은 평균 상세도 1이 약 19초, 상세도 2(1+2)가 약 9초에
+# 문장 하나인데, 오픈소스는 장면마다 level 1을 하나씩 써서 크레페가 11.6초·4.7초로 두 배였다(2026-11-12 실측).
+# 최소 간격(6초)으로 막았더니 장면 안 문장 간격(4~5초)에 걸려 level 2가 거의 다 level 3으로 내려가 상세도 2가 21.5초에
+# 하나가 됐다(같은 날 크레페 재생성) → 평균을 맞추는 토큰 방식으로
+LEVEL_AVG_MS = {1: 18_000, 2: 9_000}
+LEVEL_BURST = 1.5  # 조용한 구간 뒤에 몰아 쓸 수 있는 문장 수
+MIN_GAP_MS = 3_000  # 모든 문장 사이 최소 간격. 이보다 가까우면 뒤 문장을 빼되, 앞이 level 3이고 뒤가 더 중요하면 앞을 뺀다
 
 
 def thin_levels(desc_scenes: list[dict]) -> None:
-    """영상 전체를 시간 순서로 보며, 앞 문장과 너무 가까운 문장의 상세도를 낮춘다: level 1끼리 9초 안이면 level 2로,
-    level 1·2끼리 6초 안이면 level 3으로, 모든 문장끼리 4.5초 안이면 뺀다. 내용은 높은 상세도에 남는다."""
-    last = {1: -10**9, 2: -10**9, 3: -10**9}  # 상세도 n에서 들리는 마지막 문장 시각
+    """영상 전체를 시간 순서로 보며 상세도 1·2의 평균 밀도를 유튜브 수준으로 맞춘다. 상세도 n마다 시간이 지나면 쌓이는
+    몫(토큰)이 있고, 몫이 없으면 그 문장을 한 단계 높은 상세도로 낮춘다(내용은 상세도 3에 남는다). 3초 안 문장은 뺀다."""
+    tokens = {1: 1.0, 2: 1.0}
+    prev = None
+    last = -10**9
     for sc in desc_scenes:
         kept = []
         for ln in sorted(sc["lines"], key=lambda x: x["atMs"]):
             at, lv = ln["atMs"], ln["level"]
-            if lv == 1 and at - last[1] < LEVEL_GAP_MS[1]:
+            if prev is not None:
+                for n in tokens:
+                    tokens[n] = min(LEVEL_BURST, tokens[n] + (at - prev) / LEVEL_AVG_MS[n])
+            prev = at
+            if at - last < MIN_GAP_MS:
+                if not (kept and kept[-1]["level"] == 3 and lv < 3):
+                    continue
+                kept.pop()  # 앞의 level 3 문장 대신 이 문장을 남긴다(level 3은 몫을 쓰지 않았다)
+            if lv == 1 and tokens[1] < 1:
                 lv = 2
-            if lv <= 2 and at - last[2] < LEVEL_GAP_MS[2]:
+            if lv <= 2 and tokens[2] < 1:
                 lv = 3
-            if at - last[3] < LEVEL_GAP_MS[3]:
-                continue
+            if lv == 1:
+                tokens[1] -= 1
+            if lv <= 2:
+                tokens[2] -= 1
             kept.append({**ln, "level": lv})
-            for n in range(lv, 4):  # 상세도 n 이상에서 이 문장이 들린다
-                last[n] = at
+            last = at
         sc["lines"] = kept
 
 
@@ -384,27 +399,38 @@ def drop_repeats(desc_scenes: list[dict], ratio: float = 0.85) -> None:
 
 
 MERGE_TITLE_RATIO = 0.8  # 이웃 장면 제목이 이만큼 닮으면 한 장면(목차 하나)으로 합친다
+CHAPTER_MIN_MS = 20_000  # 목차 하나의 최소 길이(유튜브 해설 목차 중앙값 약 23초)
 
 
 def merge_similar_scenes(scenes: list[dict], desc_scenes: list[dict], ocr_by_scene: list[list[str]]
                          ) -> tuple[list[dict], list[dict], list[list[str]]]:
-    """제목이 같거나 거의 같은 이웃 장면을 하나로 합친다. 목차가 장면마다 하나라 크레페 5분 영상이 41개 목차가 되고
-    "반죽을 체에 거릅니다"가 다섯 번 이어졌다(2026-11-12). 합친 장면은 앞 장면 제목을 쓰고 문장·인물·화면 글자를 모은다."""
+    """이웃 장면을 목차 하나로 합친다: 제목이 같거나 거의 같을 때, 또는 앞 묶음이 CHAPTER_MIN_MS보다 짧을 때.
+    목차가 장면마다 하나라 크레페 5분 영상이 41개 목차가 되고 "반죽을 체에 거릅니다"가 다섯 번 이어졌으며, 비슷한 제목을
+    합친 뒤에도 31개(9.7초에 하나)로 유튜브(약 20초에 하나)의 두 배였다(2026-11-12). 합친 장면은 가장 긴 장면의 제목을
+    쓰고 문장·인물·화면 글자를 모은다."""
     out_s: list[dict] = []
     out_d: list[dict] = []
     out_o: list[list[str]] = []
+    best: list[int] = []  # 묶음마다 제목을 가져온 장면의 길이
     for s, d, o in zip(scenes, desc_scenes, ocr_by_scene):
-        if out_d and SequenceMatcher(None, _norm(out_d[-1]["title"]), _norm(d["title"])).ratio() >= MERGE_TITLE_RATIO:
+        ms = s["endMs"] - s["startMs"]
+        similar = out_d and SequenceMatcher(None, _norm(out_d[-1]["title"]), _norm(d["title"])).ratio() >= MERGE_TITLE_RATIO
+        short = out_s and out_s[-1]["endMs"] - out_s[-1]["startMs"] < CHAPTER_MIN_MS
+        if similar or short:
             out_s[-1] = {**out_s[-1], "endMs": s["endMs"]}
             prev = out_d[-1]
             seen = {p.get("appearance") for p in prev.get("people", [])}
-            out_d[-1] = {**prev, "lines": prev["lines"] + d["lines"],
+            title = prev["title"]
+            if not similar and ms > best[-1]:
+                title, best[-1] = d["title"], ms
+            out_d[-1] = {**prev, "title": title, "lines": prev["lines"] + d["lines"],
                          "people": prev.get("people", []) + [p for p in d.get("people", []) if p.get("appearance") not in seen]}
             out_o[-1] = out_o[-1] + [w for w in o if w not in out_o[-1]]
             continue
         out_s.append(dict(s))
         out_d.append(dict(d))
         out_o.append(list(o))
+        best.append(ms)
     return out_s, out_d, out_o
 
 

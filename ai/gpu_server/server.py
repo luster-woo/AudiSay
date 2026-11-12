@@ -28,7 +28,7 @@ from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-VERSION = 23
+VERSION = 26
 VLM_REPO = os.getenv("VLM_REPO", "Qwen/Qwen3-VL-8B-Instruct")
 WHISPER_REPO = os.getenv("WHISPER_REPO", "deepdml/faster-whisper-large-v3-turbo-ct2")
 DEVICE = os.getenv("DEVICE", "cuda:0")
@@ -75,8 +75,14 @@ VLLM_PARALLEL = int(os.getenv("VLLM_PARALLEL", "8"))  # 한 요청 안에서 동
 # 버전 17: 영상 전체 줄거리(/story)만 더 큰 모델에 맡긴다(8B는 사진 대신 소리 목록·예시를 베꼈다, 2026-11-03).
 # 비어 있거나 꺼져 있으면 위 8B vLLM → HF 순서로 대체
 STORY_VLLM_URL = os.getenv("STORY_VLLM_URL", "http://127.0.0.1:8201/v1").rstrip("/")
-STORY_MODEL = os.getenv("STORY_MODEL", "Qwen/Qwen3-VL-32B-Instruct-FP8")
+# 버전 24(2026-11-12): 8201의 모델을 Qwen3-VL-32B FP8(2025년)에서 Qwen3.8-27B FP8로 바꿨다. 실측(benchmarks/README.md):
+# 영상 통째 해설이 30~40% 빠르고 영상 끝까지 쓰며(32B는 마지막 20~40초를 빠뜨림), 줄거리·번역은 약 2배 빠르고 번역 용어가 맞다
+STORY_MODEL = os.getenv("STORY_MODEL", "Qwen/Qwen3.8-27B-FP8")
 VLLM_MODEL = os.getenv("VLLM_MODEL", STORY_MODEL)  # VLLM_URL에 떠 있는 모델 이름(HF 대체는 VLM_REPO)
+# Qwen3.8은 기본으로 답 앞에 생각 과정을 쓴다. 기본은 끔(실측은 끈 상태로 했다). VLLM_THINK=1이면 켠다: 8201을
+# --reasoning-parser qwen3로 띄워 생각 과정은 답(content)과 따로 오고, 출력 한도에 생각 토큰도 들어가니 한도를 넉넉히.
+# Qwen3-VL은 이 값을 무시한다
+NO_THINK = {"chat_template_kwargs": {"enable_thinking": os.getenv("VLLM_THINK", "0") == "1"}}
 
 
 def _post_json(url: str, body: dict, timeout: float) -> dict:
@@ -86,17 +92,20 @@ def _post_json(url: str, body: dict, timeout: float) -> dict:
 
 
 def vllm_generate(system: str, user: str, images_b64: list[str] | None = None, max_new: int = 512,
-                  repetition_penalty: float = 1.0, url: str | None = None, model: str | None = None) -> str | None:
+                  repetition_penalty: float = 1.0, url: str | None = None, model: str | None = None,
+                  json_schema: dict | None = None) -> str | None:
     """generate와 같은 일을 vLLM에 맡긴다. 사진은 base64 JPEG 그대로. 쓸 수 없으면 None. 한자 금지는 못 함(_translate_part 참고).
-    url·model을 주면 그 vLLM(예: 줄거리용 32B)에 보낸다."""
+    url·model을 주면 그 vLLM(예: 줄거리용 32B)에 보낸다. json_schema를 주면 그 형식으로만 생성한다(버전 25)."""
     url = url or VLLM_URL
     if not url:
         return None
     content = [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + b}} for b in images_b64 or []]
-    body = {"model": model or VLLM_MODEL, "temperature": 0, "max_tokens": max_new,
+    body = {"model": model or VLLM_MODEL, "temperature": 0, "max_tokens": max_new, **NO_THINK,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": content + [{"type": "text", "text": user}]}]}
     if repetition_penalty != 1.0:
         body["repetition_penalty"] = repetition_penalty
+    if json_schema:
+        body["response_format"] = {"type": "json_schema", "json_schema": {"name": "Result", "schema": json_schema}}
     try:
         return _post_json(url + "/chat/completions", body, timeout=600)["choices"][0]["message"]["content"].strip()
     except Exception as e:  # noqa: BLE001 — 꺼져 있음·시간 초과 등은 HF로
@@ -115,7 +124,7 @@ def llm(system: str, user: str, max_new: int = 512) -> str:
 
 def vllm_stream(system: str, user: str, max_new: int = 200):
     """vLLM 답을 조각씩(서버가 보내는 SSE 한 줄 = 조각 하나). 연결 전에 실패하면 예외 → 부르는 쪽이 HF로."""
-    body = {"model": VLLM_MODEL, "temperature": 0, "max_tokens": max_new, "stream": True,
+    body = {"model": VLLM_MODEL, "temperature": 0, "max_tokens": max_new, "stream": True, **NO_THINK,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
     req = urllib.request.Request(VLLM_URL + "/chat/completions", json.dumps(body).encode(), {"Content-Type": "application/json"})
     r = urllib.request.urlopen(req, timeout=60)
@@ -410,11 +419,18 @@ def stt(audio: UploadFile = File(...), language: str = Form("ko"), prompt: str =
     samples = wav_16k(audio.file.read())
     lang = None if language == "auto" else language
     with _lock:
+        # 버전 26: 단어 시각을 켜고 구간을 첫 단어~끝 단어로 좁힌다. 영화 배경음악을 VAD가 말소리로 봐서 "Knight to E5"
+        # (실제 39.7~41.5초)가 1.0~41.4초로 잡혔고, 0~39초 장면마다 체스 대사가 붙어 해설이 앞당겨졌다(2026-11-12 해리포터)
         segs, info = whisper().transcribe(samples, language=lang, beam_size=5, vad_filter=True, condition_on_previous_text=False,
-                                          initial_prompt=prompt.strip()[:400] or None)
+                                          initial_prompt=prompt.strip()[:400] or None, word_timestamps=True)
         segs = list(segs)
     _count("stt", t0)
-    return {"segments": [{"startMs": int(s.start * 1000), "endMs": int(s.end * 1000), "text": s.text.strip()}
+
+    def span(s) -> tuple[float, float]:
+        ws = [w for w in (s.words or []) if w.word.strip()]
+        return (ws[0].start, ws[-1].end) if ws else (s.start, s.end)
+
+    return {"segments": [{"startMs": int(span(s)[0] * 1000), "endMs": int(span(s)[1] * 1000), "text": s.text.strip()}
                          for s in segs if s.text.strip()], "model": WHISPER_REPO,
             "language": getattr(info, "language", lang), "languageProbability": round(float(getattr(info, "language_probability", 0) or 0), 2)}
 
@@ -723,7 +739,7 @@ def describe_video(video: UploadFile = File(...), prompt: str = Form(...), schem
     MEDIA_DIR.mkdir(parents=True, exist_ok=True)
     path = MEDIA_DIR / f"req_{os.getpid()}_{threading.get_ident()}_{int(t0 * 1000)}.mp4"
     path.write_bytes(video.file.read())
-    body = {"model": STORY_MODEL, "temperature": 0.2, "max_tokens": max_tokens,
+    body = {"model": STORY_MODEL, "temperature": 0.2, "max_tokens": max_tokens, **NO_THINK,
             "messages": [{"role": "user", "content": [{"type": "video_url", "video_url": {"url": path.as_uri()}},
                                                       {"type": "text", "text": prompt}]}],
             "response_format": {"type": "json_schema", "json_schema": {"name": "Narration", "schema": json.loads(schema)}}}
@@ -764,7 +780,7 @@ def generate_json(b: JsonBody):
     if not (STORY_VLLM_URL and vllm_ok(STORY_VLLM_URL)):
         return JSONResponse({"error": "story model off"}, status_code=503)
     content = [{"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{x}"}} for x in b.images[:8]]
-    body = {"model": STORY_MODEL, "temperature": 0.2, "max_tokens": b.max_tokens,
+    body = {"model": STORY_MODEL, "temperature": 0.2, "max_tokens": b.max_tokens, **NO_THINK,
             "messages": [{"role": "user", "content": content + [{"type": "text", "text": b.prompt}] if content else b.prompt}],
             "response_format": {"type": "json_schema", "json_schema": {"name": "Result", "schema": b.json_schema}}}
     # 깨진 JSON(출력 한도에 걸려 끊김·같은 말 되풀이)이면 반복 벌점을 주고 한 번 더(describe_video와 같게, 버전 23).
@@ -899,7 +915,8 @@ DESCRIBE_SYSTEM = """당신은 시각장애인을 위한 화면해설 작가입�
 - 한 문장은 40자 안팎, 한 문장에 한 가지 내용. 장면마다 문장 3~5개.
 - 문장 하나만 들어도 뜻이 통하게 씁니다("그", "이어서", "또한"으로 시작하지 않습니다). 같은 내용을 단계별로 다시 쓰지 않습니다.
 - 숫자·표·그래프의 값은 화면 글자에 적힌 대로 정확히 읽습니다.
-해설 문장(lines)은 누적형입니다: level 1은 이 장면의 핵심 사건(주어진 핵심 사건이 있으면 반드시 담음, 위험·충돌·구출을 먼저), level 2는 행동·표정·장소, level 3은 배경·분위기.
+해설 문장(lines)은 누적형입니다: level 1은 이 장면의 핵심 사건(주어진 핵심 사건이 이 장면 사진에 보이면 반드시 담음, 위험·충돌·구출을 먼저), level 2는 행동·표정·장소, level 3은 배경·분위기.
+제목(title)과 문장은 이 장면 사진에 보이는 것으로 씁니다. 핵심 사건의 시각은 몇 초 어긋날 수 있어서, 사진에 아직 안 나온(다음 장면의) 일은 쓰지 않습니다.
 지어내지 않기(버전 16): 안경·장신구·작은 무늬·정확한 색처럼 작은 특징은 여러 사진에서 분명할 때만 씁니다. 만화·애니메이션의 큰 눈이나 눈 테두리는 안경이 아닙니다.
 인물·물건은 주어진 이름만 씁니다(같은 물건을 구슬·포도·딸기로 바꿔 부르지 않습니다). 핵심 사건·소리와 어긋나는 내용은 쓰지 않습니다.
 사람 이름은 화면 글자나 대사, 또는 주어진 등장인물 사전에 근거가 있을 때만 쓰고, 근거를 basis에 적습니다. 없으면 name은 null.
@@ -920,7 +937,9 @@ def _scene_prompt(body: DescribeBody, i: int, s: DescribeScene) -> str:
     if body.names:
         extra += f"\n정해 둔 인물·물건 이름: {body.names}"
     if s.events:
-        extra += f"\n이 장면 구간의 핵심 사건(level 1에 꼭 담기): {s.events}"
+        # 버전 26: "꼭 담기"였을 때 줄거리 시각이 몇 초 앞서면 다음 장면 일을 제목으로 썼다(2026-11-12 크레페: 18~21초
+        # 장면 사진은 크레페를 드는데 제목이 "계란 무게 재기", 무게 재기는 21~26초)
+        extra += f"\n이 장면 구간의 핵심 사건(사진에 보이면 level 1에 꼭 담기, 안 보이면 쓰지 않기): {s.events}"
     return (f"영상 제목: {body.title}\n{body.guide}{extra}\n장면 {i + 1}/{len(body.scenes)}, "
             f"{s.startMs // 1000}~{s.endMs // 1000}초, 길이 {(s.endMs - s.startMs) / 1000:.0f}초\n"
             f"이 장면의 대사: {s.transcript or '(없음)'}\n이 장면의 소리: {s.sounds or '(없음)'}\n"
@@ -1068,7 +1087,11 @@ def _translate_part(body: TranslateBody, part: list[str], before: list[str], aft
     # vLLM은 생성 단계 한자 금지를 못 한다(logit_bias가 1024개까지인데 한자 토큰은 2만 7천 개, 넘기면 엔진이 죽음).
     # 먼저 vLLM으로 옮기고, 한자가 섞이는 등 실패한 조각만 HF로 한자를 막고 다시 옮긴다(버전 15).
     # 버전 19: HF 8B를 늘 올려 두지 않으려고, vLLM이 답했는데 틀린 조각은 HF 대신 translate의 한 조각씩·RETRY_HINT 재시도로
-    raw = vllm_generate(TRANSLATE_SYSTEM, user, max_new=max_new, repetition_penalty=REPEAT_PENALTY)
+    # 버전 25: Qwen3.8이 짧은 대사에서 {"ko": ["잘 써요."}]처럼 괄호를 거꾸로 닫아 다시 해도 같은 답 → 원문(영어)으로 남았다
+    # (2026-11-12 해리포터). JSON 형식과 조각 수를 생성 단계에서 강제한다
+    schema = {"type": "object", "required": ["ko"], "properties": {"ko": {
+        "type": "array", "minItems": len(part), "maxItems": len(part), "items": {"type": "string", "minLength": 1}}}}
+    raw = vllm_generate(TRANSLATE_SYSTEM, user, max_new=max_new, repetition_penalty=REPEAT_PENALTY, json_schema=schema)
     ko = _translated(raw, part) if raw is not None else None
     if raw is None:
         with _lock:
@@ -1079,11 +1102,25 @@ def _translate_part(body: TranslateBody, part: list[str], before: list[str], aft
     return ko
 
 
-def _translated(raw: str, part: list[str]) -> list[str] | None:
+def _ko_strings(raw: str) -> list[str] | None:
+    """"ko" 목록의 글들. JSON이 깨졌으면(괄호 순서가 틀리는 등) "ko": [ 뒤의 따옴표 안 글만 건진다(버전 25)."""
     try:
-        ko = [re.sub(r"^\s*\d+\s*[.)]\s*", "", str(x)).strip() for x in json_block(raw).get("ko", [])]  # "1. " 같은 번호 떼기
+        return [str(x) for x in json_block(raw).get("ko", [])]
     except (ValueError, json.JSONDecodeError, AttributeError):
+        m = re.search(r'"ko"\s*:\s*\[(.*)', raw, re.S)
+        if not m:
+            return None
+        try:
+            return [json.loads(f'"{s}"') for s in re.findall(r'"((?:[^"\\]|\\.)*)"', m.group(1))]
+        except json.JSONDecodeError:
+            return None
+
+
+def _translated(raw: str, part: list[str]) -> list[str] | None:
+    strings = _ko_strings(raw)
+    if strings is None:
         return None
+    ko = [re.sub(r"^\s*\d+\s*[.)]\s*", "", x).strip() for x in strings]  # "1. " 같은 번호 떼기
     if len(ko) == len(part) and all(ko) and not any(HANZI.search(x) for x in ko):  # 한자가 섞이면(瓣, 调 등) 실패로 보고 다시
         return ko
     return None

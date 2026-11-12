@@ -40,13 +40,17 @@ def test_group_sentences_by_end_mark_or_12s():
 
 def test_split_scenes_merges_short_and_splits_long():
     cuts = [(0, 10_000), (10_000, 12_000), (12_000, 50_000)]
-    assert local.split_scenes(cuts, 50_000) == [{"startMs": 0, "endMs": 12_000}, {"startMs": 12_000, "endMs": 27_000},
-                                                {"startMs": 27_000, "endMs": 42_000}, {"startMs": 42_000, "endMs": 50_000}]
+    # 38초 장면은 15초씩 자르지 않고 고르게 셋으로(끝에 8초짜리가 남지 않게)
+    assert local.split_scenes(cuts, 50_000) == [{"startMs": 0, "endMs": 12_000}, {"startMs": 12_000, "endMs": 24_666},
+                                                {"startMs": 24_666, "endMs": 37_333}, {"startMs": 37_333, "endMs": 50_000}]
 
 
 def test_silent_scenes_split_finer_and_frames_dense():
-    assert local.split_long([{"startMs": 74_000, "endMs": 93_000}], 12.0) == [{"startMs": 74_000, "endMs": 86_000},
-                                                                              {"startMs": 86_000, "endMs": 93_000}]
+    assert local.split_long([{"startMs": 74_000, "endMs": 93_000}], 12.0) == [{"startMs": 74_000, "endMs": 83_500},
+                                                                              {"startMs": 83_500, "endMs": 93_000}]
+    # 15초 장면이 12초 + 3초로 나뉘어 3초 장면마다 같은 제목을 썼다(2026-11-12 크레페)
+    assert local.split_long([{"startMs": 78_000, "endMs": 93_000}], 12.0) == [{"startMs": 78_000, "endMs": 85_500},
+                                                                              {"startMs": 85_500, "endMs": 93_000}]
     assert local.frames_for_silent(12_000) == 4 and local.frames_for_silent(21_000) == 7 and local.frames_for_silent(60_000) == 8
 
 
@@ -195,7 +199,7 @@ def test_video_without_speech_is_described_by_action(tmp_path, monkeypatch):
 
     asyncio.run(local.analyze("opensource", Silent(), None, False, "라마와 펭귄", {"playback": tmp_path / "p.mp4", "wav": tmp_path / "a.wav"},
                               tmp_path, 30_000, progress, 7))
-    assert got["scenes"] == [(0, 12_000), (12_000, 24_000), (24_000, 30_000)] and got["per_scene"] is local.frames_for_silent
+    assert got["scenes"] == [(0, 10_000), (10_000, 20_000), (20_000, 30_000)] and got["per_scene"] is local.frames_for_silent
     assert "이 영상에는 대사가 없습니다" in got["guide"] and "화면 자막이 대사 역할" in got["guide"]
 
 
@@ -225,6 +229,32 @@ def test_repeated_lines_across_scenes_are_dropped():
     local.drop_repeats(scenes)
     assert [len(s["lines"]) for s in scenes] == [2, 1, 0]  # 다 겹친 장면은 해설 없이(같은 문장을 남기지 않는다)
     assert scenes[1]["lines"][0]["text"].startswith("남자 뒤 벽")
+
+
+def test_similar_lines_nearby_are_dropped_but_far_ones_kept():
+    """30초 안에서는 덜 닮아도 같은 말로 본다(크레페 '뒤집습니다' 네 번). 멀리 떨어진 비슷한 문장은 남긴다."""
+    scenes = [{"lines": [{"atMs": 196_000, "text": "팬에서 익은 크레페를 뒤집습니다."}]},
+              {"lines": [{"atMs": 217_000, "text": "팬 안의 크레페를 뒤집습니다."}]},
+              {"lines": [{"atMs": 290_000, "text": "팬 안의 크레페를 뒤집습니다."}]}]
+    local.drop_repeats(scenes)
+    assert [len(s["lines"]) for s in scenes] == [1, 0, 1]  # 두 번째는 30초 안이라 빼고, 73초 뒤 같은 동작은 새 일로 남긴다
+    far = [{"lines": [{"atMs": 0, "text": "팬에서 익은 크레페를 뒤집습니다."}]},
+           {"lines": [{"atMs": 120_000, "text": "팬 안의 크레페를 뒤집습니다."}]}]
+    local.drop_repeats(far)
+    assert [len(s["lines"]) for s in far] == [1, 1]
+
+
+def test_neighbor_scenes_with_same_title_merge_into_one_chapter():
+    scenes = [{"startMs": 66_000, "endMs": 78_000}, {"startMs": 78_000, "endMs": 81_000},
+              {"startMs": 81_000, "endMs": 88_000}, {"startMs": 88_000, "endMs": 103_000}]
+    desc = [{"title": "가루 재료를 액체에 넣고 섞습니다", "people": [], "lines": [{"text": "a"}]},
+            {"title": "반죽을 체에 거릅니다", "people": [], "lines": []},
+            {"title": "반죽을 체에 거릅니다", "people": [], "lines": [{"text": "b"}]},
+            {"title": "반죽을 체에 거릅니다.", "people": [], "lines": [{"text": "c"}]}]
+    s2, d2, o2 = local.merge_similar_scenes(scenes, desc, [["체"], [], ["체", "125g"], []])
+    assert [(s["startMs"], s["endMs"]) for s in s2] == [(66_000, 78_000), (78_000, 103_000)]
+    assert d2[1]["title"] == "반죽을 체에 거릅니다" and [x["text"] for x in d2[1]["lines"]] == ["b", "c"]
+    assert o2 == [["체"], ["체", "125g"]]
 
 
 def test_idle_and_speech_act_lines_are_dropped():

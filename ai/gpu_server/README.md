@@ -227,3 +227,30 @@ curl -sL -o voxceleb_resnet34_LM.onnx https://huggingface.co/Wespeaker/wespeaker
 sha256sum voxceleb_resnet34_LM.onnx   # 7bb2f06e9df17cdf1ef14ee8a15ab08ed28e8d0ef5054ee135741560df2ec068
 ```
 이전 파일은 `server_v22_backup.py`.
+
+## 서버 버전 24 (2026-11-12) — 8201 모델을 Qwen3.8-27B로
+
+지금 모델(Qwen3-VL-32B FP8)이 1년 전 것이라 바꿨다. 근거는 `benchmarks/README.md`: 영상 통째 해설이 30~40% 빠르고 영상 끝까지 쓰며(32B는 마지막 20~40초를 빠뜨림), 줄거리·번역은 약 2배 빠르고 번역 용어(계피·정향)가 맞다.
+
+| 바뀐 것 | 내용 |
+|---|---|
+| `start_vllm_story.sh` | `Qwen/Qwen3.8-27B-FP8`(`MODEL=`로 바꿈), 메모리 50% → 35%(약 72GB → 50GB), max-num-seqs 4 → 8, `--mm-processor-kwargs` 뺌. 이전 파일은 `start_vllm_story_v23_backup.sh` |
+| `server.py` | `STORY_MODEL` 기본값을 새 모델로. 생각 모드는 기본 끔(`chat_template_kwargs.enable_thinking=false`), `VLLM_THINK=1`로 켠다. 8201은 `--reasoning-parser qwen3`로 띄워 켜도 생각 과정이 답과 따로 온다 |
+
+되돌리기: `pkill -f "[v]llm serve .*--port 8201"; bash ~/gpu_server/start_vllm_story_v23_backup.sh` 후 추론 서버를 `STORY_MODEL=Qwen/Qwen3-VL-32B-Instruct-FP8`로 다시 켠다.
+이전 파일은 `server_v23_backup.py`.
+
+## 서버 버전 25 (2026-11-12) — 번역 JSON 깨짐
+
+Qwen3.8이 짧은 대사에서 `{"ko": ["잘 써요."}]`처럼 괄호를 거꾸로 닫아, 다시 시켜도 같은 답이라 대사가 영어로 남았다(해리포터 업로드, 최소 3줄).
+`/translate`가 vLLM에 JSON 형식(조각 수까지)을 강제하고(`vllm_generate(json_schema=...)`), 그래도 깨진 답이면 `"ko": [` 뒤 따옴표 안 글만 건진다.
+같은 대사 8개: 실패 0, 0.8초. 이전 파일은 `server_v24_backup.py`.
+
+## 서버 버전 26 (2026-11-12) — 받아쓰기 구간·장면 제목 시각
+
+| 바뀐 것 | 내용 |
+|---|---|
+| `/stt` | `word_timestamps=True`, 구간을 첫 단어~끝 단어로. 영화 배경음악을 VAD가 말소리로 봐서 "Knight to E5"(실제 39.7~41.5초)가 1.0~41.4초로 잡혀 0초부터 체스 해설이 나왔다(해리포터) |
+| `/describe` | 장면 핵심 사건은 "사진에 보이면" 담기. 줄거리 시각이 몇 초 앞서면 다음 장면 일을 제목으로 썼다(크레페 18~21초 "계란 무게 재기") |
+
+이전 파일은 `server_v25_backup.py`.

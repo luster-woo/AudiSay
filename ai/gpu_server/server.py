@@ -28,7 +28,7 @@ from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-VERSION = 24
+VERSION = 25
 VLM_REPO = os.getenv("VLM_REPO", "Qwen/Qwen3-VL-8B-Instruct")
 WHISPER_REPO = os.getenv("WHISPER_REPO", "deepdml/faster-whisper-large-v3-turbo-ct2")
 DEVICE = os.getenv("DEVICE", "cuda:0")
@@ -92,9 +92,10 @@ def _post_json(url: str, body: dict, timeout: float) -> dict:
 
 
 def vllm_generate(system: str, user: str, images_b64: list[str] | None = None, max_new: int = 512,
-                  repetition_penalty: float = 1.0, url: str | None = None, model: str | None = None) -> str | None:
+                  repetition_penalty: float = 1.0, url: str | None = None, model: str | None = None,
+                  json_schema: dict | None = None) -> str | None:
     """generate와 같은 일을 vLLM에 맡긴다. 사진은 base64 JPEG 그대로. 쓸 수 없으면 None. 한자 금지는 못 함(_translate_part 참고).
-    url·model을 주면 그 vLLM(예: 줄거리용 32B)에 보낸다."""
+    url·model을 주면 그 vLLM(예: 줄거리용 32B)에 보낸다. json_schema를 주면 그 형식으로만 생성한다(버전 25)."""
     url = url or VLLM_URL
     if not url:
         return None
@@ -103,6 +104,8 @@ def vllm_generate(system: str, user: str, images_b64: list[str] | None = None, m
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": content + [{"type": "text", "text": user}]}]}
     if repetition_penalty != 1.0:
         body["repetition_penalty"] = repetition_penalty
+    if json_schema:
+        body["response_format"] = {"type": "json_schema", "json_schema": {"name": "Result", "schema": json_schema}}
     try:
         return _post_json(url + "/chat/completions", body, timeout=600)["choices"][0]["message"]["content"].strip()
     except Exception as e:  # noqa: BLE001 — 꺼져 있음·시간 초과 등은 HF로
@@ -1074,7 +1077,11 @@ def _translate_part(body: TranslateBody, part: list[str], before: list[str], aft
     # vLLM은 생성 단계 한자 금지를 못 한다(logit_bias가 1024개까지인데 한자 토큰은 2만 7천 개, 넘기면 엔진이 죽음).
     # 먼저 vLLM으로 옮기고, 한자가 섞이는 등 실패한 조각만 HF로 한자를 막고 다시 옮긴다(버전 15).
     # 버전 19: HF 8B를 늘 올려 두지 않으려고, vLLM이 답했는데 틀린 조각은 HF 대신 translate의 한 조각씩·RETRY_HINT 재시도로
-    raw = vllm_generate(TRANSLATE_SYSTEM, user, max_new=max_new, repetition_penalty=REPEAT_PENALTY)
+    # 버전 25: Qwen3.8이 짧은 대사에서 {"ko": ["잘 써요."}]처럼 괄호를 거꾸로 닫아 다시 해도 같은 답 → 원문(영어)으로 남았다
+    # (2026-11-12 해리포터). JSON 형식과 조각 수를 생성 단계에서 강제한다
+    schema = {"type": "object", "required": ["ko"], "properties": {"ko": {
+        "type": "array", "minItems": len(part), "maxItems": len(part), "items": {"type": "string", "minLength": 1}}}}
+    raw = vllm_generate(TRANSLATE_SYSTEM, user, max_new=max_new, repetition_penalty=REPEAT_PENALTY, json_schema=schema)
     ko = _translated(raw, part) if raw is not None else None
     if raw is None:
         with _lock:
@@ -1085,11 +1092,25 @@ def _translate_part(body: TranslateBody, part: list[str], before: list[str], aft
     return ko
 
 
-def _translated(raw: str, part: list[str]) -> list[str] | None:
+def _ko_strings(raw: str) -> list[str] | None:
+    """"ko" 목록의 글들. JSON이 깨졌으면(괄호 순서가 틀리는 등) "ko": [ 뒤의 따옴표 안 글만 건진다(버전 25)."""
     try:
-        ko = [re.sub(r"^\s*\d+\s*[.)]\s*", "", str(x)).strip() for x in json_block(raw).get("ko", [])]  # "1. " 같은 번호 떼기
+        return [str(x) for x in json_block(raw).get("ko", [])]
     except (ValueError, json.JSONDecodeError, AttributeError):
+        m = re.search(r'"ko"\s*:\s*\[(.*)', raw, re.S)
+        if not m:
+            return None
+        try:
+            return [json.loads(f'"{s}"') for s in re.findall(r'"((?:[^"\\]|\\.)*)"', m.group(1))]
+        except json.JSONDecodeError:
+            return None
+
+
+def _translated(raw: str, part: list[str]) -> list[str] | None:
+    strings = _ko_strings(raw)
+    if strings is None:
         return None
+    ko = [re.sub(r"^\s*\d+\s*[.)]\s*", "", x).strip() for x in strings]  # "1. " 같은 번호 떼기
     if len(ko) == len(part) and all(ko) and not any(HANZI.search(x) for x in ko):  # 한자가 섞이면(瓣, 调 등) 실패로 보고 다시
         return ko
     return None

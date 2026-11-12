@@ -55,20 +55,21 @@ def story_grids(mp4: Path, every_sec: float = 3.0, per: int = 9, cell=(384, 216)
     return out[:8]
 
 
-def video_call(base, model, mp4: Path, req: dict) -> dict:
+def video_call(base, model, mp4: Path, req: dict, think: dict | None = None, bonus: int = 0) -> dict:
     """server.py /describe_video와 같은 요청(temperature 0.2, json_schema, 최대 10,000토큰). 깨지면 반복 벌점 1.1로 한 번 더."""
     pre = [{"type": "video_url", "video_url": {"url": mp4.as_uri()}}]
-    extra = {"temperature": 0.2,
+    extra = {"temperature": 0.2, **(think or {}),
              "response_format": {"type": "json_schema", "json_schema": {"name": "Narration", "schema": req["schema"]}}}
     t0 = time.time()
-    r = call(base, model, None, req["prompt"], max_tokens=10000, extra=extra, pre=pre)
+    r = call(base, model, None, req["prompt"], max_tokens=10000 + bonus, extra=extra, pre=pre)
     tries = 1
     if r["ok"] and json_ok(r["text"]) is None:
-        r = call(base, model, None, req["prompt"], max_tokens=10000, extra={**extra, "repetition_penalty": 1.1}, pre=pre)
+        r = call(base, model, None, req["prompt"], max_tokens=10000 + bonus, extra={**extra, "repetition_penalty": 1.1}, pre=pre)
         tries = 2
     j = json_ok(r["text"]) if r["ok"] else None
     return {**r, "sec": round(time.time() - t0, 2), "tries": tries, "json": j is not None,
-            "scenes": len((j or {}).get("scenes", [])), "lines": count_lines(j)}
+            "scenes": len((j or {}).get("scenes", [])), "lines": count_lines(j),
+            "last_end": ((j or {}).get("scenes") or [{}])[-1].get("end")}
 
 
 def count_lines(x) -> int:
@@ -80,7 +81,7 @@ def count_lines(x) -> int:
     return 0
 
 
-def translate_one(base, model, P, title, texts, k) -> dict:
+def translate_one(base, model, P, title, texts, k, think: dict | None = None, bonus: int = 0) -> dict:
     """server.py _translate_part(한 조각 + 앞뒤 2개 맥락, 반복 벌점 1.1). 틀리면 RETRY_HINT로 한 번 더."""
     before, after = texts[max(0, k - 2):k], texts[k + 1:k + 3]
     ctx = "\n".join([f"(앞) {t}" for t in before] + [f"(뒤) {t}" for t in after]) or "(없음)"
@@ -89,7 +90,7 @@ def translate_one(base, model, P, title, texts, k) -> dict:
     for retry in (False, True):
         user = (f"영상 제목: {title}\n원래 언어: en\n앞뒤 맥락(번역하지 않음):\n{ctx}\n번역할 조각(1개):\n1. {texts[k]}"
                 + (P["RETRY_HINT"] if retry else ""))
-        r = call(base, model, P["TRANSLATE_SYSTEM"], user, max_tokens=140, extra={"repetition_penalty": 1.1})
+        r = call(base, model, P["TRANSLATE_SYSTEM"], user, max_tokens=140 + bonus, extra={"repetition_penalty": 1.1, **(think or {})})
         j = json_ok(r["text"]) or {}
         ko = [re.sub(r"^\s*\d+\s*[.)]\s*", "", str(x)).strip() for x in j.get("ko", [])] if isinstance(j.get("ko"), list) else []
         if len(ko) == 1 and ko[0] and not HANZI.search(ko[0]):
@@ -105,6 +106,8 @@ def main():
     ap.add_argument("--server", default=str(Path(__file__).with_name("server.py")))
     ap.add_argument("--video", action="append", default=[], help="mp4=제목=req.json")
     ap.add_argument("--translate", help="[{en: ...}] json")
+    ap.add_argument("--think", default="", help="생각 모드를 켤 쪽: a, b, ab. 켠 쪽은 출력 한도에 생각용 토큰을 더한다")
+    ap.add_argument("--think-bonus", default="8000,2000,10000", help="생각용으로 더할 토큰: 줄거리,번역,영상")
     a = ap.parse_args()
     P = load_prompts(Path(a.server))
     if {"STORY_SYSTEM", "TRANSLATE_SYSTEM", "RETRY_HINT"} - P.keys():
@@ -123,35 +126,39 @@ def main():
             out.write(json.dumps({"side": side, "model": model, "task": task, **r, **checks(r), **extra}, ensure_ascii=False) + "\n")
             out.flush()
 
+        b_story, b_tr, b_video = (int(x) for x in a.think_bonus.split(","))
         for side, spec in (("A", a.a), ("B", a.b)):
             base, model = spec.split("=", 1)
             base = base.rstrip("/")
-            s = rows.setdefault(side, {"model": model})
+            on = side.lower() in a.think
+            think = {"chat_template_kwargs": {"enable_thinking": True}} if on else None
+            bs, bt, bv = (b_story, b_tr, b_video) if on else (0, 0, 0)
+            s = rows.setdefault(side, {"model": model + (" (생각 켬)" if on else "")})
             print(f"== {side}: {model}", flush=True)
             for mp4, title, _ in videos:  # 줄거리(/story)
                 user = (f"영상 제목: {title}\n\n사진 격자 {len(grids[mp4])}장(칸마다 초 표시)\n소리 사건:\n(없음)\n대사:\n(없음)")
-                r = call(base, model, P["STORY_SYSTEM"], user, grids[mp4], max_tokens=1500)
+                r = call(base, model, P["STORY_SYSTEM"], user, grids[mp4], max_tokens=1500 + bs, extra=think)
                 j = json_ok(r["text"])
                 log(side, model, "story", r, video=mp4.name, json=j is not None)
-                s[f"story {mp4.stem}"] = (f"{r['sec']}초, {r.get('out_tokens')}토큰, 사건 {len((j or {}).get('events', []))}개"
+                s[f"story {mp4.stem}"] = (f"{r['sec']}초, {r.get('out_tokens')}토큰(생각 {r.get('reasoning_chars', 0)}자), 사건 {len((j or {}).get('events', []))}개"
                                           + ("" if j else ", JSON 깨짐"))
             for mp4, title, req in videos:  # 영상 통째 해설, 하나씩
-                r = video_call(base, model, mp4, req)
+                r = video_call(base, model, mp4, req, think, bv)
                 log(side, model, "video", r, video=mp4.name)
-                s[f"video {mp4.stem}"] = (f"{r['sec']}초, 입력 {r.get('in_tokens')}·출력 {r.get('out_tokens')}토큰, "
-                                          f"장면 {r['scenes']}·문장 {r['lines']}" + ("" if r["json"] else ", JSON 깨짐")
+                s[f"video {mp4.stem}"] = (f"{r['sec']}초, 입력 {r.get('in_tokens')}·출력 {r.get('out_tokens')}토큰(생각 {r.get('reasoning_chars', 0)}자), "
+                                          f"장면 {r['scenes']}·문장 {r['lines']}, 끝 {r['last_end']}" + ("" if r["json"] else ", JSON 깨짐")
                                           + (" (재시도)" if r["tries"] > 1 else "") + ("" if r["ok"] else f", 실패 {r.get('error')}"))
             if len(videos) >= 2:  # 영상 두 편 동시
                 t0 = time.time()
                 with ThreadPoolExecutor(len(videos)) as ex:
-                    rs = list(ex.map(lambda v: video_call(base, model, v[0], v[2]), videos))
+                    rs = list(ex.map(lambda v: video_call(base, model, v[0], v[2], think, bv), videos))
                 for (mp4, _, _), r in zip(videos, rs):
                     log(side, model, "video_parallel", r, video=mp4.name)
                 s["video 동시"] = f"{round(time.time() - t0, 1)}초(각 {', '.join(str(r['sec']) for r in rs)}), JSON {sum(r['json'] for r in rs)}/{len(rs)}"
             if texts:  # 번역: 조각마다 동시 8개(server.py VLLM_PARALLEL)
                 t0 = time.time()
                 with ThreadPoolExecutor(8) as ex:
-                    rs = list(ex.map(lambda k: translate_one(base, model, P, "몰디브 망고 커리 만들기", texts, k), range(len(texts))))
+                    rs = list(ex.map(lambda k: translate_one(base, model, P, "몰디브 망고 커리 만들기", texts, k, think, bt), range(len(texts))))
                 for r in rs:
                     log(side, model, "translate", r)
                 s["번역"] = (f"{round(time.time() - t0, 1)}초, 성공 {sum(r['ko'] is not None for r in rs)}/{len(rs)}, "

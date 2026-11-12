@@ -3,6 +3,7 @@
 # GPU0은 이미 약 121GB를 쓰고 있어(2026-11-12) GPU1에 띄운다. 밖으로 열지 않는다(127.0.0.1:8202).
 # 사용: bash ~/gpu_server/start_vllm_eval.sh            → "ready", 로그는 ~/vllm_exp/serve_eval.log
 #       MODEL=Qwen/Qwen3.5-35B-A3B-FP8 bash ~/gpu_server/start_vllm_eval.sh
+#       REASONING=qwen3 bash ~/gpu_server/start_vllm_eval.sh   (생각 모드 시험: 생각 과정을 답과 따로 떼어 준다)
 # 끄기: pkill -f "[v]llm serve .*--port 8202"
 set -u
 MODEL=${MODEL:-Qwen/Qwen3.8-27B-FP8}
@@ -13,7 +14,7 @@ if curl -s -m 2 http://127.0.0.1:8202/v1/models > /dev/null; then echo "already 
 VLLM_USE_DEEP_GEMM=0 CUDA_VISIBLE_DEVICES=${GPU:-1} setsid nohup vllm serve "$MODEL" --host 127.0.0.1 --port 8202 \
   --gpu-memory-utilization ${GPU_UTIL:-0.32} --max-model-len ${MAX_LEN:-40960} --max-num-seqs ${MAX_SEQS:-8} \
   --limit-mm-per-prompt '{"image": 8, "video": 1}' --allowed-local-media-path "$HOME/vllm_exp/media" \
-  > serve_eval.log 2>&1 < /dev/null &
+  ${REASONING:+--reasoning-parser "$REASONING"} > serve_eval.log 2>&1 < /dev/null &
 for _ in $(seq 1 240); do
   curl -s -m 2 http://127.0.0.1:8202/v1/models > /dev/null && { echo ready; exit 0; }
   pgrep -u "$USER" -f "[v]llm serve .*--port 8202" > /dev/null || { echo "failed (serve_eval.log 확인)"; tail -5 serve_eval.log; exit 1; }

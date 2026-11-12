@@ -74,11 +74,14 @@ def call(base: str, model: str, system: str | None, user: str, images: list[str]
     req = urllib.request.Request(base + "/chat/completions", json.dumps(body).encode(), {"Content-Type": "application/json"})
     t0 = time.time()
     try:
-        with urllib.request.urlopen(req, timeout=600) as r:
+        with urllib.request.urlopen(req, timeout=1800) as r:
             j = json.load(r)
-        text = j["choices"][0]["message"]["content"] or ""
+        msg = j["choices"][0]["message"]
+        text = msg["content"] or ""
+        reasoning = msg.get("reasoning_content") or msg.get("reasoning") or ""  # --reasoning-parser가 떼어 준 생각 과정
         usage = j.get("usage") or {}
-        return {"ok": True, "sec": round(time.time() - t0, 3), "text": text,
+        return {"ok": True, "sec": round(time.time() - t0, 3), "text": text, "reasoning_chars": len(reasoning),
+                "reasoning": reasoning[:3000],
                 "out_tokens": usage.get("completion_tokens"), "in_tokens": usage.get("prompt_tokens"),
                 "finish": j["choices"][0].get("finish_reason")}
     except Exception as e:  # noqa: BLE001

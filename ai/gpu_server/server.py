@@ -79,8 +79,10 @@ STORY_VLLM_URL = os.getenv("STORY_VLLM_URL", "http://127.0.0.1:8201/v1").rstrip(
 # 영상 통째 해설이 30~40% 빠르고 영상 끝까지 쓰며(32B는 마지막 20~40초를 빠뜨림), 줄거리·번역은 약 2배 빠르고 번역 용어가 맞다
 STORY_MODEL = os.getenv("STORY_MODEL", "Qwen/Qwen3.8-27B-FP8")
 VLLM_MODEL = os.getenv("VLLM_MODEL", STORY_MODEL)  # VLLM_URL에 떠 있는 모델 이름(HF 대체는 VLM_REPO)
-# Qwen3.8은 기본으로 답 앞에 생각 과정을 길게 쓴다(느리고 JSON이 깨짐). vLLM 요청마다 끈다. Qwen3-VL은 이 값을 무시한다
-NO_THINK = {"chat_template_kwargs": {"enable_thinking": False}}
+# Qwen3.8은 기본으로 답 앞에 생각 과정을 쓴다. 기본은 끔(실측은 끈 상태로 했다). VLLM_THINK=1이면 켠다: 8201을
+# --reasoning-parser qwen3로 띄워 생각 과정은 답(content)과 따로 오고, 출력 한도에 생각 토큰도 들어가니 한도를 넉넉히.
+# Qwen3-VL은 이 값을 무시한다
+NO_THINK = {"chat_template_kwargs": {"enable_thinking": os.getenv("VLLM_THINK", "0") == "1"}}
 
 
 def _post_json(url: str, body: dict, timeout: float) -> dict:

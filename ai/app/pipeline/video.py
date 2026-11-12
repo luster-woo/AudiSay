@@ -900,9 +900,7 @@ async def analyze_situation(inf, title: str | None, files: dict, work, duration_
                             gms=None, job_id: int | None = None) -> tuple[dict, str]:
     """업로드 영상 파이프라인(상황 먼저, situation.py): 듣기 → 얼굴로 사람 묶기 → 본 일 기록 → 대사마다 말한 사람 →
     호칭·상황 흐름·목차 → 해설 대본 → 끼워 넣기·검사. 이름은 쓰지 않고 성별+겉모습 호칭(같은 사람은 같은 호칭).
-    progress(pct)는 PREPARE 구간(6~18) 안에서 실제로 끝낸 만큼 올린다: 7 받아쓰기 · 8 소리·화자·얼굴 · 8~11 영상 보기 ·
-    12 말한 사람 · 13 호칭 · 14 상황 흐름 · 16 대본 · 16~18 검사. 상황 흐름과 대본은 H200을 한 번씩 길게 불러 합쳐 전체의
-    약 4분의 1이 걸려서, 그 사이에도 진행률이 오르게 값을 따로 둔다."""
+    progress(pct)는 PREPARE 구간(6~18) 안에서 실제로 끝낸 만큼 올린다."""
     from app.pipeline import situation as st
     title = title or ""
     playback, wav = files["playback"], files["wav"]
@@ -920,21 +918,20 @@ async def analyze_situation(inf, title: str | None, files: dict, work, duration_
     await progress(8)
 
     async def looked(d: int, t: int) -> None:
-        await progress(8 + 3 * d // t)
+        await progress(8 + 5 * d // t)
     look, parts = await st.look_parts(inf, video, title, segs, sound_events, duration_ms, faces, guide, looked)
     await asyncio.to_thread(st.voice_gender, wav, segs)  # 줄마다 목소리 높이로 남녀
     await st.attribute_speakers(inf, title, look, faces, segs)
     body_fixes = st.fix_injury_owners(look)  # 얼굴 없이 보인 다친 곳(발목)의 주인을 영상 전체 기록의 다수로
-    await progress(12)
-    sit = await st.understand(inf, title, duration_ms, look, faces, segs, guide, labelled=lambda: progress(13))
     await progress(14)
+    sit = await st.understand(inf, title, duration_ms, look, faces, segs, guide)
     calls = {p["id"]: p["call"] for p in sit["people"]}
     for x in segs:  # 말한 사람: 번호 → 호칭(같은 사람으로 합친 번호도). 못 정한 줄은 비운다
         x["name"] = calls.get(sit["canon"].get(x.get("pid"), x.get("pid")))
         x["who"] = x["name"]
 
     async def wrote(d: int, t: int) -> None:
-        await progress(14 + 2 * d // t)
+        await progress(14 + d // t)
     lines = await st.write_script(inf, title, duration_ms, sit, look, segs, calls, wrote)
     owners = look.get("injury_owner", {})
     for x in sit["situations"]:  # 다친 곳 주인을 상황 흐름·목차·요약 글에도 맞춘다
@@ -956,7 +953,7 @@ async def analyze_situation(inf, title: str | None, files: dict, work, duration_
                              + (f" (얼굴 번호표 {p['id']})" if p["id"].startswith("P") else "")} for p in sit["people"]]}]
 
         async def checked(d: int, t: int) -> None:
-            await progress(16 + 2 * d // t)
+            await progress(15 + 2 * d // t)
         await verify_lines(inf, video, raw["lines"], segs, cast, duration_ms, checked)
         for x in raw["lines"]:  # 검사가 고친 문장의 번호(P5)를 호칭으로, 다친 곳 주인도 다시 맞춤
             x["text"] = st.fix_injury_text(st.clean_ids(x["text"], calls), calls, owners)

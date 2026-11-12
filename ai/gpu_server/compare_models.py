@@ -1,9 +1,9 @@
-"""vLLM 두 개(예: 지금 쓰는 32B FP8 vs Qwen3.5-35B-A3B)에 같은 일을 시켜 속도·형식·한국어를 나란히 본다.
+"""vLLM 두 개(예: 지금 쓰는 32B FP8 vs 시험 모델, start_vllm_eval.sh로 8202에 띄움)에 같은 일을 시켜 속도·형식·한국어를 나란히 본다.
 
 H200에서 실행(표준 라이브러리만 씀, 서버 코드는 실행하지 않고 server.py에서 프롬프트 글만 읽어 온다):
     python3 compare_models.py \
         --a http://127.0.0.1:8201/v1=Qwen/Qwen3-VL-32B-Instruct-FP8 \
-        --b http://127.0.0.1:8202/v1=Qwen/Qwen3.5-35B-A3B-FP8 \
+        --b http://127.0.0.1:8202/v1=Qwen/Qwen3.8-27B-FP8 \
         --images ~/vllm_exp/media/mango_frames --parallel 1,4,8
 
 보는 것

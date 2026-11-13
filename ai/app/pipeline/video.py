@@ -35,6 +35,23 @@ def _norm(text: str) -> str:
 SOUND_IGNORE = {"Television", "Radio", "Zipper (clothing)", "Static", "Mechanisms", "Sound effect", "Inside, large room or hall",
                 "Outside, rural or natural", "Outside, urban or manmade", "Hubbub, speech noise, speech babble", "Echo"}
 
+# 모델(줄거리·장면 해설)에 참고로 넘기는 소리. 소리 분류(AST)가 배경음악을 엉뚱한 소리로 많이 읽어서(2026-11-12 해리포터
+# "아이스크림 트럭"·"말발굽", 크레페 "초인종"·"부엉이"·"카드 섞기"·"카메라 셔터", 세 영상 49개 중 맞는 것은 몇 개),
+# 소리 자체가 뚜렷하고 줄거리를 바꾸는 소리만 점수 SOUND_HINT_MIN 이상일 때 넘긴다. 이름은 한국어로
+SOUND_HINTS = {
+    "Explosion": "폭발", "Gunshot, gunfire": "총소리", "Machine gun": "기관총 소리", "Fusillade": "총소리",
+    "Artillery fire": "포격", "Breaking": "깨지는 소리", "Shatter": "깨지는 소리", "Glass": "유리 소리",
+    "Smash, crash": "와장창", "Crash": "부딪히는 소리", "Bang": "쾅", "Screaming": "비명", "Yell": "고함",
+    "Crying, sobbing": "울음", "Baby cry, infant cry": "아기 울음", "Gasp": "헉 하는 소리", "Laughter": "웃음소리",
+    "Applause": "박수", "Cheering": "환호", "Siren": "사이렌", "Police car (siren)": "경찰차 사이렌",
+    "Ambulance (siren)": "구급차 사이렌", "Fire engine, fire truck (siren)": "소방차 사이렌", "Alarm": "경보",
+    "Smoke detector, smoke alarm": "화재 경보", "Car alarm": "자동차 경보", "Vehicle horn, car horn, honking": "경적",
+    "Train horn": "기차 경적", "Train whistle": "기차 기적", "Skidding": "끼익 미끄러지는 소리",
+    "Tire squeal": "타이어 끼익", "Knock": "노크", "Telephone bell ringing": "전화벨", "Ringtone": "전화벨",
+    "Thunder": "천둥", "Bark": "개 짖는 소리",
+}
+SOUND_HINT_MIN = 0.3
+
 
 # 한자·가나가 없는 글(32B가 "미겔"을 "미格尔"로 썼다, 2026-11-05 모던 패밀리). 스키마 pattern으로 걸면 vLLM이 그 글자를 아예 못 고른다
 def no_cjk(n: int) -> str:
@@ -78,11 +95,12 @@ def korean_only(raw: dict) -> None:
 
 
 def sound_lines(events: list[dict], a_ms: int, b_ms: int) -> str:
-    """소리 사건 가운데 [a, b) 구간과 겹치는 것을 "41~45초 기차 경적" 줄로. 같은 이름은 한 번만."""
+    """소리 사건 가운데 [a, b) 구간과 겹치는 것을 "41~45초 기차 경적" 줄로. 같은 이름은 한 번만.
+    믿을 만한 소리(SOUND_HINTS, 점수 SOUND_HINT_MIN 이상)만 넘긴다(점수가 없는 옛 서버 결과는 목록만 본다)."""
     out, seen = [], set()
     for e in events:
-        name = e.get("ko") or e["label"]
-        if e["label"] in SOUND_IGNORE:
+        name = SOUND_HINTS.get(e["label"])
+        if not name or e.get("score", 1.0) < SOUND_HINT_MIN:
             continue
         if e["startMs"] < b_ms and e["endMs"] > a_ms and name not in seen:
             seen.add(name)

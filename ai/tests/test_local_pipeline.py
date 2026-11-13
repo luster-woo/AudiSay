@@ -148,7 +148,7 @@ def test_local_analysis_end_to_end_with_mock_h200(tmp_path, monkeypatch):
     scenes = [{"startMs": 0, "endMs": 20_000}, {"startMs": 20_000, "endMs": 40_000}]
     monkeypatch.setattr(local, "detect_scenes", lambda path, ms: scenes)
     monkeypatch.setattr(local, "timeline_frames", lambda playback, work, ms: [(1500, tmp_path / "a.jpg")])
-    monkeypatch.setattr(local, "frames", lambda playback, work, sc, per_scene=4: [[tmp_path / "a.jpg"] for _ in sc])
+    monkeypatch.setattr(local, "frames", lambda playback, work, sc, per_scene=4, extra_ms=None: [[tmp_path / "a.jpg"] for _ in sc])
     files = {"playback": tmp_path / "playback.mp4", "wav": tmp_path / "a.wav"}
     seen = []
 
@@ -196,7 +196,7 @@ def test_video_without_speech_is_described_by_action(tmp_path, monkeypatch):
             got["scenes"] = [(s["startMs"], s["endMs"]) for s in payload["scenes"]]
             return await super().describe(payload)
 
-    def frames(playback, work, sc, per_scene=4):
+    def frames(playback, work, sc, per_scene=4, extra_ms=None):
         got["per_scene"] = per_scene
         return [[tmp_path / f"{i}.jpg"] for i, _ in enumerate(sc)]
 
@@ -513,3 +513,19 @@ def test_sound_hints_keep_only_reliable_story_sounds():
               {"startMs": 81_000, "endMs": 83_000, "label": "Doorbell", "score": 0.34},
               {"startMs": 9_000, "endMs": 11_000, "label": "Gasp", "ko": "헉 하는 소리", "score": 0.2}]
     assert sound_lines(events, 0, 120_000) == "57~59초 깨지는 소리"
+
+
+def test_frames_add_dialogue_start_times_and_name_carries_time(tmp_path, monkeypatch):
+    """대사가 시작하는 시각의 사진을 꼭 넣고(문 잠그기처럼 대사와 함께 짧게 지나가는 동작, 2026-11-13 킹스맨),
+    파일 이름에 사진 시각을 남겨 서버가 문장을 그 사진 시각에 붙이게 한다."""
+    grabbed = []
+
+    def fake_ff(*args):
+        grabbed.append(float(args[args.index("-ss") + 1]))
+        Path(args[-1]).write_bytes(b"jpg")
+    monkeypatch.setattr(local, "_ff", fake_ff)
+    monkeypatch.setattr(local, "video_end_sec", lambda p: 60.0)
+    shots = local.frames(tmp_path / "p.mp4", tmp_path, [{"startMs": 0, "endMs": 12_000}], per_scene=4, extra_ms=[[6200, 6500]])
+    times = local.frame_times(shots[0])
+    assert 6200 in times and len(times) <= local.FRAME_MAX and times == sorted(times)
+    assert local.frame_times([tmp_path / "a.jpg"]) == []

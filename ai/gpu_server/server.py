@@ -28,7 +28,7 @@ from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-VERSION = 29
+VERSION = 30
 VLM_REPO = os.getenv("VLM_REPO", "Qwen/Qwen3-VL-8B-Instruct")
 WHISPER_REPO = os.getenv("WHISPER_REPO", "deepdml/faster-whisper-large-v3-turbo-ct2")
 DEVICE = os.getenv("DEVICE", "cuda:0")
@@ -913,6 +913,7 @@ class DescribeScene(BaseModel):
     frames: list[str] = []  # base64 jpg
     sounds: str = ""  # 버전 16: 이 장면의 소리 사건("41~45초 기차 경적")
     events: str = ""  # 버전 16: 이 장면 구간의 핵심 사건(/story)
+    frameMs: list[int] = []  # 버전 30: frames 사진마다 영상 시각(ms). 있으면 문장을 모델이 고른 사진 시각에 붙인다
 
 
 class DescribeBody(BaseModel):
@@ -938,7 +939,8 @@ DESCRIBE_SYSTEM = """당신은 시각장애인을 위한 화면해설 작가입�
 사람 이름은 화면 글자나 대사, 또는 주어진 등장인물 사전에 근거가 있을 때만 쓰고, 근거를 basis에 적습니다. 없으면 name은 null.
 반드시 JSON 하나로만 답하세요:
 {"title": "장면 목차용 한 줄 제목", "people": [{"name": null, "basis": null, "appearance": "겉모습"}],
- "lines": [{"level": 1, "text": "..."}, {"level": 2, "text": "..."}]}"""
+ "lines": [{"level": 1, "photo": 2, "text": "..."}, {"level": 2, "photo": 3, "text": "..."}]}
+photo는 그 문장의 일이 가장 잘 보이는 사진 번호(1부터, 사진은 시간 순서)입니다. 문장은 그 사진의 시각에 읽힙니다."""
 
 
 def _img(b64: str):
@@ -960,6 +962,8 @@ def _scene_prompt(body: DescribeBody, i: int, s: DescribeScene) -> str:
         extra += (f"\n줄거리 단계가 이 구간에 있을 것으로 추정한 일(작은 사진으로 짐작한 것이라 틀릴 수 있음): {s.events}\n"
                   "이 장면 사진에서 확인되는 부분만, 사진에 보이는 대로 자기 말로 다시 쓰세요. 추정한 문장을 그대로 옮기지 말고, "
                   "사진에 보이지 않거나 다르면 쓰지 마세요.")
+    if s.frameMs:
+        extra += "\n사진 시각: " + ", ".join(f"사진{k + 1} {ms // 1000}초" for k, ms in enumerate(s.frameMs[:len(s.frames)]))
     return (f"영상 제목: {body.title}\n{body.guide}{extra}\n장면 {i + 1}/{len(body.scenes)}, "
             f"{s.startMs // 1000}~{s.endMs // 1000}초, 길이 {(s.endMs - s.startMs) / 1000:.0f}초\n"
             f"이 장면의 대사: {s.transcript or '(없음)'}\n이 장면의 소리: {s.sounds or '(없음)'}\n"
@@ -967,7 +971,7 @@ def _scene_prompt(body: DescribeBody, i: int, s: DescribeScene) -> str:
 
 
 _TITLE_RE = re.compile(r'"title"\s*:\s*"((?:[^"\\]|\\.)*)"')
-_LINE_RE = re.compile(r'\{\s*"level"\s*:\s*(\d)\s*,\s*"text"\s*:\s*"((?:[^"\\]|\\.)*)"\s*\}')
+_LINE_RE = re.compile(r'\{\s*"level"\s*:\s*(\d)\s*,\s*(?:"photo"\s*:\s*\d+\s*,\s*)?"text"\s*:\s*"((?:[^"\\]|\\.)*)"\s*\}')
 
 
 def salvage_scene(raw: str) -> dict:
@@ -984,14 +988,22 @@ def _parse_scene(raw: str, i: int, s: DescribeScene) -> dict:
     except (ValueError, json.JSONDecodeError):
         j = salvage_scene(raw)
         print(f"describe scene {i + 1}: JSON 끊김, 문장 {len(j['lines'])}개 건짐", flush=True)
-    # 시각은 모델에게 묻지 않는다(숫자 시각은 틀리기 쉬움, PoC). 장면 시작부터 읽는 시간만큼 띄워 붙인다
+    # 시각은 모델에게 숫자로 묻지 않는다(숫자 시각은 틀리기 쉬움, PoC). 버전 30: 사진 시각(frameMs)이 있으면 모델이 고른
+    # 사진 번호의 시각에 붙인다. 장면 시작부터 차례로 붙이면 15초 장면 끝의 일을 장면 시작에 읽어 화면과 어긋났다
+    # (2026-11-13 킹스맨). 사진 번호가 없거나 틀리면 예전처럼 장면 시작부터 읽는 시간만큼 띄운다
     t, lines = s.startMs + 300, []
     for ln in sorted(j.get("lines", []), key=lambda x: int(x.get("level", 2))):
         text = finish_sentence(str(ln.get("text", "")))
         if not text:
             continue
-        lines.append({"atMs": min(t, max(s.startMs, s.endMs - 500)), "level": min(3, max(1, int(ln.get("level", 2)))), "text": text})
+        try:
+            photo = int(ln.get("photo"))
+        except (TypeError, ValueError):
+            photo = 0
+        at = s.frameMs[photo - 1] if s.frameMs and 1 <= photo <= len(s.frameMs) else min(t, max(s.startMs, s.endMs - 500))
+        lines.append({"atMs": max(s.startMs, at), "level": min(3, max(1, int(ln.get("level", 2)))), "text": text})
         t += READ_MS_PER_CHAR * len(text.replace(" ", "")) + READ_BASE_MS
+    lines.sort(key=lambda x: (x["atMs"], x["level"]))
     return {"title": str(j.get("title") or f"{i + 1}번째 장면")[:100], "people": j.get("people") or [], "lines": lines}
 
 

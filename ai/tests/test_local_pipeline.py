@@ -116,11 +116,12 @@ def test_local_analysis_end_to_end_with_mock_h200(tmp_path, monkeypatch):
             return {"texts": [["STEP 1"] for _ in images]}
 
         async def sounds(self, wav):
-            return {"events": [{"startMs": 22_000, "endMs": 26_000, "label": "Sizzle", "ko": "지글거리는 소리"}], "model": "sound"}
+            return {"events": [{"startMs": 22_000, "endMs": 26_000, "label": "Breaking", "ko": "깨지는 소리", "score": 0.5},
+                               {"startMs": 22_000, "endMs": 24_000, "label": "Ice cream truck, ice cream van", "score": 0.64}], "model": "sound"}
 
         async def story(self, payload):
             assert payload["frames"] == [(1500, tmp_path / "a.jpg")] and "겉모습 호칭" in payload["guide"]
-            assert payload["transcript"] == "1초 양파 두 개를 넣어요.\n21초 잘 저어요." and payload["sounds"] == "22~26초 지글거리는 소리"
+            assert payload["transcript"] == "1초 양파 두 개를 넣어요.\n21초 잘 저어요." and payload["sounds"] == "22~26초 깨지는 소리"
             return {"model": "Qwen3-VL-32B", "events": [{"atMs": 2000, "text": "양파를 냄비에 넣는다"}],
                     "names": [{"name": "백종원", "what": "앞치마 입은 남성"}, {"name": "양파", "what": ""}]}
 
@@ -131,7 +132,7 @@ def test_local_analysis_end_to_end_with_mock_h200(tmp_path, monkeypatch):
             assert payload["storyline"] == "2초 양파를 냄비에 넣는다" and payload["names"] == "앞치마 입은 남성, 양파"
             assert "정해 둔 인물·물건 이름" in payload["guide"]
             assert [s["events"] for s in payload["scenes"]] == ["양파를 냄비에 넣는다", ""]
-            assert [s["sounds"] for s in payload["scenes"]] == ["", "22~26초 지글거리는 소리"]
+            assert [s["sounds"] for s in payload["scenes"]] == ["", "22~26초 깨지는 소리"]  # 목록 밖 소리(아이스크림 트럭)는 넘기지 않는다
             return {"model": "Qwen3-VL-8B", "scenes": [
                 {"title": "양파 넣기", "people": [{"name": None, "basis": None, "appearance": "앞치마 입은 손"}],
                  "lines": [{"atMs": 500, "level": 1, "text": "양파가 냄비에 들어가 있음"}, {"atMs": 2000, "level": 3, "text": "냄비가 빨갛습니다"},
@@ -502,3 +503,13 @@ def test_group_sentences_does_not_join_across_long_silence():
             {"startMs": 107_900, "endMs": 116_600, "text": "christmas harry happy christmas ron"}]
     g = local.group_sentences(segs)
     assert [(x["startMs"], x["endMs"]) for x in g] == [(90_900, 91_600), (107_900, 116_600)]
+
+
+def test_sound_hints_keep_only_reliable_story_sounds():
+    """배경음악을 잘못 읽은 소리(아이스크림 트럭·초인종·부엉이)와 점수 낮은 소리는 모델에 넘기지 않는다(2026-11-12)."""
+    from app.pipeline.video import sound_lines
+    events = [{"startMs": 57_000, "endMs": 59_000, "label": "Breaking", "score": 0.32},
+              {"startMs": 92_000, "endMs": 94_000, "label": "Ice cream truck, ice cream van", "score": 0.64},
+              {"startMs": 81_000, "endMs": 83_000, "label": "Doorbell", "score": 0.34},
+              {"startMs": 9_000, "endMs": 11_000, "label": "Gasp", "ko": "헉 하는 소리", "score": 0.2}]
+    assert sound_lines(events, 0, 120_000) == "57~59초 깨지는 소리"

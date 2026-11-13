@@ -64,7 +64,7 @@ def test_silent_scenes_split_finer_and_frames_dense():
 
 
 def test_frames_for_and_overlaps():
-    assert local.frames_for(3000) == 4 and local.frames_for(15_000) == 5 and local.frames_for(120_000) == 8
+    assert local.frames_for(3000) == 4 and local.frames_for(10_000) == 5 and local.frames_for(15_000) == 8 and local.frames_for(120_000) == 8
     assert local.overlaps({"startMs": 5000, "endMs": 15_000}, {"startMs": 10_000, "endMs": 20_000})
     assert not local.overlaps({"startMs": 0, "endMs": 10_000}, {"startMs": 10_000, "endMs": 20_000})
 

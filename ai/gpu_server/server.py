@@ -28,7 +28,7 @@ from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-VERSION = 28
+VERSION = 29
 VLM_REPO = os.getenv("VLM_REPO", "Qwen/Qwen3-VL-8B-Instruct")
 WHISPER_REPO = os.getenv("WHISPER_REPO", "deepdml/faster-whisper-large-v3-turbo-ct2")
 DEVICE = os.getenv("DEVICE", "cuda:0")
@@ -931,7 +931,7 @@ DESCRIBE_SYSTEM = """당신은 시각장애인을 위한 화면해설 작가입�
 - 한 문장은 40자 안팎, 한 문장에 한 가지 내용. 장면마다 문장 3~5개.
 - 문장 하나만 들어도 뜻이 통하게 씁니다("그", "이어서", "또한"으로 시작하지 않습니다). 같은 내용을 단계별로 다시 쓰지 않습니다.
 - 숫자·표·그래프의 값은 화면 글자에 적힌 대로 정확히 읽습니다.
-해설 문장(lines)은 누적형입니다: level 1은 이 장면의 핵심 사건(주어진 핵심 사건이 이 장면 사진에 보이면 반드시 담음, 위험·충돌·구출을 먼저), level 2는 행동·표정·장소, level 3은 배경·분위기.
+해설 문장(lines)은 누적형입니다: level 1은 이 장면 사진에서 보이는 핵심 사건(위험·충돌·구출을 먼저), level 2는 행동·표정·장소, level 3은 배경·분위기.
 제목(title)과 문장은 이 장면 사진에 보이는 것으로 씁니다. 핵심 사건의 시각은 몇 초 어긋날 수 있어서, 사진에 아직 안 나온(다음 장면의) 일은 쓰지 않습니다.
 지어내지 않기(버전 16): 안경·장신구·작은 무늬·정확한 색처럼 작은 특징은 여러 사진에서 분명할 때만 씁니다. 만화·애니메이션의 큰 눈이나 눈 테두리는 안경이 아닙니다.
 인물·물건은 주어진 이름만 씁니다(같은 물건을 구슬·포도·딸기로 바꿔 부르지 않습니다). 사진에 없는 일을 대사·핵심 사건만 보고 쓰지 않습니다.
@@ -949,13 +949,17 @@ def _img(b64: str):
 def _scene_prompt(body: DescribeBody, i: int, s: DescribeScene) -> str:
     extra = ""
     if body.storyline:
-        extra += f"\n영상 전체 핵심 사건(참고):\n{body.storyline}"
+        extra += f"\n영상 전체 흐름(작은 사진으로 추정한 것이라 틀릴 수 있음, 참고만):\n{body.storyline}"
     if body.names:
         extra += f"\n정해 둔 인물·물건 이름: {body.names}"
     if s.events:
         # 버전 26: "꼭 담기"였을 때 줄거리 시각이 몇 초 앞서면 다음 장면 일을 제목으로 썼다(2026-11-12 크레페: 18~21초
         # 장면 사진은 크레페를 드는데 제목이 "계란 무게 재기", 무게 재기는 21~26초)
-        extra += f"\n이 장면 구간의 핵심 사건(사진에 보이면 level 1에 꼭 담기, 안 보이면 쓰지 않기): {s.events}"
+        # 버전 29: 줄거리는 3초 간격 작은 사진으로 짐작해서 "목을 조릅니다"처럼 없는 동작을 지어냈고, 장면 해설이 그 문장을
+        # 글자 그대로 level 1에 옮겼다(2026-11-13 킹스맨). 추정이라고 알리고, 사진으로 확인해 자기 말로 쓰게 한다
+        extra += (f"\n줄거리 단계가 이 구간에 있을 것으로 추정한 일(작은 사진으로 짐작한 것이라 틀릴 수 있음): {s.events}\n"
+                  "이 장면 사진에서 확인되는 부분만, 사진에 보이는 대로 자기 말로 다시 쓰세요. 추정한 문장을 그대로 옮기지 말고, "
+                  "사진에 보이지 않거나 다르면 쓰지 마세요.")
     return (f"영상 제목: {body.title}\n{body.guide}{extra}\n장면 {i + 1}/{len(body.scenes)}, "
             f"{s.startMs // 1000}~{s.endMs // 1000}초, 길이 {(s.endMs - s.startMs) / 1000:.0f}초\n"
             f"이 장면의 대사: {s.transcript or '(없음)'}\n이 장면의 소리: {s.sounds or '(없음)'}\n"

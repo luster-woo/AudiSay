@@ -120,11 +120,34 @@ def _grab_all(grab, jobs: list) -> None:
         list(pool.map(grab, jobs))
 
 
-def frames(playback: Path, work: Path, scenes: list[dict], per_scene=4) -> list[list[Path]]:
+FRAME_MAX = 8  # 장면 한 번에 보내는 사진 수 한도(H200 vLLM --limit-mm-per-prompt image 8)
+FRAME_MODE = os.getenv("FRAME_MODE", "dialogue")  # even: 고르게 | dialogue: 고르게 + 대사가 시작하는 시각
+# 대사 있는 영상의 장면 사진 간격. 3초면 문 잠그기처럼 짧은 동작을 놓쳤다(2026-11-13 킹스맨: 2초에서만 0:05 문 동작을 씀,
+# 전체 시간은 38~39초로 같음)
+FRAME_EVERY_MS = int(os.getenv("FRAME_EVERY_MS", "2000"))
+
+
+def frame_ms(path: Path) -> int | None:
+    """frames()가 붙인 파일 이름(s003_5_2_41250.jpg)에서 사진 시각(ms). 시각이 없는 이름이면 None."""
+    tail = Path(path).stem.rsplit("_", 1)[-1]
+    return int(tail) if "_" in Path(path).stem and tail.isdigit() else None
+
+
+def frame_times(paths: list[Path]) -> list[int]:
+    """사진 시각 목록. 하나라도 모르면 빈 목록(서버가 예전처럼 장면 시작부터 문장을 붙인다)."""
+    ms = [frame_ms(p) for p in paths]
+    return [m for m in ms if m is not None] if all(m is not None for m in ms) else []
+
+
+def frames(playback: Path, work: Path, scenes: list[dict], per_scene=4, extra_ms: list[list[int]] | None = None
+           ) -> list[list[Path]]:
     """장면마다 대표 프레임 n장. per_scene은 숫자 또는 (장면 길이 ms → 장 수) 함수.
     영상 트랙이 끝난 뒤 시각은 뽑지 못하므로 끝 0.2초 앞까지로 자르고, 한 장이 실패하면 1초 앞에서 한 번 더 뽑는다.
     그래도 실패한 사진은 건너뛴다(사진 한 장 때문에 작업 전체가 TRANSCODE_FAILED가 되던 것, 2026-11-02 데모 Hanbid).
-    사진이 하나도 없는 장면은 앞 장면의 마지막 사진을 쓴다."""
+    사진이 하나도 없는 장면은 앞 장면의 마지막 사진을 쓴다.
+    extra_ms: 장면마다 꼭 넣을 시각(대사가 시작하는 때). 대사와 함께 일어나는 짧은 동작(문 잠그기)이 고르게 뽑은 사진 사이에
+    빠졌다(2026-11-13 킹스맨). 합쳐 FRAME_MAX장을 넘으면 고르게 뽑는 장 수를 줄이고, 1초 안에 겹치는 시각은 하나만.
+    파일 이름 끝에 사진 시각(ms)을 붙여 둔다(frame_ms)."""
     out_dir = work / "frames"
     out_dir.mkdir(parents=True, exist_ok=True)
     end = video_end_sec(playback)
@@ -132,12 +155,18 @@ def frames(playback: Path, work: Path, scenes: list[dict], per_scene=4) -> list[
     for i, s in enumerate(scenes):
         a, b = s["startMs"] / 1000, s["endMs"] / 1000
         n = per_scene(s["endMs"] - s["startMs"]) if callable(per_scene) else per_scene
+        extra = sorted(set(m / 1000 for m in (extra_ms[i] if extra_ms else []) if a <= m / 1000 < b))
+        n = max(2, min(n, FRAME_MAX - len(extra))) if extra else n
+        times = [a + (b - a) * (k + 0.5) / n for k in range(n)]
+        for t in extra:
+            if all(abs(t - u) >= 1.0 for u in times):
+                times.append(t)
+        times = sorted(times)[:FRAME_MAX]
         shots = []
-        for k in range(n):
-            t = a + (b - a) * (k + 0.5) / n
+        for k, t in enumerate(times):
             if end:
                 t = min(t, max(0.0, end - 0.2))
-            shots.append((out_dir / f"s{i:03d}_{n}_{k}.jpg", t))
+            shots.append((out_dir / f"s{i:03d}_{n}_{k}_{int(t * 1000)}.jpg", t))
         plan.append(shots)
 
     def grab(job: tuple[Path, float]) -> None:
@@ -257,8 +286,8 @@ def overlaps(seg: dict, scene: dict) -> bool:
 
 
 def frames_for(scene_ms: int) -> int:
-    """장면 길이에 맞춘 대표 사진 수: 3초에 1장, 4~8장."""
-    return max(4, min(8, round(scene_ms / 3000)))
+    """장면 길이에 맞춘 대표 사진 수: FRAME_EVERY_MS(기본 3초)에 1장, 4~8장."""
+    return max(4, min(8, round(scene_ms / FRAME_EVERY_MS)))
 
 
 def frames_for_silent(scene_ms: int) -> int:
@@ -751,6 +780,7 @@ async def analyze_opensource(inf, title: str | None, files: dict, work: Path, du
     playback, wav = files["playback"], files["wav"]
     # 받아쓴 말이 없는 영상인가(장면 길이·사진 수가 달라진다). 받아쓰기가 끝나면 알린다
     silent_known: asyncio.Future = asyncio.get_running_loop().create_future()
+    stt_segments: list[dict] = []  # 받아쓰기 원문 조각(사진 시각을 고를 때 대사 시작 시각으로 쓴다)
 
     async def look() -> tuple[list[dict], list[list[Path]], list[list[str]]]:
         """화면 쪽: 장면 찾기 → 장면 사진 → 화면 글자. 소리 쪽(받아쓰기·번역·효과음·줄거리)과 나란히 돈다.
@@ -759,7 +789,9 @@ async def analyze_opensource(inf, title: str | None, files: dict, work: Path, du
         silent = await silent_known
         if silent:
             scenes = split_long(scenes, SILENT_MAX_SCENE_SEC)
-        shots = await asyncio.to_thread(frames, playback, work, scenes, frames_for_silent if silent else frames_for)
+        starts = [x["startMs"] for x in stt_segments] if FRAME_MODE == "dialogue" else []
+        extra = [[m for m in starts if s["startMs"] <= m < s["endMs"]] for s in scenes]
+        shots = await asyncio.to_thread(frames, playback, work, scenes, frames_for_silent if silent else frames_for, extra)
         flat = [p for group in shots for p in group]
         t0 = time.monotonic()
         texts = (await inf.ocr(flat))["texts"] if flat else []
@@ -786,6 +818,7 @@ async def analyze_opensource(inf, title: str | None, files: dict, work: Path, du
         t0 = time.monotonic()
         stt = await inf.transcribe(wav)
         await inference.log_remote(db, "STT", str(stt.get("model", "")), t0, job_id=job_id)
+        stt_segments.extend(stt["segments"])
         silent_known.set_result(not stt["segments"])
         language = stt.get("language")
         await progress(9)
@@ -827,7 +860,8 @@ async def analyze_opensource(inf, title: str | None, files: dict, work: Path, du
                            "transcript": " ".join(x["text"] for x in segs if overlaps(x, s)),
                            "sounds": sound_lines(sound_events, s["startMs"], s["endMs"]),
                            "events": " ".join(e["text"] for e in events if s["startMs"] <= e["atMs"] < s["endMs"]),
-                           "ocr": ocr_by_scene[i], "frames": [str(p) for p in shots[i]]} for i, s in enumerate(scenes)]}
+                           "ocr": ocr_by_scene[i], "frames": [str(p) for p in shots[i]],
+                           "frameMs": frame_times(shots[i])} for i, s in enumerate(scenes)]}
     t0 = time.monotonic()
     # 화면 문구는 장면 해설을 쓰는 동안 고른다
     cands = screen_candidates(scenes, shots, texts, ocr_by_scene, segs) if SCREEN_LINES else []

@@ -85,7 +85,7 @@ class MockInference:
     async def sounds(self, wav: Path | None) -> dict:
         return {"events": [], "model": "mock"}
 
-    async def speakers(self, wav: Path | None, segs: list[dict]) -> dict:
+    async def speakers(self, wav: Path | None, segs: list[dict], same: str | None = None) -> dict:
         return {"speakers": [], "model": "mock"}
 
     async def story(self, payload: dict) -> dict:
@@ -188,15 +188,16 @@ class RemoteInference:
         except InferenceError:
             return {"events": [], "model": None}
 
-    async def speakers(self, wav: Path | None, segs: list[dict]) -> dict:
-        """{"speakers": 대사 줄마다 화자 번호(목소리로 나눔), "model"}. 소리가 없거나 옛 서버면 빈 목록(화자 없이 계속)."""
+    async def speakers(self, wav: Path | None, segs: list[dict], same: str | None = None) -> dict:
+        """{"speakers": 대사 줄마다 화자 번호(목소리로 나눔), "model"}. 소리가 없거나 옛 서버면 빈 목록(화자 없이 계속).
+        same: 같은 사람으로 묶는 기준(낮을수록 많이 묶음). 없으면 SPEAKER_SAME(0.5)."""
         if not wav or not segs:
             return {"speakers": [], "model": None}
         try:
             # WeSpeaker(서버 버전 23). wavlm은 짧은 한국어 대사에서 남녀를 한 화자로 묶었다. 잘게 나눠도 상황 파악이 다시 묶는다
             r = await self._post("/speakers", files={"audio": (wav.name, wav.read_bytes(), "audio/wav")},
                                  data={"segments": json.dumps([{"startMs": x["startMs"], "endMs": x["endMs"]} for x in segs]),
-                                       "model": os.getenv("SPEAKER_MODEL", "wespeaker"), "same": os.getenv("SPEAKER_SAME", "0.5")})
+                                       "model": os.getenv("SPEAKER_MODEL", "wespeaker"), "same": same or os.getenv("SPEAKER_SAME", "0.5")})
             return r if len(r.get("speakers", [])) == len(segs) else {"speakers": [], "model": None}
         except InferenceError:
             return {"speakers": [], "model": None}

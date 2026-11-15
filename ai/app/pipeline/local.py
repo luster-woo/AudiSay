@@ -826,6 +826,7 @@ async def analyze_opensource(inf, title: str | None, files: dict, work: Path, du
         segs = await translate_segments(inf, stt["segments"], language, title, gms, job_id)
         if any(x.get("original") for x in segs):
             await inference.log_remote(db, "STT", "translate", t0, job_id=job_id)  # purpose에 TRANSLATE 없음
+            await tag_voices(inf, wav, segs)
         sound_events = (await sound_job).get("events", [])
         story_job = asyncio.create_task(story_pass())
         scenes, shots, texts = await look_job
@@ -908,14 +909,58 @@ async def analyze_opensource(inf, title: str | None, files: dict, work: Path, du
     return raw, f"local:{desc.get('model', inf.name)}"
 
 
+# 번역 낭독 목소리 배역용 화자 나누기 기준. 기본(0.5)은 짧은 영어 대사·노래를 잘게 쪼개 신데렐라 74줄이 42명이 됐고(같은 요정 대모가
+# 줄마다 다른 목소리), 0.2에서 9명(요정 대모 46줄, 신데렐라 따로)으로 묶였다(2026-11-16 운영 job 95로 확인)
+DUB_SPEAKER_SAME = "0.2"
+DUB_MIN_LINES = 2  # 이보다 적게 말한 목소리 무리는 자기 목소리를 받지 않고 같은 성별 공용 목소리로 읽는다
+
+
+async def tag_voices(inf, wav: Path, segs: list[dict]) -> None:
+    """번역한 외국어 대사마다 말한 목소리(seg["speaker"] = "목소리3")와 성별(seg["gender"])을 적는다. 유튜브는 Gemini가 주는 것을
+    업로드는 H200 화자 나누기(WeSpeaker)와 목소리 높이로 채워, 번역 낭독을 인물마다 다른 Supertonic 목소리로 읽게 한다(2026-11-16).
+    성별은 줄마다 잰 목소리 높이를 같은 목소리 무리에서 다수결로 정한다(짧은 줄은 높이를 못 잰다). 실패하면 아무것도 적지 않는다
+    (그러면 배역 없이 기본 대사 목소리 하나로 읽는다)."""
+    from app.pipeline.situation import voice_gender  # situation이 local을 불러서 여기서 부른다
+
+    try:
+        await asyncio.to_thread(voice_gender, wav, segs)
+    except Exception as e:  # noqa: BLE001 — 성별을 못 재도 대사는 읽는다
+        log.warning("대사 목소리 높이 재기 실패: %s", str(e)[:200])
+    r = await inf.speakers(wav, segs, same=DUB_SPEAKER_SAME)
+    for s, k in zip(segs, r.get("speakers") or []):
+        s["speaker"] = f"목소리{k}"
+    groups: dict[str, list[dict]] = {}
+    for s in segs:
+        groups.setdefault(s.get("speaker") or f"줄{s['startMs']}", []).append(s)
+    for xs in groups.values():
+        votes = Counter(x.get("voice") for x in xs if x.get("voice"))
+        gender = {"남": "male", "여": "female"}.get(votes.most_common(1)[0][0]) if votes else None
+        for x in xs:
+            if gender:
+                x["gender"] = gender
+            if len(xs) < DUB_MIN_LINES:
+                x.pop("speaker", None)  # 한 번 말한 무리: voices.cast가 성별 공용 목소리 하나로 묶는다
+            x.pop("voice", None)
+            x.pop("f0", None)
+
+
 def to_raw(segs: list[dict], language: str | None, scenes: list[dict], desc_scenes: list[dict], ocr_by_scene: list[list[str]],
            lines: list[dict], summ: dict) -> dict:
-    """Gemini 형식으로 바꿔 유튜브와 같은 정리(normalize)·저장 코드를 쓴다."""
+    """Gemini 형식으로 바꿔 유튜브와 같은 정리(normalize)·저장 코드를 쓴다. 번역한 외국어 대사는 Gemini처럼 text에 원문,
+    translation에 한국어, language를 넣어 normalize가 읽어 줄 대사(dub)로 표시하게 한다."""
+    def dialogue(x: dict) -> dict:
+        d = {"start": mmss_ms(x["startMs"]), "end": mmss_ms(x["endMs"]), "speaker": x.get("speaker"), "text": x["text"],
+             "original": x.get("original")}
+        if x.get("original") and language and language != "ko":
+            d.update(text=x["original"], translation=x["text"], language=language, original=None)
+        if x.get("gender"):
+            d["gender"] = x["gender"]
+        return d
+
     return {
         "category": summ.get("category", "기타"),
         "summary_30s": summ["summary"],
-        "dialogue": [{"start": mmss_ms(x["startMs"]), "end": mmss_ms(x["endMs"]), "speaker": None, "text": x["text"],
-                      "original": x.get("original")} for x in segs],
+        "dialogue": [dialogue(x) for x in segs],
         "dialogue_language": language if any(x.get("original") for x in segs) else None,
         "scenes": [{"start": mmss(s["startMs"]), "end": mmss(s["endMs"]), "title": d["title"], "people": d.get("people", []),
                     "screen_text": [{"text": w, "text_type": "OTHER", "importance": "중", "same_as_dialogue": False}

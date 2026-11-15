@@ -39,7 +39,7 @@ from app.errors import WorkerError
 from app.gms.client import CallContext, GmsClient
 from app.mq.envelope import Envelope
 from app.mq.worker import Events
-from app.pipeline.voices import voices_key
+from app.pipeline.voices import SUPERTONIC_VOICES, voices_key
 from app.storage import Storage
 from app.tts_text import normalize_ko
 
@@ -267,15 +267,15 @@ async def remember(storage: Storage, text: str, mp3: bytes, ms: int, voice: str 
     await storage.put_json(key.removesuffix(".mp3") + ".json", {"durationMs": ms, "headClean": True})
 
 
-async def synthesize_supertonic(inf: inference.Inference, text: str) -> tuple[bytes, int] | None:
-    """문장 하나 → H200 Supertonic 3(안내 목소리와 같은 수아, 크레딧 0) → (mp3, 길이 ms). 실패하면 None(FE가 안내 목소리로 읽음).
-    긴 글(요약)은 안내 목소리처럼 120자 조각으로 나눠 합성하고 mp3를 잇는다."""
+async def synthesize_supertonic(inf: inference.Inference, text: str, voice: str = UPLOAD_VOICE) -> tuple[bytes, int] | None:
+    """문장 하나 → H200 Supertonic 3(해설은 안내 목소리와 같은 수아 F1, 외국어 대사는 인물별 목소리, 크레딧 0) → (mp3, 길이 ms).
+    실패하면 None(FE가 안내 목소리로 읽음). 긴 글(요약)은 안내 목소리처럼 120자 조각으로 나눠 합성하고 mp3를 잇는다."""
     from app.internal_api import _join_mp3, tts_chunks
 
     parts, ms = [], 0
     try:
         for chunk in tts_chunks(normalize_ko(text)):  # 차례로: H200 TTS는 한 번에 하나씩 처리한다
-            b, m = await inf.tts(chunk, UPLOAD_VOICE)
+            b, m = await inf.tts(chunk, voice)
             parts.append(b)
             ms += m
         return (await _join_mp3(parts), ms) if parts else None
@@ -297,8 +297,11 @@ async def synthesize_many(gms: GmsClient, storage: Storage, items: list[tuple], 
     async def one(key: str, text: str, voice: str = VOICE_NAME) -> None:
         async with sem:
             if inf is not None:
-                made = await synthesize_supertonic(inf, text)
+                # 해설(Kore)·배역 없는 대사는 수아(F1), 배역이 Supertonic 목소리면 그 목소리
+                made = await synthesize_supertonic(inf, text, voice if voice in SUPERTONIC_VOICES else UPLOAD_VOICE)
             else:
+                if voice in SUPERTONIC_VOICES:  # GPU 서버가 끊겨 업로드 영상을 Gemini TTS로 만들 때: Supertonic 배역은 쓸 수 없다
+                    voice = DUB_VOICE
                 made = await reuse(storage, text, voice)  # 같은 문장·목소리면 크레딧 0
                 if made is None:
                     made = await synthesize(gms, text, ctx, voice)

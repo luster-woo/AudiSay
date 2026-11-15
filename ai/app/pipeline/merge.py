@@ -29,7 +29,7 @@ from app.mq.envelope import Envelope
 from app.mq.worker import Events
 from app.pipeline.describe import DUB_FLAG, join_near, spread
 from app.pipeline.keywords import extract
-from app.pipeline.voices import cast, voices_key
+from app.pipeline.voices import SUPERTONIC_DEFAULT, SUPERTONIC_POOLS, cast, voices_key
 from app.storage import Storage
 
 log = logging.getLogger(__name__)
@@ -223,7 +223,9 @@ def assemble(full: dict, chunks: list[dict], covered_until_ms: int | None = None
     for i, x in enumerate(lines, 1):
         x["lineIndex"] = i
     plan.lines = lines
-    plan.voices = cast(lines, DUB_FLAG)  # 외국어 대사는 인물마다 다른 목소리로(말머리 없이 목소리로 구별)
+    # 외국어 대사는 인물마다 다른 목소리로(말머리 없이 목소리로 구별). 직접 올린 영상(H200 분석, 모델 "local:…")은 Supertonic 목소리
+    upload = str(plan.model or "").startswith("local:")
+    plan.voices = (cast(lines, DUB_FLAG, SUPERTONIC_POOLS, SUPERTONIC_DEFAULT) if upload else cast(lines, DUB_FLAG))
 
     # 외국어 대사를 읽어 주는 문장(DIALOGUE_DUB)은 해설이 아니라 대사 번역이다. 플레이어는 description_lines로 읽어 주지만
     # 목차 요약·키워드·장면 설명에는 넣지 않는다(이 글들은 합쳐 저장돼 BE 챗봇이 나중에 가를 수 없다. 대사는 transcript_segments에 따로 있음)

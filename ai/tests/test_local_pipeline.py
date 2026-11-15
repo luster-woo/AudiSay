@@ -160,7 +160,8 @@ def test_local_analysis_end_to_end_with_mock_h200(tmp_path, monkeypatch):
     assert model == "local:Qwen3-VL-8B" and errors == []
     assert seen == sorted(seen) and max(seen) < 20  # PREPARE 진행률 안
     assert raw["dialogue_language"] == "en"
-    assert raw["dialogue"][0]["text"] == "양파 두 개를 넣어요." and raw["dialogue"][0]["original"] == "Add two onions."
+    # Gemini 형식: text는 원문, translation은 한국어(normalize가 읽어 줄 대사로 바꾼다)
+    assert raw["dialogue"][0]["text"] == "Add two onions." and raw["dialogue"][0]["translation"] == "양파 두 개를 넣어요."
     assert raw["lines"][0]["text"] == "양파가 냄비에 들어가 있습니다."  # 개조식 끝 고침
     # 끊긴 JSON 조각, 앞 장면에서 한 말, 옷차림만 있는 문장은 빠지고 겹친 시각은 2초 띄운다(0.5초·2초 → 2.5초)
     assert [(x["at"], x["text"]) for x in raw["lines"]] == [("00:00", "양파가 냄비에 들어가 있습니다."),
@@ -168,7 +169,8 @@ def test_local_analysis_end_to_end_with_mock_h200(tmp_path, monkeypatch):
     assert raw["scenes"][0]["screen_text"] == [{"text": "STEP 1", "text_type": "OTHER", "importance": "중", "same_as_dialogue": False}]
 
     full = normalize(raw, 3, model, 40_000)
-    assert full["dialogues"][0]["original"] == "Add two onions."
+    assert full["dialogues"][0]["original"] == "Add two onions." and full["dialogues"][0]["text"] == "양파 두 개를 넣어요."
+    assert full["dialogues"][0]["dub"]
     chunks = make_chunks(full, 120)
     assert len(chunks) == 1
     # describe가 하는 일을 흉내: 문장 배치 결과를 조각으로
@@ -529,3 +531,46 @@ def test_frames_add_dialogue_start_times_and_name_carries_time(tmp_path, monkeyp
     times = local.frame_times(shots[0])
     assert 6200 in times and len(times) <= local.FRAME_MAX and times == sorted(times)
     assert local.frame_times([tmp_path / "a.jpg"]) == []
+
+
+def test_upload_foreign_dialogue_becomes_dub_with_voice_and_gender():
+    """업로드 영상의 번역한 외국어 대사도 유튜브처럼 읽어 줄 대사(dub)가 되고, 목소리 무리·성별이 실린다(2026-11-16).
+    한국어 대사나 번역 실패(원문 그대로)는 dub이 아니다."""
+    segs = [{"startMs": 0, "endMs": 1840, "text": "기적도 시간이 좀 걸려요.", "original": "Even miracles take a little time.",
+             "speaker": "목소리0", "gender": "female"},
+            {"startMs": 2220, "endMs": 2520, "text": "Miracles?"}]  # 번역 실패: 원문 그대로
+    scenes = [{"startMs": 0, "endMs": 10_000}]
+    raw = local.to_raw(segs, "en", scenes, [{"title": "요정", "people": []}], [[]], [], {"summary": "요약", "category": "기타"})
+    full = normalize(raw, 3, "local:Qwen", 10_000)
+    d0, d1 = full["dialogues"]
+    assert d0["dub"] and d0["text"] == "기적도 시간이 좀 걸려요." and d0["original"] == "Even miracles take a little time."
+    assert d0["speaker"] == "목소리0" and d0["gender"] == "female"
+    assert not d1.get("dub") and d1["text"] == "Miracles?"
+    ko = local.to_raw([{"startMs": 0, "endMs": 900, "text": "안녕하세요."}], "ko", scenes, [{"title": "t", "people": []}], [[]], [],
+                      {"summary": "s"})
+    assert not normalize(ko, 3, "local:Qwen", 10_000)["dialogues"][0].get("dub")
+
+
+def test_tag_voices_groups_by_speaker_and_votes_gender(monkeypatch):
+    """화자 나누기 무리마다 목소리 높이 다수결로 성별을 정한다(높이를 못 잰 짧은 줄도 무리의 성별을 받는다)."""
+    from app.pipeline import situation
+
+    def fake_gender(wav, segs):
+        for s, v in zip(segs, ["여", "여", None, "남", "남", "여"]):
+            if v:
+                s["voice"] = v
+
+    asked = []
+
+    class Inf(inference.MockInference):
+        async def speakers(self, wav, segs, same=None):
+            asked.append(same)
+            return {"speakers": [1, 1, 1, 2, 2, 3], "model": "wespeaker"}
+
+    monkeypatch.setattr(situation, "voice_gender", fake_gender)
+    segs = [{"startMs": i * 1000, "endMs": i * 1000 + 800, "text": "t", "original": "o"} for i in range(6)]
+    asyncio.run(local.tag_voices(Inf(), Path("a.wav"), segs))
+    assert asked == [local.DUB_SPEAKER_SAME]  # 기본보다 많이 묶는 기준
+    assert [s.get("speaker") for s in segs] == ["목소리1"] * 3 + ["목소리2"] * 2 + [None]  # 한 줄짜리 무리는 공용 목소리
+    assert [s.get("gender") for s in segs] == ["female"] * 3 + ["male"] * 2 + ["female"]
+    assert all("voice" not in s for s in segs)

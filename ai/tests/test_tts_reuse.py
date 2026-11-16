@@ -224,3 +224,28 @@ async def test_dub_voice_is_cached_apart_from_narration_voice(monkeypatch, tmp_p
     await tts.synthesize_many(None, storage, [("tts/1/1-a.mp3", "건배!"), ("tts/1/2-b.mp3", "건배!", tts.DUB_VOICE)], ctx)
     assert sorted(voices) == sorted([tts.VOICE_NAME, tts.DUB_VOICE])  # 같은 문장이라도 목소리가 다르면 따로 만든다
     assert (tmp_path / "tts/1/2-b.mp3").read_bytes() == b"ID3" + tts.DUB_VOICE.encode()
+
+
+async def test_upload_dub_line_uses_cast_supertonic_voice(monkeypatch, tmp_path):
+    """업로드 영상: 해설은 F1, 배역이 Supertonic 목소리인 대사는 그 목소리. GPU 서버가 끊겨 Gemini로 만들 땐 배역 대신 DUB_VOICE."""
+    voices = []
+
+    class Inf(inference.MockInference):
+        async def tts(self, text, voice):
+            voices.append(voice)
+            return b"ID3super", 500
+
+    storage, ctx = LocalStorage(str(tmp_path)), CallContext("TTS", job_id=1)
+    items = [("tts/1/1-a.mp3", "요정이 웃습니다.", tts.VOICE_NAME), ("tts/1/2-b.mp3", "기적도 시간이 걸려요.", "F3")]
+    await tts.synthesize_many(None, storage, items, ctx, inf=Inf())
+    assert sorted(voices) == ["F1", "F3"]
+
+    gemini = []
+
+    async def synth(gms, text, ctx, voice=tts.VOICE_NAME):
+        gemini.append(voice)
+        return b"ID3gemini", 100
+
+    monkeypatch.setattr(tts, "synthesize", synth)
+    await tts.synthesize_many(None, storage, [("tts/2/3-c.mp3", "처음 듣는 대사예요.", "M2")], ctx)
+    assert gemini == [tts.DUB_VOICE]

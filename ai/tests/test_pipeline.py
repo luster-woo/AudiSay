@@ -201,3 +201,15 @@ def test_spread_keeps_dub_lines_on_their_dialogue_and_does_not_push_narration_fa
     out = spread(lines, dialogues, 60_000)
     assert [x["startMs"] for x in out if x["flags"]] == [0, 2000, 4000, 6000]
     assert all(0 <= x["startMs"] - s <= 2000 for x, s in zip([out[1], out[4]], (1000, 5000)))
+
+
+def test_upload_dub_voices_use_supertonic_and_never_narration_voice():
+    """직접 올린 영상은 Supertonic 목소리로 배역을 정하고 해설 목소리(F1 수아)는 쓰지 않는다. 성별을 모르면 SUPERTONIC_DEFAULT."""
+    from app.pipeline.voices import SUPERTONIC_DEFAULT, SUPERTONIC_FEMALE, SUPERTONIC_MALE, SUPERTONIC_POOLS, cast
+    dub = lambda i, sp, g: {"lineIndex": i, "flags": ["DIALOGUE_DUB"], "speaker": sp, "gender": g}
+    lines = [dub(1, "목소리0", "female"), dub(2, "목소리1", "female"), dub(3, "목소리0", "female"), dub(4, "목소리2", "male"),
+             dub(5, None, None)]
+    v = cast(lines, "DIALOGUE_DUB", SUPERTONIC_POOLS, SUPERTONIC_DEFAULT)
+    assert v[1] == v[3] == SUPERTONIC_FEMALE[0] and v[2] == SUPERTONIC_FEMALE[1]
+    assert v[4] == SUPERTONIC_MALE[0] and v[5] == SUPERTONIC_DEFAULT
+    assert "F1" not in v.values()

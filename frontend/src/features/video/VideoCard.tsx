@@ -59,7 +59,11 @@ export function VideoCard(props: VideoCardProps) {
   if (props.row) {
     return (
       <div className="flex flex-col gap-4 rounded-lg border-2 border-line bg-paper px-5 py-4 sm:flex-row sm:items-center sm:gap-5">
-        <Thumbnail src={thumbnailUrl} className="hidden w-40 shrink-0 rounded-md sm:block" />
+        <Thumbnail
+          src={thumbnailUrl}
+          sizes="10rem"
+          className="hidden w-40 shrink-0 rounded-md sm:block"
+        />
         <div className="min-w-0 flex-1">
           <h3 tabIndex={-1} className="text-[1.375rem] leading-snug font-bold outline-none">
             {title}

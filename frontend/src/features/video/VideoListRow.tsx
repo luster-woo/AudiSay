@@ -44,7 +44,11 @@ export function VideoListRow({
         tone === 'danger' ? 'border-danger' : 'border-line',
       )}
     >
-      <Thumbnail src={thumbnailUrl} className="hidden w-40 shrink-0 rounded-md sm:block" />
+      <Thumbnail
+        src={thumbnailUrl}
+        sizes="10rem"
+        className="hidden w-40 shrink-0 rounded-md sm:block"
+      />
       <div className="min-w-0 flex-1">
         <h3 className="text-[1.375rem] leading-snug font-bold">
           <Link

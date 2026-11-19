@@ -1,6 +1,7 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import mascot from '@/assets/landing-mascot.webp'
+import mascot336 from '@/assets/landing-mascot-336.webp'
 import { usePageEntry } from '@/features/page/usePageEntry'
 import { useShortcutHelp } from '@/features/shortcuts/useShortcutHelp'
 import { LogoMark } from '@/layouts/parts/LogoMark'
@@ -144,9 +145,13 @@ export default function LandingPage() {
               지금 시작하기
             </Link>
           </div>
-          {/* 마스코트(손 흔드는 강아지)는 장식이라 낭독기에 숨긴다 */}
+          {/* 마스코트(손 흔드는 강아지)는 장식이라 낭독기에 숨긴다.
+              이 화면에서 가장 큰 그림(LCP)이라 먼저 받게 하고, 21rem(보통 336px)으로 그리니 1배 화면에는 작은 파일을 준다 */}
           <img
             src={mascot}
+            srcSet={`${mascot336} 336w, ${mascot} 584w`}
+            sizes="21rem"
+            fetchPriority="high"
             alt=""
             aria-hidden="true"
             width={584}

@@ -7,6 +7,7 @@ import { DEFAULT_SETTINGS, type UserSettings } from '@/api/types'
 import { useAuth } from '@/features/auth/context'
 import { useAnnouncer } from '@/features/announcer/context'
 import { SettingsContext, type SettingsValue } from './context'
+import { readDisplay, saveDisplay } from './displayCache'
 
 /* CSS 가 읽는 html 속성 */
 function applyToDocument(s: Pick<UserSettings, 'highContrast' | 'fontSizeLevel'>) {
@@ -30,11 +31,23 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const settings = query.data ?? DEFAULT_SETTINGS
   const { highContrast, fontSizeLevel } = settings
 
+  // 설정을 아직 받지 못했으면(세션 확인 중·응답 대기·비로그인) 기본값이 아니라 이 브라우저에 기억해 둔 값을 쓴다.
+  // index.html 이 그 값을 그리기 전에 이미 칠해 두었다 — 기본값으로 덮으면 화면이 줄었다 다시 커지며 밀린다
+  const loaded = query.data !== undefined
   useEffect(() => {
-    applyToDocument(
-      isAdmin ? { highContrast: false, fontSizeLevel: 2 } : { highContrast, fontSizeLevel },
-    )
-  }, [isAdmin, highContrast, fontSizeLevel])
+    if (isAdmin) {
+      // 관리자 화면은 고정 크기·일반 대비(원칙 12장). 사용자 화면용 기억에는 남기지 않는다
+      applyToDocument({ highContrast: false, fontSizeLevel: 2 })
+      return
+    }
+    if (!loaded) {
+      // 관리자가 로그아웃한 경우처럼 고정 크기가 남아 있으면 되돌린다. 처음 그린 값과 같으면 화면은 그대로다
+      applyToDocument(readDisplay() ?? DEFAULT_SETTINGS)
+      return
+    }
+    applyToDocument({ highContrast, fontSizeLevel })
+    saveDisplay({ highContrast, fontSizeLevel })
+  }, [isAdmin, loaded, highContrast, fontSizeLevel])
 
   const mutation = useMutation({
     mutationFn: (patch: Partial<UserSettings>) => usersApi.updateSettings(patch),

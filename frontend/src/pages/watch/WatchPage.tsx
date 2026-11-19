@@ -153,7 +153,7 @@ function UnavailableView({ video }: { video: VideoDetail }) {
                 aria-label={`재생, ${v.title}, ${formatDurationShort(v.durationSec)}`}
                 className="flex min-h-touch items-center gap-5 rounded-md"
               >
-                <Thumbnail src={v.thumbnailUrl} className="w-32 shrink-0 rounded-md" />
+                <Thumbnail src={v.thumbnailUrl} sizes="8rem" className="w-32 shrink-0 rounded-md" />
                 <span className="min-w-0">
                   <span className="block text-lg font-bold text-ink">{v.title}</span>
                   <span className="block text-ink-muted">
